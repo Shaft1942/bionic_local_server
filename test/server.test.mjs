@@ -55,6 +55,7 @@ const runId=randomUUID(),backgroundRequestId=runId+'-checkpoint';
 try {
  let r=await request('/api/projects');findings.push({test:'unauthenticated API blocked',pass:r.statusCode===401,status:r.statusCode});
  r=await request('/api/conversation/move',{method:'POST',body:{projectId:'p1',id:'native-1',targetProjectId:'p2'}});findings.push({test:'conversation move requires authentication',pass:r.statusCode===401});
+ for(const action of ['rename','delete']){r=await request('/api/conversation/'+action,{method:'POST',body:{projectId:'p1',id:'native-1',name:'Forbidden'}});findings.push({test:'conversation '+action+' requires authentication',pass:r.statusCode===401})}
  r=await request('/api/file?projectId=p1&rootId=project&path=notes.md');findings.push({test:'file contents require login',pass:r.statusCode===401});
  r=await request('/api/file/upload?projectId=p1&name=no.txt',{method:'POST',raw:Buffer.from('x')});findings.push({test:'phone upload requires login',pass:r.statusCode===401});
  for(const route of ['/api/activity','/api/deliverables?projectId=p1','/api/deliverable?projectId=p1&id=x','/api/deliverable/download?projectId=p1&id=x']){r=await request(route);findings.push({test:'workspace API requires login: '+route,pass:r.statusCode===401})}
@@ -141,6 +142,7 @@ try {
  findings.push({test:'a queued request recovered after server restart remains interrupted and is never replayed',pass:JSON.parse(r.text()).status==='interrupted'&&!upstreamBodies.some(body=>body.messages.at(-1).content==='Never auto replay')});
  const holdRes=new Res();const holdJob=handle(req('/api/chat',{method:'POST',headers:{cookie},body:{...data('HOLD FIFO','native-1'),requestId:runId+'-fifo'}}),holdRes);
  for(let i=0;i<50&&!holdRes.records().some(e=>e.type==='start');i++)await sleep(10);const id=holdRes.records().find(e=>e.type==='start')?.id,n=upstreamCount;
+ for(const action of ['rename','delete']){r=await request('/api/conversation/'+action,{method:'POST',headers:{cookie},body:{projectId:'p1',id:'native-1',name:'Busy native'}});findings.push({test:'native '+action+' is blocked while its companion continuation is running',pass:r.statusCode===409})}
  const queuedOne=runId+'-queued-1',queuedCancel=runId+'-queued-cancel',queuedSnapshot=runId+'-queued-snapshot',queuedTool=runId+'-queued-tool';
  r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL queued first',id),requestId:queuedOne,reasoning:'off'}});
  const queuedReceipt=r.records().at(-1);
@@ -228,6 +230,7 @@ try {
  // The queue limit counts only waiting entries, and canceling one frees a slot.
  const limitChatId=secondHoldRes.records().find(e=>e.type==='start').id,limitIds=[];
  r=await request('/api/conversation/move',{method:'POST',headers:{cookie},body:{projectId:'p1',id:limitChatId,targetProjectId:'p2'}});findings.push({test:'a running conversation cannot move between project scopes',pass:r.statusCode===409});
+ for(const action of ['rename','delete']){r=await request('/api/conversation/'+action,{method:'POST',headers:{cookie},body:{projectId:'p1',id:limitChatId,name:'Busy edit'}});findings.push({test:'a running conversation cannot '+action+' while a response is active',pass:r.statusCode===409})}
  for(let i=0;i<10;i++){const requestId=runId+'-limit-'+i;limitIds.push(requestId);r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL limit '+i,limitChatId),requestId}});assert.equal(r.records().at(-1).type,'queued')}
  const beforeLimit=upstreamCount;r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL over limit',limitChatId),requestId:runId+'-over-limit'}});
  findings.push({test:'one conversation accepts at most ten waiting messages without disturbing other active chats',pass:r.statusCode===409&&upstreamCount===beforeLimit});
@@ -259,6 +262,60 @@ try {
  const concurrentId=(await send('NORMAL concurrently relocated')).records().find(e=>e.type==='start').id;
  const moves=await Promise.all(['p2',null].map(targetProjectId=>request('/api/conversation/move',{method:'POST',headers:{cookie},body:{projectId:'p1',id:concurrentId,targetProjectId}})));
  findings.push({test:'concurrent web moves serialize and a stale source cannot reassign the conversation twice',pass:moves.filter(response=>response.statusCode===200).length===1&&moves.filter(response=>response.statusCode===404).length===1});
+ for(const action of ['rename','delete']){
+  r=await request('/api/conversation/'+action,{method:'POST',headers:{cookie,origin:'https://attacker.example'},body:{projectId:'p2',id:'native-1',name:'Forbidden'}});findings.push({test:'cross-origin conversation '+action+' is blocked',pass:r.statusCode===403});
+  r=await request('/api/conversation/'+action,{method:'POST',headers:{cookie},body:{projectId:'p1',id:'../native-1',name:'Forbidden'}});findings.push({test:'conversation '+action+' rejects unsafe identifiers',pass:r.statusCode===400});
+ }
+ const originalNativeStore=await fs.readFile(path.join(root,'fixture-store.mjs'),'utf8');
+ r=await request('/api/conversation/rename',{method:'POST',headers:{cookie},body:{projectId:'p2',id:'native-1',name:'  Mon historique natif  '}});const alias=JSON.parse(r.text()).conversation;
+ const aliasList=JSON.parse((await request('/api/sessions?projectId=p2',{headers:{cookie}})).text()).sessions;
+ findings.push({test:'native rename exposes the local alias in lists and reads while preserving original history identity',pass:r.statusCode===200&&alias.name==='Mon historique natif'&&alias.nativeProjectId==='p1'&&alias.messages[0].text==='Synthetic historical text'&&aliasList.some(item=>item.id==='native-1'&&item.name===alias.name)});
+ r=await request('/api/conversation/delete',{method:'POST',headers:{cookie},body:{projectId:'p1',id:'native-1'}});findings.push({test:'a stale native project cannot delete the relocated conversation',pass:r.statusCode===404});
+ r=await request('/api/conversation/delete',{method:'POST',headers:{cookie},body:{projectId:'p2',id:'native-1'}});const nativeDeleted=JSON.parse(r.text());
+ const hiddenNative=await request('/api/conversation?projectId=p2&id=native-1',{headers:{cookie}});
+ const hiddenList=JSON.parse((await request('/api/sessions?projectId=p2',{headers:{cookie}})).text()).sessions;
+ const beforeHiddenReply=upstreamCount;const hiddenReply=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL hidden history','native-1'),projectId:'p2'}});
+ findings.push({test:'native delete persists a companion-only hide and blocks future replies without touching Bionic source bytes',pass:r.statusCode===200&&nativeDeleted.localOnly===true&&hiddenNative.statusCode===404&&!hiddenList.some(item=>item.id==='native-1')&&hiddenReply.statusCode===404&&upstreamCount===beforeHiddenReply&&await fs.readFile(path.join(root,'fixture-store.mjs'),'utf8')===originalNativeStore&&JSON.parse(await fs.readFile(path.join(root,'data','conversation-locations.json'),'utf8')).native.find(item=>item.id==='native-1').deletedAt>0});
+ await fs.writeFile(path.join(fileRoot,'agent.md'),'before');
+ const managedRequest=runId+'-managed';r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_EDIT'),requestId:managedRequest,fileAccess:true}});const managedId=r.records().find(event=>event.type==='start').id;
+ const managedBefore=JSON.parse((await request('/api/conversation?projectId=p1&id='+managedId,{headers:{cookie}})).text());
+ for(const name of ['', '   ', 'a'.repeat(121), 'Deux\nlignes', 2]){r=await request('/api/conversation/rename',{method:'POST',headers:{cookie},body:{projectId:'p1',id:managedId,name}});assert.equal(r.statusCode,400)}
+ findings.push({test:'web rename rejects empty long multiline and non-text names',pass:true});
+ r=await request('/api/conversation/rename',{method:'POST',headers:{cookie},body:{projectId:'p1',id:managedId,name:'  Conversation renommée  '}});const managedRenamed=JSON.parse(r.text()).conversation;
+ findings.push({test:'web rename persists its name without changing messages file permissions or origin metadata',pass:r.statusCode===200&&managedRenamed.name==='Conversation renommée'&&managedRenamed.fileAccess===managedBefore.fileAccess&&JSON.stringify(managedRenamed.messages)===JSON.stringify(managedBefore.messages)&&JSON.parse(await fs.readFile(path.join(root,'data','chats',managedId+'.json'),'utf8')).name===managedRenamed.name});
+ r=await request('/api/conversation/rename',{method:'POST',headers:{cookie},body:{projectId:'p2',id:managedId,name:'Wrong project'}});findings.push({test:'web rename verifies the current project scope',pass:r.statusCode===404});
+ r=await request('/api/conversation/delete',{method:'POST',headers:{cookie},body:{projectId:'p2',id:managedId}});findings.push({test:'web delete verifies the current project scope',pass:r.statusCode===404});
+ r=await request('/api/deliverables',{method:'POST',headers:{cookie},body:{projectId:'p1',chatId:managedId,messageId:managedRenamed.messages.at(-1).id,kind:'message'}});const managedPin=JSON.parse(r.text());
+ const restoreAction=managedRenamed.messages.at(-1).actions.find(action=>action.backupId);
+ const actualRename=fs.rename;let reachedRestore,releaseRestore;
+ const restoreReached=new Promise(resolve=>{reachedRestore=resolve}),restoreReleased=new Promise(resolve=>{releaseRestore=resolve});
+ fs.rename=async(from,to)=>{if(to===path.join(fileRoot,'agent.md')){reachedRestore();await restoreReleased}return actualRename(from,to)};
+ let restoreResponse,renameResponse,deleteResponse,renameDone=false,deleteDone=false;
+ try{
+  const restoreJob=request('/api/file/restore',{method:'POST',headers:{cookie},body:{projectId:'p1',rootId:'project',path:restoreAction.path,hash:restoreAction.hash,backupId:restoreAction.backupId,chatId:managedId,actionId:restoreAction.id}});
+  await Promise.race([restoreReached,sleep(3000).then(()=>{throw new Error('Restore did not reach atomic save')})]);
+  const renameJob=request('/api/conversation/rename',{method:'POST',headers:{cookie},body:{projectId:'p1',id:managedId,name:'Après restauration'}}).then(value=>{renameDone=true;return value});
+  await sleep(10);
+  const deleteJob=request('/api/conversation/delete',{method:'POST',headers:{cookie},body:{projectId:'p1',id:managedId}}).then(value=>{deleteDone=true;return value});
+  await sleep(20);findings.push({test:'conversation rename and delete wait for an already accepted file restoration',pass:!renameDone&&!deleteDone});
+  releaseRestore();[restoreResponse,renameResponse,deleteResponse]=await Promise.all([restoreJob,renameJob,deleteJob]);
+ }finally{releaseRestore();fs.rename=actualRename}
+ findings.push({test:'file restoration finishes before rename and deletion without stale snapshot resurrection',pass:restoreResponse.statusCode===200&&renameResponse.statusCode===200&&JSON.parse(renameResponse.text()).conversation.name==='Après restauration'&&JSON.parse(renameResponse.text()).conversation.messages.at(-1).actions.find(action=>action.id===restoreAction.id).restored===true&&deleteResponse.statusCode===200&&JSON.parse(deleteResponse.text()).deleted===true});
+ const deletedPath=path.join(root,'data','chats',managedId+'.json');let deletedFileExists=true;try{await fs.stat(deletedPath)}catch(error){if(error.code==='ENOENT')deletedFileExists=false;else throw error}
+ r=await request('/api/conversation?projectId=p1&id='+managedId,{headers:{cookie}});const deletedRead=r.statusCode;
+ const deletedList=JSON.parse((await request('/api/sessions?projectId=p1',{headers:{cookie}})).text()).sessions;
+ r=await request('/api/chat-request?projectId=p1&requestId='+managedRequest,{headers:{cookie}});
+ findings.push({test:'web deletion removes only its JSON cache list entry and request receipt',pass:!deletedFileExists&&deletedRead===404&&!deletedList.some(item=>item.id===managedId)&&r.statusCode===404});
+ r=await request('/api/deliverable/download?projectId=p1&id='+managedPin.id,{headers:{cookie}});
+ const retainedOther=await request('/api/conversation?projectId='+unassigned+'&id='+moveWebId,{headers:{cookie}});
+ findings.push({test:'web deletion preserves pinned deliverable copies project files backups and other conversations',pass:r.statusCode===200&&r.text()==='Fichier modifié.'&&retainedOther.statusCode===200&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='before'&&await fs.readFile(path.join(otherFileRoot,'agent.md'),'utf8')==='after'&&(await fs.readdir(path.join(root,'data','file-backups'))).length>0});
+ const beforeDeletedRetry=upstreamCount;
+ r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL deleted retry',managedId),requestId:runId+'-deleted-retry'}});
+ const deletedSend=r.statusCode;r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL duplicate deleted request'),requestId:managedRequest}});
+ findings.push({test:'neither a stale chat send nor a retry of its deleted request can resurrect that conversation',pass:deletedSend===404&&r.statusCode===409&&upstreamCount===beforeDeletedRetry});
+ const raceId=(await send('NORMAL deletion race')).records().find(event=>event.type==='start').id;
+ const deletionRace=await Promise.all([request('/api/conversation/delete',{method:'POST',headers:{cookie},body:{projectId:'p1',id:raceId}}),request('/api/conversation/rename',{method:'POST',headers:{cookie},body:{projectId:'p1',id:raceId,name:'Too late'}}),send('NORMAL deleted race send',raceId)]);
+ findings.push({test:'concurrent web deletion serializes with rename and message acceptance without resurrecting the file',pass:deletionRace[0].statusCode===200&&deletionRace[1].statusCode===404&&deletionRace[2].statusCode===404&&(await request('/api/conversation?projectId=p1&id='+raceId,{headers:{cookie}})).statusCode===404});
  for(const finding of findings)test(finding.test,()=>assert.equal(finding.pass,true,JSON.stringify(finding)));
  if(findings.some(f=>!f.pass))throw new Error('Server regression detected');
 }finally{for(const c of upstream)try{c.close()}catch{}server.close();const resolved=path.resolve(root);assert(resolved.startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(resolved).startsWith('bionic-mobile-server-test-'));await fs.rm(resolved,{recursive:true,force:true});}

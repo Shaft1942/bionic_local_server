@@ -76,3 +76,53 @@ test('a later native default cannot hide preexisting local unassigned conversati
   const webOnly = createConversationOrganizer({ filename: path.join(path.dirname(f.filename), 'other.json'), store: { listProjects: async () => f.projects }, hasLocalUnassigned: async () => true });
   assert.deepEqual((await webOnly.listProjects()).filter(project => project.isUnassigned).map(project => project.name), ['Sans projet · Bionic', 'Sans projet']);
 });
+test('native renaming is a persistent local alias that follows moves without changing history or authority', async t => {
+  const f = await fixture(t), snapshot = structuredClone(f.sessions);
+  const renamed = await f.api.renameNative({ projectId: 'a', id: 'native-1', name: '  Mon nouveau nom  ' });
+  assert.equal(renamed.name, 'Mon nouveau nom'); assert.equal(renamed.fileAccess, undefined);
+  assert.equal((await f.api.listSessions('a'))[0].name, 'Mon nouveau nom');
+  assert.equal((await f.make().getConversation('a', 'native-1')).name, 'Mon nouveau nom');
+  const moved = await f.api.moveNative({ projectId: 'a', id: 'native-1', targetProjectId: 'b' });
+  assert.equal(moved.name, 'Mon nouveau nom'); assert.equal(moved.fileAccess, false);
+  assert.equal((await f.make().getConversation('b', 'native-1')).name, 'Mon nouveau nom');
+  assert.equal(moved.messages[0].text, 'Texte natif intact.');
+  assert.deepEqual(f.sessions, snapshot);
+});
+test('native deletion hides only the selected original identity and survives restart without deleting source history', async t => {
+  const f = await fixture(t);
+  f.sessions.push({ id: 'native-1', projectId: 'b', name: 'Autre identité' });
+  const snapshot = structuredClone(f.sessions);
+  const removed = await f.api.deleteNative({ projectId: 'a', id: 'native-1' });
+  assert.deepEqual(removed, { deleted: true, id: 'native-1', projectId: 'a', source: 'bionic', localOnly: true });
+  assert.deepEqual(await f.api.listSessions('a'), []);
+  assert.equal((await f.make().listSessions('b')).find(item => item.id === 'native-1').name, 'Autre identité');
+  await assert.rejects(f.make().getConversation('a', 'native-1'), { status: 404 });
+  await assert.rejects(f.api.moveNative({ projectId: 'a', id: 'native-1', targetProjectId: UNASSIGNED_PROJECT }), { status: 404 });
+  await assert.rejects(f.api.renameNative({ projectId: 'a', id: 'native-1', name: 'Revenir' }), { status: 404 });
+  assert.deepEqual(f.sessions, snapshot);
+});
+test('a hidden native conversation does not reappear when another source uses its former target id', async t => {
+  const f = await fixture(t);
+  await f.api.moveNative({ projectId: 'a', id: 'native-1', targetProjectId: 'b' });
+  await f.api.deleteNative({ projectId: 'b', id: 'native-1' });
+  f.projects.push({ id: 'c', name: 'C' }); f.sessions.push({ id: 'native-1', projectId: 'c', name: 'Autre source' });
+  await f.api.moveNative({ projectId: 'c', id: 'native-1', targetProjectId: 'b' });
+  assert.equal((await f.make().getConversation('b', 'native-1')).nativeProjectId, 'c');
+  assert.deepEqual(await f.api.listSessions('a'), []);
+});
+test('invalid rename names and stale scope edits cannot overwrite persistent aliases', async t => {
+  const f = await fixture(t);
+  for (const name of ['', '   ', 'a'.repeat(121), 'Deux\nlignes', 'Deux\u2028lignes', 'Invisible\u0000', 12]) await assert.rejects(async () => f.api.renameNative({ projectId: 'a', id: 'native-1', name }), { status: 400 });
+  await f.api.renameNative({ projectId: 'a', id: 'native-1', name: 'Nom valide' });
+  await f.api.moveNative({ projectId: 'a', id: 'native-1', targetProjectId: 'b' });
+  const bytes = await fs.readFile(f.filename, 'utf8');
+  await assert.rejects(f.api.renameNative({ projectId: 'a', id: 'native-1', name: 'Périmé' }), { status: 404 });
+  await assert.rejects(f.api.deleteNative({ projectId: 'a', id: 'native-1' }), { status: 404 });
+  assert.equal(await fs.readFile(f.filename, 'utf8'), bytes);
+});
+test('a concurrent delete wins before a later native rename and cannot be undone by it', async t => {
+  const f = await fixture(t);
+  const results = await Promise.allSettled([f.api.deleteNative({ projectId: 'a', id: 'native-1' }), f.api.renameNative({ projectId: 'a', id: 'native-1', name: 'Ancienne vue' })]);
+  assert.equal(results[0].status, 'fulfilled'); assert.equal(results[1].reason.status, 404);
+  assert.deepEqual(await f.make().listSessions('a'), []);
+});

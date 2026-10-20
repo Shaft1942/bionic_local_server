@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 const composerFiles = $('composer-files'), composerFilesToggle = $('files-menu-toggle');
 const mobileComposer = matchMedia('(max-width:760px)');
-const conversationMove = { busy: false };
+const conversationMove = { busy: false, action: null, revision: 0 };
 function closeComposerFiles(restoreFocus = false) {
   if (!mobileComposer.matches || !composerFiles.open) return;
   composerFiles.open = false;
@@ -89,6 +89,7 @@ const modelPanel = { models: [], loading: false, unloading: null, generationActi
 const fileBrowser = createProjectFileBrowser({ api, node, icon, toast, getProject: () => state.projects.find(project => project.id === state.projectId), isBusy: () => state.loading || state.uploading || conversationMove.busy, onChange: saveDraft, onAttach: () => { $('app').classList.add('thread-open'); renderChat(); $('prompt').focus(); } });
 const workspace = createWorkspace({ api, node, icon, toast, getState: () => state, openTarget: async (projectId, chatId, messageId) => {
   if (state.uploading) throw new Error('Attends la fin de l’import avant d’ouvrir cette conversation.');
+  if (conversationMove.busy) throw new Error('Attends la fin de la modification de cette conversation.');
   if (!state.projects.some(project => project.id === projectId)) throw new Error('Le projet de cette réponse n’est plus disponible. Actualise les projets.');
   saveDraft();
   if (state.projectId !== projectId) {
@@ -118,29 +119,88 @@ function updateConversationOptions() {
   const active = state.sending || state.chat?.queue?.some(item => item.status === 'queued');
   select.disabled = conversationMove.busy || state.loading || state.uploading || !state.chat?.id || !!active;
   $('move-conversation').disabled = select.disabled || select.value === state.projectId;
-  $('move-conversation').textContent = conversationMove.busy ? 'Déplacement…' : 'Déplacer';
+  $('move-conversation').textContent = conversationMove.action === 'move' ? 'Déplacement…' : 'Déplacer';
   $('move-help').textContent = active ? 'Attends la fin de la réponse et de sa file pour déplacer ce chat.' : !state.chat?.id ? 'Envoie un premier message pour enregistrer la conversation avant de la déplacer.' : 'Le classement concerne le compagnon. Les fichiers et les livrables restent dans leur projet ; les fichiers du brouillon seront à joindre à nouveau. Les modifications seront désactivées après le déplacement.';
+  const name = $('conversation-name'), original = state.chat?.name || '';
+  if (name.dataset.chat !== key || name.value === name.dataset.originalName) {
+    name.value = original; name.dataset.chat = key; name.dataset.originalName = original;
+  }
+  name.disabled = select.disabled;
+  $('rename-conversation').disabled = select.disabled || !name.value.trim() || name.value.trim() === original;
+  $('rename-conversation').textContent = conversationMove.action === 'rename' ? 'Renommage…' : 'Renommer';
+  $('rename-help').hidden = state.chat?.source !== 'bionic';
+  $('rename-help').textContent = 'Le nom change uniquement dans le compagnon. L’original Bionic est conservé.';
+  $('delete-conversation').disabled = select.disabled;
+  $('delete-conversation').textContent = conversationMove.action === 'delete' ? 'Suppression…' : state.chat?.source === 'bionic' ? 'Supprimer du compagnon' : 'Supprimer la conversation';
 }
 async function moveCurrentConversation(event) {
   event.preventDefault(); if ($('move-conversation').disabled) return;
-  saveDraft(); const oldProject = state.projectId, id = state.chat.id, oldKey = state.viewKey, draft = structuredClone(draftForView()), target = $('move-project').value;
-  conversationMove.busy = true; $('move-error').hidden = true; setSending();
+  saveDraft(); const epoch = state.authEpoch, oldProject = state.projectId, id = state.chat.id, oldKey = state.viewKey, draft = structuredClone(draftForView()), target = $('move-project').value;
+  conversationMove.busy = true; conversationMove.action = 'move'; ++conversationMove.revision; $('move-error').hidden = true; setSending();
   let committed = false;
   try {
     const { conversation } = await api('/api/conversation/move', { method: 'POST', body: JSON.stringify({ projectId: oldProject, id, targetProjectId: target }) });
+    if (epoch !== state.authEpoch || !state.authenticated) return;
     committed = true;
     const newKey = chatKey(conversation.projectId, conversation.id);
     drafts.delete(oldKey); drafts.set(newKey, { ...draft, attachments: [], uploadStatus: '', fileAccess: false }); rememberDrafts(); chats.delete(oldKey);
     try { if (localStorage.getItem('bm_chat_' + oldProject) === id) localStorage.removeItem('bm_chat_' + oldProject); localStorage.setItem('bm_project', conversation.projectId); } catch {}
     ++state.viewSeq; ++state.projectSeq; state.projectId = conversation.projectId; $('project').value = state.projectId; $('search').value = '';
     state.chat = conversation; state.loading = false; restoreDraft(newKey); cacheChat(conversation, state.projectId); rememberChat();
-    await loadSessions(); renderChat(); closeConversationOptions(); workspace.refreshActivity();
+    await loadSessions(); if (epoch !== state.authEpoch || !state.authenticated) return;
+    renderChat(); closeConversationOptions(); workspace.refreshActivity();
     toast('Conversation déplacée vers « ' + (state.projects.find(project => project.id === state.projectId)?.name || 'Sans projet') + ' ».' + (draft.attachments?.length ? ' Rejoins les fichiers du brouillon depuis ce projet.' : ''));
     $('prompt').focus();
   } catch (error) {
+    if (epoch !== state.authEpoch || !state.authenticated) return;
     $('move-error').textContent = committed ? 'Le déplacement est enregistré. Actualise les conversations pour terminer la navigation.' : error.status === 404 && /Action inconnue/.test(error.message) ? 'Relance le serveur avec Relancer.cmd sur le PC pour activer les déplacements.' : error.message;
     $('move-error').hidden = false;
-  } finally { conversationMove.busy = false; setSending(); }
+  } finally { conversationMove.busy = false; conversationMove.action = null; setSending(); scheduleRecovery(); if (committed && epoch === state.authEpoch && state.authenticated) $('prompt').focus(); }
+}
+function conversationActionError(action, failure) {
+  const target = $(action + '-error');
+  target.textContent = failure.status === 404 && /Action inconnue/.test(failure.message) ? 'Relance le serveur avec Relancer.cmd sur le PC pour activer cette action.' : failure.message;
+  target.hidden = false;
+  if ($('conversation-options').hidden && state.authenticated) toast(target.textContent);
+}
+async function renameCurrentConversation(event) {
+  event.preventDefault(); if ($('rename-conversation').disabled) return;
+  saveDraft(); const epoch = state.authEpoch, projectId = state.projectId, id = state.chat.id, name = $('conversation-name').value.trim();
+  conversationMove.busy = true; conversationMove.action = 'rename'; ++conversationMove.revision; $('rename-error').hidden = true; setSending();
+  let committed = false;
+  try {
+    const { conversation } = await api('/api/conversation/rename', { method: 'POST', body: JSON.stringify({ projectId, id, name }) });
+    if (epoch !== state.authEpoch || !state.authenticated) return;
+    committed = true;
+    state.chat = conversation; cacheChat(conversation, projectId); rememberChat();
+    $('conversation-name').value = conversation.name; $('conversation-name').dataset.originalName = conversation.name;
+    renderChat(); closeConversationOptions(); toast('Conversation renommée.');
+    $('prompt').focus();
+  } catch (failure) { if (epoch === state.authEpoch && state.authenticated) conversationActionError('rename', failure); }
+  finally { conversationMove.busy = false; conversationMove.action = null; setSending(); scheduleRecovery(); if (committed && epoch === state.authEpoch && state.authenticated) $('prompt').focus(); }
+}
+async function deleteCurrentConversation() {
+  if ($('delete-conversation').disabled) return;
+  const epoch = state.authEpoch, projectId = state.projectId, id = state.chat.id, key = state.viewKey, native = state.chat.source === 'bionic';
+  const confirmation = native ? 'Supprimer « ' + state.chat.name + ' » du compagnon ?\n\nCe chat sera masqué ici. L’original Bionic, les fichiers du projet et les livrables seront conservés.' : 'Supprimer définitivement la conversation « ' + state.chat.name + ' » ?\n\nSes messages et son brouillon seront supprimés du compagnon. Les fichiers du projet et les livrables seront conservés.';
+  if (!window.confirm(confirmation)) return;
+  saveDraft(); conversationMove.busy = true; conversationMove.action = 'delete'; ++conversationMove.revision; $('delete-error').hidden = true; setSending();
+  let committed = false;
+  try {
+    await api('/api/conversation/delete', { method: 'POST', body: JSON.stringify({ projectId, id }) });
+    if (epoch !== state.authEpoch || !state.authenticated) return;
+    committed = true;
+    chats.delete(chatKey(projectId, id)); drafts.delete(key); rememberDrafts();
+    for (const [requestId, job] of jobs) if (job.projectId === projectId && (job.id === id || job.viewKey === key)) jobs.delete(requestId);
+    rememberJobs();
+    try { if (localStorage.getItem('bm_chat_' + projectId) === id) localStorage.removeItem('bm_chat_' + projectId); } catch {}
+    ++state.viewSeq; ++state.projectSeq; state.sessions = state.sessions.filter(chat => chat.id !== id); state.chat = null; state.loading = false;
+    restoreDraft(chatKey(projectId)); renderChat(); closeConversationOptions(); error(''); workspace.refreshActivity();
+    toast(native ? 'Conversation supprimée du compagnon. L’original reste dans Bionic.' : 'Conversation supprimée.');
+    $('prompt').focus();
+    try { await loadSessions(); } catch { if (epoch === state.authEpoch && state.authenticated) toast('Conversation supprimée. Actualise la liste après reconnexion au PC.'); }
+  } catch (failure) { if (epoch === state.authEpoch && state.authenticated) conversationActionError('delete', failure); }
+  finally { conversationMove.busy = false; conversationMove.action = null; setSending(); scheduleRecovery(); if (committed && epoch === state.authEpoch && state.authenticated) $('prompt').focus(); }
 }
 function node(tag, className, text) { const el = document.createElement(tag); if (className) el.className = className; if (text !== undefined) el.textContent = text; return el; }
 async function api(route, options = {}) {
@@ -237,7 +297,10 @@ async function unloadModel(instanceId) {
   finally { modelPanel.unloading = null; renderLoadedModels(); setSending(state.sending); }
 }
 async function loadProjects() {
-  const j = await api('/api/projects'); state.projects = j.projects;
+  const epoch = state.authEpoch, revision = conversationMove.revision;
+  const j = await api('/api/projects');
+  if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return;
+  state.projects = j.projects;
   const previous = state.projectId || localStorage.getItem('bm_project');
   state.projectId = j.projects.some(p => p.id === previous) ? previous : j.projects[0]?.id;
   $('project').replaceChildren();
@@ -247,11 +310,11 @@ async function loadProjects() {
   setSending(false);
 }
 async function loadSessions() {
-  const seq = ++state.projectSeq, pid = state.projectId;
+  const seq = ++state.projectSeq, epoch = state.authEpoch, revision = conversationMove.revision, pid = state.projectId;
   $('sessions').replaceChildren(node('p', 'loading-label', 'Chargement des conversations…'));
   if (!pid) return;
   const j = await api('/api/sessions?projectId=' + encodeURIComponent(pid));
-  if (seq !== state.projectSeq) return;
+  if (seq !== state.projectSeq || epoch !== state.authEpoch || revision !== conversationMove.revision || pid !== state.projectId || !state.authenticated) return;
   state.sessions = j.sessions; renderSessions(); localStorage.setItem('bm_project', pid);
 }
 function renderSessions() {
@@ -529,18 +592,18 @@ function showChatUpdate(chat, projectId) {
   state.chat = chat; renderChat(); if (!nearBottom) $('messages').scrollTop = oldScroll;
 }
 async function recoverReplies() {
-  if (recoveryBusy || !state.authenticated) return;
+  if (recoveryBusy || !state.authenticated || conversationMove.busy) return;
   clearTimeout(recoveryTimer);
   if (document.visibilityState === 'hidden') { scheduleRecovery(); return; }
   recoveryBusy = true;
-  const epoch = state.authEpoch;
+  const epoch = state.authEpoch, revision = conversationMove.revision;
   try {
     const pending = [...jobs.values()];
     const snapshots = new Map();
     await Promise.all(pending.map(async job => {
       try {
         const receipt = await api('/api/chat-request?' + new URLSearchParams({ projectId: job.projectId, requestId: job.requestId }));
-        if (epoch !== state.authEpoch || !state.authenticated) return;
+        if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return;
         if (receipt.id) bindJob(job, receipt.id);
         job.status = receipt.status || job.status;
         if (job.id) snapshots.set(chatKey(job.projectId, job.id), { projectId: job.projectId, id: job.id });
@@ -549,26 +612,26 @@ async function recoverReplies() {
           if (receipt.message && job.projectId === state.projectId && job.id === state.chat?.id) error(receipt.message);
         }
       } catch (e) {
-        if (epoch !== state.authEpoch) return;
+        if (epoch !== state.authEpoch || revision !== conversationMove.revision) return;
         if (e.status === 404 && Date.now() - job.createdAt > 15000) {
           jobs.delete(job.requestId);
           if (job.projectId === state.projectId && (job.id === state.chat?.id || job.viewKey === state.viewKey)) error('Le PC n’a pas confirmé cet envoi. Vérifie la conversation avant de le renvoyer.');
         } else if (e.status !== 401 && job.projectId === state.projectId && job.id === state.chat?.id) error('Reconnexion au PC… Les messages ne sont pas renvoyés.');
       }
     }));
-    if (epoch !== state.authEpoch || !state.authenticated) return;
+    if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return;
     for (const session of state.sessions) if (session.generation?.status === 'running' || session.queue?.some(item => item.status === 'queued')) snapshots.set(chatKey(state.projectId, session.id), { projectId: state.projectId, id: session.id });
     await Promise.all([...snapshots.values()].map(async target => {
       try {
         const chat = await api('/api/conversation?' + new URLSearchParams(target));
-        if (epoch !== state.authEpoch || !state.authenticated) return;
+        if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return;
         adoptJobs(chat, target.projectId); showChatUpdate(chat, target.projectId);
-      } catch (e) { if (e.status !== 401 && target.projectId === state.projectId && target.id === state.chat?.id) error(e.message); }
+      } catch (e) { if (revision === conversationMove.revision && e.status !== 401 && target.projectId === state.projectId && target.id === state.chat?.id) error(e.message); }
     }));
     if (!pending.length && !snapshots.size && !state.loading) {
       const projectId = state.projectId;
       const response = await api('/api/sessions?projectId=' + encodeURIComponent(projectId));
-      if (epoch === state.authEpoch && projectId === state.projectId) { state.sessions = response.sessions; renderSessions(); }
+      if (epoch === state.authEpoch && revision === conversationMove.revision && projectId === state.projectId) { state.sessions = response.sessions; renderSessions(); }
     }
     rememberJobs();
   } catch (e) { if (e.status !== 401 && state.authenticated) $('status').textContent = 'Reconnexion au PC…';
@@ -773,17 +836,20 @@ $('prompt').addEventListener('input', saveDraft);
 $('search').addEventListener('input', renderSessions);
 $('new-chat').addEventListener('click', () => newChat());
 $('back').addEventListener('click', () => { $('app').classList.remove('thread-open'); $('project').focus(); });
-$('refresh').addEventListener('click', async () => { if (state.uploading) return; saveDraft(); $('refresh').disabled = true; try { error(''); await Promise.all([checkStatus(), loadProjects()]); if (state.chat?.id) await openChat(state.chat.id); toast('Projets et conversations actualisés.'); } catch (e) { error(e.message); toast(e.message); } finally { $('refresh').disabled = false; } });
+$('refresh').addEventListener('click', async () => { if (state.uploading || conversationMove.busy) return; const epoch = state.authEpoch, revision = conversationMove.revision; saveDraft(); $('refresh').disabled = true; try { error(''); await Promise.all([checkStatus(), loadProjects()]); if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return; if (state.chat?.id) await openChat(state.chat.id); if (epoch === state.authEpoch && state.authenticated) toast('Projets et conversations actualisés.'); } catch (e) { if (epoch === state.authEpoch && state.authenticated) { error(e.message); toast(e.message); } } finally { $('refresh').disabled = state.uploading || conversationMove.busy; } });
 $('logout').addEventListener('click', async () => {
-  if (state.uploading) return;
+  if (state.uploading || conversationMove.busy) return;
   hidePrivateViews(); $('code').focus();
   try { await api('/api/logout', { method: 'POST', body: '{}' }); } catch {}
 });
-$('conversation-options-toggle').addEventListener('click', () => { const show = $('conversation-options').hidden; $('conversation-options').hidden = !show; $('conversation-options-toggle').setAttribute('aria-expanded', String(show)); if (show) { $('move-error').hidden = true; updateConversationOptions(); ($('move-project').disabled ? $('info-button') : $('move-project')).focus(); } });
+$('conversation-options-toggle').addEventListener('click', () => { const show = $('conversation-options').hidden; $('conversation-options').hidden = !show; $('conversation-options-toggle').setAttribute('aria-expanded', String(show)); if (show) { for (const action of ['rename', 'move', 'delete']) $(action + '-error').hidden = true; updateConversationOptions(); ($('conversation-name').disabled ? $('info-button') : $('conversation-name')).focus(); } });
 $('conversation-options').addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeConversationOptions(true); } });
 document.addEventListener('pointerdown', event => { if (!$('conversation-options').contains(event.target) && !$('conversation-options-toggle').contains(event.target)) closeConversationOptions(); });
 $('move-project').addEventListener('change', updateConversationOptions);
 $('move-conversation-form').addEventListener('submit', moveCurrentConversation);
+$('conversation-name').addEventListener('input', updateConversationOptions);
+$('rename-conversation-form').addEventListener('submit', renameCurrentConversation);
+$('delete-conversation').addEventListener('click', deleteCurrentConversation);
 $('info-button').addEventListener('click', () => { const show = $('info').hidden; $('info').hidden = !show; $('info-button').setAttribute('aria-expanded', String(show)); closeConversationOptions(); });
 $('composer').addEventListener('submit', send);
 $('prompt').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); $('composer').requestSubmit(); } });

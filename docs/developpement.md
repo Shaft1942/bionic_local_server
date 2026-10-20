@@ -24,7 +24,7 @@ Copiez `config.example.json` en `config.local.json`, choisissez un port de test 
 | --- | --- |
 | `server.mjs` | Serveur HTTP, authentification, routes, conversations web et cycle de génération |
 | `lib/bionic-store.mjs` | Projection en lecture seule des projets et conversations natifs |
-| `lib/conversation-organizer.mjs` | Classement local des conversations natives et groupe Sans projet, sans écriture dans Bionic |
+| `lib/conversation-organizer.mjs` | Classement, noms et masquage locaux des conversations natives, groupe Sans projet, sans écriture dans Bionic |
 | `lib/project-files.mjs` | Périmètres de dossiers, lecture, imports, sauvegardes et écritures contrôlées |
 | `lib/file-agent.mjs` | Outils de fichiers, budget de lecture et décodage des appels d’outils |
 | `lib/model-service.mjs` | Liste des modèles, capacités et déchargement |
@@ -72,6 +72,8 @@ Selon la modification, vérifiez aussi :
 - L’annulation d’une seule demande, l’isolation de ses réglages et l’absence de relance automatique après un redémarrage.
 - Le téléphone en largeur étroite, les contrôles accessibles et l’affichage des erreurs.
 - La consultation ciblée d’un événement sans marquage global, la conservation d’une copie malgré un changement de source et les reçus après erreur de transmission.
+- Le renommage et la suppression après rechargement, le refus pendant une génération ou une attente, et l’absence de réapparition d’un chat supprimé après une écriture concurrente.
+- Le nom local et le masquage des fils natifs sans modification de leur source, ainsi que la conservation des fichiers et livrables lorsque leur chat d’origine est supprimé.
 
 ## Adaptateur Bionic
 

@@ -20,6 +20,16 @@ Le déplacement attend la fin de la réponse et des messages en file de ce chat.
 
 Les fichiers et livrables déjà conservés restent dans leur projet. Les anciennes actions de fichiers ne peuvent pas être rejouées ou épinglées depuis un autre projet. Les pièces jointes déjà enregistrées dans l’historique gardent leur contenu figé ; elles peuvent encore faire partie du contexte de la conversation, sans relire le dossier d’origine. Les nouveaux reçus identifient leur projet d’origine lorsqu’il est connu. Les copies de livrables existantes restent téléchargeables dans leur étagère ; pour retrouver un message déplacé dont l’ancien lien ne fonctionne plus, ouvrez le chat dans son nouveau projet.
 
+## Renommer ou supprimer une conversation
+
+Ouvrez **Options de la conversation** (les trois points), puis **Renommer**. Saisissez un nom de 1 à 120 caractères et enregistrez. Le nom est conservé sur le PC et apparaît après actualisation sur les autres appareils. Renommer conserve les messages, le brouillon et ses pièces jointes. Pour une conversation native, seul le nom affiché dans le compagnon change : son nom et son contenu restent intacts dans Bionic.
+
+Dans le même menu, **Supprimer** demande une confirmation. Une conversation web est supprimée du compagnon, avec ses messages et son brouillon sur l’appareil utilisé. Il n’y a pas de corbeille dans l’interface. Une conversation native est seulement masquée dans le compagnon ; elle reste disponible dans Bionic. Le masquage persiste après actualisation et redémarrage du serveur. Une suite web déjà créée reste une conversation distincte et n’est pas supprimée avec son fil natif.
+
+La suppression ne touche ni les fichiers du projet, ni les imports, ni les copies de livrables déjà conservées. Ces copies restent téléchargeables, mais leur lien vers le message d’origine peut ne plus aboutir. Les brouillons encore présents dans un autre navigateur ne sont pas effacés à distance.
+
+Le renommage et la suppression sont indisponibles pendant une réponse ou tant que ce chat a des messages en attente. Attendez leur fin ou arrêtez la réponse et retirez les attentes avant de recommencer. Les autres chats peuvent continuer à répondre.
+
 ## Écrire et changer de chat pendant une réponse
 
 Sur téléphone, le modèle et l’effort se choisissent côte à côte sous le texte. L’envoi se trouve à droite du message ; pendant une réponse, la flèche ajoute le message à la file et le bouton carré arrête la réponse de ce chat. L’aide détaillée de l’effort apparaît quand ce sélecteur est actif et reste associée au champ pour les lecteurs d’écran.
