@@ -41,6 +41,7 @@ const icons = {
 function icon(name) { const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); el.setAttribute('viewBox', '0 0 24 24'); el.setAttribute('aria-hidden', 'true'); el.innerHTML = icons[name]; return el; }
 for (const [id, name] of [['refresh', 'refresh'], ['search-icon', 'search'], ['back', 'back'], ['send', 'send'], ['info-button', 'info'], ['logout', 'logout'], ['reveal', 'eye']]) $(id).append(icon(name));
 for (const [id, name] of [['models-open-thread','models'], ['models-close','close'], ['models-refresh','refresh']]) $(id).append(icon(name));
+$('info-close').append(icon('close'));
 $('models-open-sidebar').prepend(icon('models'));
 $('conversation-options-toggle').append(icon('more'));
 $('new-chat').append(icon('plus'), document.createTextNode('Nouveau chat web'));
@@ -106,6 +107,10 @@ function error(message) { $('message-error').textContent = message || ''; $('mes
 function unassignedProject() { return !!state.projects.find(project => project.id === state.projectId)?.isUnassigned; }
 function closeConversationOptions(focus = false) {
   $('conversation-options').hidden = true; $('conversation-options-toggle').setAttribute('aria-expanded', 'false');
+  if (focus) $('conversation-options-toggle').focus();
+}
+function closeInfo(focus = false) {
+  $('info').hidden = true; $('info-button').setAttribute('aria-expanded', 'false');
   if (focus) $('conversation-options-toggle').focus();
 }
 function updateConversationOptions() {
@@ -783,6 +788,7 @@ async function start() {
   await recoverReplies(); scheduleRecovery();
 }
 function hidePrivateViews() {
+  closeInfo();
   closeConversationOptions();
   closeComposerFiles();
   state.authenticated = false; ++state.authEpoch; ++state.viewSeq; ++state.projectSeq; clearTimeout(recoveryTimer); clearTimeout(renderTimer);
@@ -850,7 +856,14 @@ $('move-conversation-form').addEventListener('submit', moveCurrentConversation);
 $('conversation-name').addEventListener('input', updateConversationOptions);
 $('rename-conversation-form').addEventListener('submit', renameCurrentConversation);
 $('delete-conversation').addEventListener('click', deleteCurrentConversation);
-$('info-button').addEventListener('click', () => { const show = $('info').hidden; $('info').hidden = !show; $('info-button').setAttribute('aria-expanded', String(show)); closeConversationOptions(); });
+$('info-button').addEventListener('click', () => {
+  const show = $('info').hidden; closeConversationOptions();
+  if (!show) return closeInfo(true);
+  $('info').hidden = false; $('info-button').setAttribute('aria-expanded', 'true');
+  $('info-body').scrollTop = 0; $('info-close').focus({ preventScroll: true });
+});
+$('info-close').addEventListener('click', () => closeInfo(true));
+$('info').addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeInfo(true); } });
 $('composer').addEventListener('submit', send);
 $('prompt').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); $('composer').requestSubmit(); } });
 $('stop').addEventListener('click', async () => {

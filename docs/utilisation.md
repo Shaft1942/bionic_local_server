@@ -20,6 +20,8 @@ Le déplacement attend la fin de la réponse et des messages en file de ce chat.
 
 Les fichiers et livrables déjà conservés restent dans leur projet. Les anciennes actions de fichiers ne peuvent pas être rejouées ou épinglées depuis un autre projet. Les pièces jointes déjà enregistrées dans l’historique gardent leur contenu figé ; elles peuvent encore faire partie du contexte de la conversation, sans relire le dossier d’origine. Les nouveaux reçus identifient leur projet d’origine lorsqu’il est connu. Les copies de livrables existantes restent téléchargeables dans leur étagère ; pour retrouver un message déplacé dont l’ancien lien ne fonctionne plus, ouvrez le chat dans son nouveau projet.
 
+L’aide **Comment fonctionne ce compagnon ?** se ferme directement avec la croix en haut à droite de son panneau, ou avec la touche **Échap**. La croix reste visible lorsque vous faites défiler le texte ; il n’est pas nécessaire de rouvrir le menu des options.
+
 ## Renommer ou supprimer une conversation
 
 Ouvrez **Options de la conversation** (les trois points), puis **Renommer**. Saisissez un nom de 1 à 120 caractères et enregistrez. Le nom est conservé sur le PC et apparaît après actualisation sur les autres appareils. Renommer conserve les messages, le brouillon et ses pièces jointes. Pour une conversation native, seul le nom affiché dans le compagnon change : son nom et son contenu restent intacts dans Bionic.
