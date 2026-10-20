@@ -166,6 +166,7 @@ function createWorkspace({ api, node, icon, toast, getState, openTarget }) {
   function pinControl(message, chat, action) {
     const kind = action ? 'file' : 'message', projectId = getState().projectId;
     if (!message.id || !chat?.id || !projectId) return null;
+    if (action?.projectId && action.projectId !== projectId) return null;
     const key = [projectId, chat.id, message.id, action?.id || 'message'].join('|');
     const pinState = data.pins.get(key) || { busy: false, saved: false, message: '' }; data.pins.set(key, pinState);
     if (data.pins.size > 100) { const oldKey = [...data.pins.keys()].find(id => !data.pins.get(id).busy); if (oldKey && oldKey !== key) data.pins.delete(oldKey); }
@@ -209,6 +210,7 @@ function createWorkspace({ api, node, icon, toast, getState, openTarget }) {
       const entry = node('details', 'context-file'); entry.dataset.disclosureKey = 'attachment:' + file.messageId + ':' + file.index;
       entry.append(node('summary', '', (file.name || file.path || 'Pièce jointe') + ' · ' + (file.transmitted ? file.kind === 'image' ? 'image transmise' : file.excerpt ? 'extrait transmis' : 'texte transmis' : file.reason === 'vision-disabled' ? 'image non transmise · modèle sans vision' : 'transmission non confirmée')));
       if (file.path) entry.append(node('p', '', 'Source : ' + file.path + (file.rootId ? ' · dossier ' + file.rootId : '')));
+      if (file.projectId && file.projectId !== getState().projectId) entry.append(node('p', '', 'Projet de la pièce jointe : ' + (getState().projects.find(project => project.id === file.projectId)?.name || 'projet d’origine indisponible')));
       if (file.reason) entry.append(node('p', '', file.reason === 'vision-disabled' ? 'Cette image n’a pas été incluse dans l’envoi : le modèle sélectionné ne prend pas en charge la vision.' : file.reason));
       if (Number.isFinite(file.characters)) entry.append(node('p', '', `${file.characters} caractères${file.excerpt ? ' · extrait sélectionné' : ''}.`));
       if (file.preview) entry.append(node('pre', '', file.preview));

@@ -19,6 +19,8 @@ Une sauvegarde du seul dossier du compagnon ne protège pas les fichiers des pro
 
 Le suivi des réponses consultées est conservé dans le navigateur de chaque appareil, pas dans `data/`. Une sauvegarde du serveur conserve l’étagère de livrables et ses copies, mais ne transporte pas ces repères de lecture sur un autre navigateur.
 
+Le classement local des conversations natives est enregistré dans `data/conversation-locations.json`. Il fait partie de la sauvegarde du compagnon : restaurer uniquement les données Bionic ne restaure pas ce classement. Les conversations web portent directement leur projet de destination dans `data/chats/`. Aucun de ces déplacements ne déplace les fichiers des projets.
+
 ## Faire une sauvegarde cohérente
 
 1. Attendez la fin des réponses et des enregistrements, puis arrêtez le compagnon avec `Arreter.cmd`.

@@ -24,6 +24,7 @@ Copiez `config.example.json` en `config.local.json`, choisissez un port de test 
 | --- | --- |
 | `server.mjs` | Serveur HTTP, authentification, routes, conversations web et cycle de génération |
 | `lib/bionic-store.mjs` | Projection en lecture seule des projets et conversations natifs |
+| `lib/conversation-organizer.mjs` | Classement local des conversations natives et groupe Sans projet, sans écriture dans Bionic |
 | `lib/project-files.mjs` | Périmètres de dossiers, lecture, imports, sauvegardes et écritures contrôlées |
 | `lib/file-agent.mjs` | Outils de fichiers, budget de lecture et décodage des appels d’outils |
 | `lib/model-service.mjs` | Liste des modèles, capacités et déchargement |

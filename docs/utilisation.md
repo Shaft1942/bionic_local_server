@@ -10,6 +10,16 @@ Si vous répondez à une conversation native, le compagnon crée une **suite web
 
 Vous pouvez aussi commencer un nouveau chat dans le projet sélectionné. Le modèle reçoit un historique limité pour respecter son contexte ; l’affichage du fil complet ne garantit pas que chaque ancien message soit transmis au modèle à chaque demande.
 
+## Déplacer une conversation
+
+Ouvrez le chat, puis le bouton **Options de la conversation** (les trois points dans l’en-tête). Choisissez le projet dans **Déplacer la conversation vers**, ou **Sans projet**, puis validez avec **Déplacer**. Le chat s’ouvre dans sa destination. Le classement est enregistré sur le PC ; actualisez les autres navigateurs pour retrouver le changement.
+
+Les conversations web conservent leur identifiant, leurs messages et leurs reçus de contexte. Pour une conversation native Bionic, le compagnon mémorise seulement son classement : l’original reste à sa place et continue d’être lu sans modification dans Bionic. Une réponse à ce fil crée toujours une suite web. Le groupe Sans projet est proposé même si Bionic n’en fournit pas ; un groupe local déjà utilisé reste accessible si un groupe natif apparaît ensuite.
+
+Le déplacement attend la fin de la réponse et des messages en file de ce chat. Les autres conversations peuvent continuer. Le texte du brouillon est conservé ; ses pièces jointes non envoyées sont retirées pour éviter de réinterpréter leurs chemins dans le nouveau projet. Joignez-les à nouveau si nécessaire. L’autorisation de modification est désactivée après un déplacement : réactivez-la explicitement dans le projet cible si vous souhaitez utiliser ses outils. Sans projet permet de discuter, avec les outils et l’import de fichiers désactivés.
+
+Les fichiers et livrables déjà conservés restent dans leur projet. Les anciennes actions de fichiers ne peuvent pas être rejouées ou épinglées depuis un autre projet. Les pièces jointes déjà enregistrées dans l’historique gardent leur contenu figé ; elles peuvent encore faire partie du contexte de la conversation, sans relire le dossier d’origine. Les nouveaux reçus identifient leur projet d’origine lorsqu’il est connu. Les copies de livrables existantes restent téléchargeables dans leur étagère ; pour retrouver un message déplacé dont l’ancien lien ne fonctionne plus, ouvrez le chat dans son nouveau projet.
+
 ## Écrire et changer de chat pendant une réponse
 
 Sur téléphone, le modèle et l’effort se choisissent côte à côte sous le texte. L’envoi se trouve à droite du message ; pendant une réponse, la flèche ajoute le message à la file et le bouton carré arrête la réponse de ce chat. L’aide détaillée de l’effort apparaît quand ce sélecteur est actif et reste associée au champ pour les lecteurs d’écran.

@@ -11,10 +11,11 @@ import { setTimeout as sleep } from 'node:timers/promises';
 const root=await fs.mkdtemp(path.join(os.tmpdir(),'bionic-mobile-server-test-'));
 const sourceRoot=fileURLToPath(new URL('../',import.meta.url));
 const fileRoot=path.join(root,'project-files');await fs.mkdir(fileRoot,{recursive:true});await fs.writeFile(path.join(fileRoot,'notes.md'),'Synthetic project file.');
-await fs.writeFile(path.join(root,'files-registry.json'),JSON.stringify({projects:[['p1',{projectWorkingDirectoryPath:fileRoot}]]}));
+const otherFileRoot=path.join(root,'other-project-files');await fs.mkdir(otherFileRoot);
+await fs.writeFile(path.join(root,'files-registry.json'),JSON.stringify({projects:[['p1',{projectWorkingDirectoryPath:fileRoot}],['p2',{projectWorkingDirectoryPath:otherFileRoot}]]}));
 process.env.BIONIC_MOBILE_PROJECT_REGISTRY=path.join(root,'files-registry.json');process.env.BIONIC_MOBILE_EXTRA_ROOTS='[]';
 await fs.cp(path.join(sourceRoot,'lib'),path.join(root,'lib'),{recursive:true});
-await fs.writeFile(path.join(root,'fixture-store.mjs'),`export function createBionicStore(){return {listProjects:async()=>[{id:'p1',name:'Synthetic',sessionsCount:1}],listSessions:async id=>{if(id!=='p1')throw Object.assign(new Error('Invalid'),{status:400});return [{id:'native-1',projectId:'p1',name:'Synthetic native',updatedAt:1}]},getConversation:async(projectId,id)=>{if(projectId!=='p1'||id!=='native-1')throw Object.assign(new Error('Missing'),{status:404});return {id,projectId,name:'Synthetic native',source:'bionic',messages:[{id:'m0',role:'user',text:'Synthetic historical text'}]}}}};`);
+await fs.writeFile(path.join(root,'fixture-store.mjs'),`export function createBionicStore(){return {listProjects:async()=>[{id:'p1',name:'Synthetic',sessionsCount:1},{id:'p2',name:'Other synthetic',sessionsCount:0}],listSessions:async id=>{if(id==='p2')return [];if(id!=='p1')throw Object.assign(new Error('Invalid'),{status:400});return [{id:'native-1',projectId:'p1',name:'Synthetic native',updatedAt:1}]},getConversation:async(projectId,id)=>{if(projectId!=='p1'||id!=='native-1')throw Object.assign(new Error('Missing'),{status:404});return {id,projectId,name:'Synthetic native',source:'bionic',messages:[{id:'m0',role:'user',text:'Synthetic historical text'}]}}}};`);
 const source=(await fs.readFile(path.join(sourceRoot,'server.mjs'),'utf8')).replace("from './lib/bionic-store.mjs'","from './fixture-store.mjs'");
 const marker=source.indexOf("server.listen(PORT, '0.0.0.0'");if(marker<0)throw new Error('Source shape changed');
 await fs.writeFile(path.join(root,'server.mjs'),source.slice(0,marker)+'\nexport {handle,server};\n');
@@ -53,6 +54,7 @@ const findings=[];
 const runId=randomUUID(),backgroundRequestId=runId+'-checkpoint';
 try {
  let r=await request('/api/projects');findings.push({test:'unauthenticated API blocked',pass:r.statusCode===401,status:r.statusCode});
+ r=await request('/api/conversation/move',{method:'POST',body:{projectId:'p1',id:'native-1',targetProjectId:'p2'}});findings.push({test:'conversation move requires authentication',pass:r.statusCode===401});
  r=await request('/api/file?projectId=p1&rootId=project&path=notes.md');findings.push({test:'file contents require login',pass:r.statusCode===401});
  r=await request('/api/file/upload?projectId=p1&name=no.txt',{method:'POST',raw:Buffer.from('x')});findings.push({test:'phone upload requires login',pass:r.statusCode===401});
  for(const route of ['/api/activity','/api/deliverables?projectId=p1','/api/deliverable?projectId=p1&id=x','/api/deliverable/download?projectId=p1&id=x']){r=await request(route);findings.push({test:'workspace API requires login: '+route,pass:r.statusCode===401})}
@@ -225,6 +227,7 @@ try {
  r=await request('/api/deliverable/remove',{method:'POST',headers:{cookie},body:{projectId:'p1',id:pinned.id}});findings.push({test:'deliverable remove route removes only its saved entry',pass:r.statusCode===200&&JSON.parse(r.text()).removed===true&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='after'});
  // The queue limit counts only waiting entries, and canceling one frees a slot.
  const limitChatId=secondHoldRes.records().find(e=>e.type==='start').id,limitIds=[];
+ r=await request('/api/conversation/move',{method:'POST',headers:{cookie},body:{projectId:'p1',id:limitChatId,targetProjectId:'p2'}});findings.push({test:'a running conversation cannot move between project scopes',pass:r.statusCode===409});
  for(let i=0;i<10;i++){const requestId=runId+'-limit-'+i;limitIds.push(requestId);r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL limit '+i,limitChatId),requestId}});assert.equal(r.records().at(-1).type,'queued')}
  const beforeLimit=upstreamCount;r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL over limit',limitChatId),requestId:runId+'-over-limit'}});
  findings.push({test:'one conversation accepts at most ten waiting messages without disturbing other active chats',pass:r.statusCode===409&&upstreamCount===beforeLimit});
@@ -233,6 +236,29 @@ try {
  finishHold(upstream.shift());for(const c of upstream.splice(0))try{c.close()}catch{}await secondHoldJob;
  r=await request('/api/models/unload',{method:'POST',headers:{cookie},body:{instanceId:'loaded-synthetic'}});findings.push({test:'authenticated exact-instance unload succeeds after reply',pass:r.statusCode===200&&JSON.parse(r.text()).unloaded===true&&unloadCount===1});
  r=await request('/api/models/unload',{method:'POST',headers:{cookie},body:{instanceId:'loaded-synthetic'}});findings.push({test:'unload stale instance rejected without repeated mutation',pass:r.statusCode===409&&unloadCount===1});
+ const moveInput={projectId:'p1',id:'native-1',targetProjectId:'p2'};
+ r=await request('/api/conversation/move',{method:'POST',headers:{cookie},body:null});findings.push({test:'malformed move payload is rejected without changing conversation placement',pass:r.statusCode===400});
+ r=await request('/api/conversation/move',{method:'POST',headers:{cookie,origin:'https://attacker.example'},body:moveInput});findings.push({test:'cross-origin conversation moves are blocked',pass:r.statusCode===403});
+ r=await request('/api/conversation/move',{method:'POST',headers:{cookie},body:moveInput});const movedNative=JSON.parse(r.text()).conversation;
+ const oldNativeList=JSON.parse((await request('/api/sessions?projectId=p1',{headers:{cookie}})).text()).sessions;
+ const newNativeList=JSON.parse((await request('/api/sessions?projectId=p2',{headers:{cookie}})).text()).sessions;
+ findings.push({test:'native move changes only companion placement and preserves original store identity',pass:r.statusCode===200&&movedNative.nativeProjectId==='p1'&&movedNative.projectId==='p2'&&movedNative.messages[0].text==='Synthetic historical text'&&!oldNativeList.some(s=>s.id==='native-1')&&newNativeList.some(s=>s.id==='native-1')});
+ r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL relocated native','native-1'),projectId:'p2'}});findings.push({test:'replying to a relocated native conversation imports its real original history',pass:r.statusCode===200&&lastUpstreamBody.messages.some(message=>message.content==='Synthetic historical text')});
+ await fs.writeFile(path.join(fileRoot,'agent.md'),'before');r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_EDIT'),fileAccess:true}});const moveWebId=r.records().find(e=>e.type==='start').id;
+ const beforeMove=JSON.parse((await request('/api/conversation?projectId=p1&id='+moveWebId,{headers:{cookie}})).text());const oldAction=beforeMove.messages.at(-1).actions.find(action=>action.backupId);
+ await fs.writeFile(path.join(otherFileRoot,'agent.md'),'after');
+ r=await request('/api/deliverables',{method:'POST',headers:{cookie},body:{projectId:'p1',chatId:moveWebId,messageId:beforeMove.messages.at(-1).id,kind:'message'}});const retainedPin=JSON.parse(r.text());
+ r=await request('/api/conversation/move',{method:'POST',headers:{cookie},body:{projectId:'p1',id:moveWebId,targetProjectId:'p2'}});const movedWeb=JSON.parse(r.text()).conversation;
+ findings.push({test:'web move preserves ids and messages, resets file authorization and records old action scopes',pass:r.statusCode===200&&movedWeb.id===moveWebId&&movedWeb.projectId==='p2'&&movedWeb.fileAccess===false&&JSON.stringify(movedWeb.messages)===JSON.stringify(beforeMove.messages)&&movedWeb.messages.at(-1).actions.every(action=>action.projectId==='p1')});
+ r=await request('/api/conversation?projectId=p1&id='+moveWebId,{headers:{cookie}});findings.push({test:'a moved web conversation is no longer readable through its former project',pass:r.statusCode===404});
+ r=await request('/api/deliverables',{method:'POST',headers:{cookie},body:{projectId:'p2',chatId:moveWebId,messageId:movedWeb.messages.at(-1).id,actionId:oldAction.id,kind:'file'}});findings.push({test:'old file actions cannot pin a same-named target-project file after a move',pass:r.statusCode===409});
+ r=await request('/api/file/restore',{method:'POST',headers:{cookie},body:{projectId:'p2',rootId:'project',path:oldAction.path,hash:oldAction.hash,backupId:oldAction.backupId,chatId:moveWebId,actionId:oldAction.id}});findings.push({test:'old file actions cannot restore files across a moved conversation scope',pass:r.statusCode===409&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='after'&&await fs.readFile(path.join(otherFileRoot,'agent.md'),'utf8')==='after'});
+ r=await request('/api/deliverable/download?projectId=p1&id='+retainedPin.id,{headers:{cookie}});findings.push({test:'existing deliverable copies remain downloadable in their original project after a conversation moves',pass:r.statusCode===200&&r.text()==='Fichier modifié.'});
+ r=await request('/api/conversation/move',{method:'POST',headers:{cookie},body:{projectId:'p2',id:moveWebId,targetProjectId:null}});const unassigned=JSON.parse(r.text()).conversation.projectId;
+ r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL without project',moveWebId),projectId:unassigned,fileAccess:true}});findings.push({test:'unassigned conversations accept replies without exposing project tools',pass:r.statusCode===200&&!lastUpstreamBody.tools&&r.records().at(-1).contextReceipt.toolsEnabled===false});
+ const concurrentId=(await send('NORMAL concurrently relocated')).records().find(e=>e.type==='start').id;
+ const moves=await Promise.all(['p2',null].map(targetProjectId=>request('/api/conversation/move',{method:'POST',headers:{cookie},body:{projectId:'p1',id:concurrentId,targetProjectId}})));
+ findings.push({test:'concurrent web moves serialize and a stale source cannot reassign the conversation twice',pass:moves.filter(response=>response.statusCode===200).length===1&&moves.filter(response=>response.statusCode===404).length===1});
  for(const finding of findings)test(finding.test,()=>assert.equal(finding.pass,true,JSON.stringify(finding)));
  if(findings.some(f=>!f.pass))throw new Error('Server regression detected');
 }finally{for(const c of upstream)try{c.close()}catch{}server.close();const resolved=path.resolve(root);assert(resolved.startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(resolved).startsWith('bionic-mobile-server-test-'));await fs.rm(resolved,{recursive:true,force:true});}

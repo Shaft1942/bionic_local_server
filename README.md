@@ -7,6 +7,7 @@ Ce projet communautaire est indépendant de Bionic. Bionic et ses modèles ne so
 ## Ce que vous pouvez faire
 
 - Retrouver les projets et les conversations existants, puis démarrer une **suite web distincte**.
+- Classer les conversations dans un autre projet ou **Sans projet**, sans déplacer leurs fichiers ni modifier les historiques natifs Bionic.
 - Choisir un modèle, régler l’effort lorsqu’il le prend en charge et consulter les mesures de génération disponibles.
 - Voir les instances chargées et les décharger pour libérer la mémoire du PC.
 - Lire, télécharger et modifier les fichiers texte du projet depuis le téléphone.
