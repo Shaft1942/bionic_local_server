@@ -24,6 +24,7 @@ Copiez `config.example.json` en `config.local.json`, choisissez un port de test 
 | --- | --- |
 | `server.mjs` | Serveur HTTP, authentification, routes, conversations web et cycle de génération |
 | `lib/bionic-store.mjs` | Projection en lecture seule des projets et conversations natifs |
+| `lib/conversation-organizer.mjs` | Classement, noms et masquage locaux des conversations natives, groupe Sans projet, sans écriture dans Bionic |
 | `lib/project-files.mjs` | Périmètres de dossiers, lecture, imports, sauvegardes et écritures contrôlées |
 | `lib/file-agent.mjs` | Outils de fichiers, budget de lecture et décodage des appels d’outils |
 | `lib/agent-tools.mjs` | Sélection des outils par permissions figées, budgets web et journal des résultats |
@@ -85,6 +86,10 @@ Selon la modification, vérifiez aussi :
 - Le refus d’exécuter sans accord, le double clic, le mauvais projet ou chat, la modification de la proposition, l’expiration, l’arrêt et les checkpoints en erreur.
 - Les sorties excessives, les erreurs d’interpréteur, la persistance après fermeture du téléphone et l’absence de replay après redémarrage.
 - Les branches jusqu’au message inclus, la source intacte, les identifiants renouvelés, l’historique passif et les permissions web/scripts désactivées.
+
+- Le renommage et la suppression après rechargement, le refus pendant une génération ou une attente, et l’absence de réapparition d’un chat supprimé après une écriture concurrente.
+- Le nom local et le masquage des fils natifs sans modification de leur source, ainsi que la conservation des fichiers et livrables lorsque leur chat d’origine est supprimé.
+- Les validations bloquant les changements de classement, les scripts désactivés après déplacement et dans Sans projet, et la restauration de corbeille sérialisée avec le déplacement ou la suppression du chat.
 
 Les contrats, limites et liens vers les API primaires figurent dans [Outils des agents](outils-agents.md). Les [méta-prompts d’implémentation 1.8](metaprompts-implementation-1.8.md) décrivent la répartition et les revues croisées. Les résultats d’essais, y compris les fonctionnalités non vérifiées en réseau réel, restent dans [Vérification](verification.md).
 

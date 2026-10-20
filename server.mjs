@@ -16,12 +16,15 @@ import { createToolApprovals } from './lib/tool-approvals.mjs';
 import { forkConversation } from './lib/conversation-fork.mjs';
 import { createContextReceipt, addToolRead, addExternalContext, markContextTransmitted } from './lib/context-receipt.mjs';
 import { createWorkspaceFeatures } from './lib/workspace-features.mjs';
+import { createConversationOrganizer, conversationName } from './lib/conversation-organizer.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DATA = path.join(ROOT, 'data');
 const RUNTIME = path.join(ROOT, 'runtime');
 const settings = await loadSettings({ root: ROOT });
-const { listProjects, listSessions, getConversation } = createBionicStore({ root: settings.bionicRoot });
+const nativeStore = createBionicStore({ root: settings.bionicRoot });
+const organizer = createConversationOrganizer({ filename: path.join(DATA, 'conversation-locations.json'), store: nativeStore, hasLocalUnassigned: async () => (await webChats('companion-unassigned')).length > 0 });
+const { listProjects, listSessions, getConversation } = organizer;
 const PORT = settings.port;
 const API = settings.apiUrl;
 const apiUrl = new URL(API);
@@ -60,6 +63,7 @@ const active = new Map();
 const toolApprovals = createToolApprovals();
 const chatRequests = new Map();
 const chatStates = new Map();
+const deletedChats = new Set();
 const acceptanceLocks = new Map();
 const nativeContinuations = new Map();
 let modelManagementBusy = false;
@@ -87,9 +91,11 @@ const webId = id => /^web-[a-f0-9-]{36}$/.test(id);
 function webPath(id) { if (!webId(id)) throw fail(400, 'Conversation invalide.'); return path.join(DATA, 'chats', id + '.json'); }
 async function readWeb(id) {
   try {
+    if (deletedChats.has(id)) throw fail(404, 'Conversation introuvable.');
     if (chatStates.has(id)) return chatStates.get(id).chat;
     const serialized = await fs.readFile(webPath(id), 'utf8');
     // Another reader may have populated and started this chat while the disk read awaited.
+    if (deletedChats.has(id)) throw fail(404, 'Conversation introuvable.');
     if (chatStates.has(id)) return chatStates.get(id).chat;
     const chat = JSON.parse(serialized);
     let recovered = false;
@@ -122,10 +128,14 @@ async function saveWeb(chat) {
 // Checkpoints and queue acceptance share one write chain: an older response snapshot
 // can never overwrite a newly accepted message or resurrect a cancelled queue entry.
 function persistChat(chat) {
+  if (deletedChats.has(chat.id)) return Promise.reject(fail(404, 'Conversation introuvable.'));
   let state = chatStates.get(chat.id);
   if (!state) { state = { chat, writes: Promise.resolve(), running: false }; chatStates.set(chat.id, state); }
   const snapshot = structuredClone(chat);
-  state.writes = state.writes.catch(() => {}).then(() => saveWeb(snapshot));
+  state.writes = state.writes.catch(() => {}).then(() => {
+    if (deletedChats.has(chat.id)) throw fail(404, 'Conversation introuvable.');
+    return saveWeb(snapshot);
+  });
   return state.writes;
 }
 async function withAcceptanceLock(key, work) {
@@ -140,7 +150,8 @@ async function webChats(projectId) {
   const result = [];
   for (const name of await fs.readdir(path.join(DATA, 'chats'))) {
     if (!/^web-[a-f0-9-]{36}\.json$/.test(name)) continue;
-    const chat = await readWeb(name.slice(0, -5));
+    let chat;
+    try { chat = await readWeb(name.slice(0, -5)); } catch (error) { if (error.status === 404) continue; throw error; }
     if (chat.projectId === projectId) result.push({ id: chat.id, projectId, name: chat.name, model: chat.model, updatedAt: chat.updatedAt, source: 'web', origin: chat.origin, generation: chat.generation, queueCount: (chat.queue || []).filter(item => item.status === 'queued').length });
   }
   return result;
@@ -155,6 +166,77 @@ function apiHeaders() { return process.env.BIONIC_API_TOKEN ? { Authorization: `
 const modelService = createModelService({ baseUrl: API, headers: apiHeaders });
 const projectFiles = createProjectFiles({ backupDirectory: path.join(DATA, 'file-backups'), imageDirectory: path.join(DATA, 'image-attachments'), registryPath: settings.registryPath, extraRoots: settings.extraRoots, python: settings.python });
 const workspaceFeatures = createWorkspaceFeatures({ directory: path.join(DATA, 'workspace'), listProjects, listWebChats: webChats, readConversation: readChat, projectFiles });
+function managementInput(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw fail(400, 'Demande de modification invalide.');
+  if (typeof input.id !== 'string' || !/^[\w-]{1,128}$/.test(input.id) || typeof input.projectId !== 'string' || !/^[\w-]{1,128}$/.test(input.projectId)) throw fail(400, 'Conversation ou projet invalide.');
+}
+async function withConversationManagement(input, work, targetProjectId = input.projectId) {
+  const keys = [...new Set([input.projectId + ':' + input.id, targetProjectId + ':' + input.id])].sort();
+  const locked = index => index === keys.length ? work() : withAcceptanceLock(keys[index], () => locked(index + 1));
+  return withAcceptanceLock('placement:' + input.id, () => locked(0));
+}
+function assertConversationIdle(input, current) {
+  const continuation = nativeContinuations.get(input.projectId + ':' + input.id);
+  if (busy.has(input.id) || (continuation && busy.has(continuation)) || chatStates.get(input.id)?.running || current.queue?.some(item => item.status === 'queued')) throw fail(409, 'Attends la fin de la réponse et de sa file avant de modifier cette conversation.');
+}
+async function moveConversation(input) {
+  managementInput(input);
+  const projects = await listProjects();
+  const targetProjectId = input.targetProjectId === null ? projects.find(project => project.isUnassigned)?.id : input.targetProjectId;
+  if (!projects.some(project => project.id === input.projectId) || !projects.some(project => project.id === targetProjectId)) throw fail(404, 'Projet introuvable. Actualise la liste.');
+  return withConversationManagement(input, async () => {
+    const current = await readChat(input.projectId, input.id);
+    assertConversationIdle(input, current);
+    if (!webId(input.id)) return organizer.moveNative({ projectId: input.projectId, id: input.id, targetProjectId });
+    if (current.projectId === targetProjectId) return current;
+    const next = structuredClone(current);
+    for (const message of next.messages || []) {
+      for (const action of message.actions || []) action.projectId ??= current.projectId;
+      for (const attachment of message.attachments || []) attachment.projectId ??= current.projectId;
+    }
+    for (const item of next.queue || []) item.projectId ??= current.projectId;
+    next.previousProjectId = current.projectId; next.projectId = targetProjectId;
+    next.movedAt = next.updatedAt = Date.now(); next.fileAccess = false; next.scriptAccess = false;
+    await persistChat(next);
+    chatStates.get(next.id).chat = next;
+    for (const record of chatRequests.values()) if (record.id === next.id) record.projectId = targetProjectId;
+    for (const [key, id] of nativeContinuations) if (id === next.id) nativeContinuations.delete(key);
+    return next;
+  }, targetProjectId);
+}
+async function renameConversation(input) {
+  managementInput(input);
+  const name = conversationName(input.name);
+  return withConversationManagement(input, async () => {
+    const current = await readChat(input.projectId, input.id);
+    assertConversationIdle(input, current);
+    if (!webId(input.id)) return organizer.renameNative({ ...input, name });
+    const next = { ...structuredClone(current), name, updatedAt: Date.now() };
+    await persistChat(next);
+    chatStates.get(next.id).chat = next;
+    return next;
+  });
+}
+async function deleteConversation(input) {
+  managementInput(input);
+  return withConversationManagement(input, async () => {
+    const current = await readChat(input.projectId, input.id);
+    assertConversationIdle(input, current);
+    if (!webId(input.id)) return organizer.deleteNative(input);
+    const state = chatStates.get(input.id);
+    deletedChats.add(input.id);
+    try {
+      await state.writes.catch(() => {});
+      const file = webPath(input.id), info = await fs.lstat(file);
+      if (!info.isFile() || info.isSymbolicLink()) throw fail(503, 'Le fichier de conversation doit être un fichier ordinaire.');
+      await fs.unlink(file);
+    } catch (error) { if (error.code !== 'ENOENT') { deletedChats.delete(input.id); throw error; } }
+    chatStates.delete(input.id);
+    for (const [requestId, record] of chatRequests) if (record.id === input.id) chatRequests.set(requestId, { projectId: record.projectId, id: null, status: 'deleted' });
+    for (const [key, id] of nativeContinuations) if (id === input.id) nativeContinuations.delete(key);
+    return { deleted: true, id: input.id, projectId: input.projectId, source: 'web' };
+  });
+}
 async function models() { return (await modelService.list()).filter(model => model.type === 'llm'); }
 async function messageContent(message, vision) {
   if (!message.attachments?.length) return message.text;
@@ -191,9 +273,10 @@ async function conversationModelContext(chat, prompt, contextLength = 4096, atta
 const validRequestId = id => typeof id === 'string' && /^[a-zA-Z0-9-]{16,100}$/.test(id);
 async function findChatRequest(projectId, requestId) {
   const current = chatRequests.get(requestId);
-  if (current) return current.projectId === projectId ? current : null;
+  if (current) return current.status !== 'deleted' && current.projectId === projectId ? current : null;
   for (const info of await webChats(projectId)) {
-    const stored = await readWeb(info.id);
+    let stored;
+    try { stored = await readWeb(info.id); } catch (error) { if (error.status === 404) continue; throw error; }
     const queued = stored.queue?.find(item => item.requestId === requestId);
     if (queued) return { projectId, id: stored.id, status: queued.status, message: queued.message, position: queuePosition(stored, requestId) };
     const message = stored.messages.find(message => message.requestId === requestId && message.role === 'user');
@@ -221,13 +304,15 @@ async function sendChat(req, res, data) {
     if (modelManagementBusy) throw fail(409, 'Un modèle est en cours de déchargement. Attends la fin pour envoyer ton message.');
     const text = typeof data.text === 'string' ? data.text.trim() : '';
     if (!text || text.length > 16000) throw fail(400, 'Saisis un message de 1 à 16 000 caractères.');
-    if (!(await listProjects()).some(project => project.id === data.projectId)) throw fail(404, 'Projet introuvable. Actualise la liste.');
+    const project = (await listProjects()).find(project => project.id === data.projectId);
+    if (!project) throw fail(404, 'Projet introuvable. Actualise la liste.');
     const available = await models();
     const selectedModel = available.find(model => model.id === data.model);
     if (!selectedModel) throw fail(400, 'Sélectionne un modèle local disponible.');
-    const reasoning = reasoningRequest(selectedModel, data.reasoning), fileAccess = data.fileAccess === true, webAccess=data.webAccess===true, scriptAccess=data.scriptAccess===true;
-    if ((fileAccess||webAccess||scriptAccess) && selectedModel.tools === false) throw fail(400, 'Ce modèle ne propose pas les appels d’outils. Choisis un autre modèle ou désactive les outils.');
-    const attachments = await projectFiles.attachments(data.projectId, data.attachments, { allowImages: !!selectedModel.vision });
+    const reasoning = reasoningRequest(selectedModel, data.reasoning), fileAccess = data.fileAccess === true && !project.isUnassigned, webAccess = data.webAccess === true, scriptAccess = data.scriptAccess === true && !project.isUnassigned;
+    if ((fileAccess || webAccess || scriptAccess) && selectedModel.tools === false) throw fail(400, 'Ce modèle ne propose pas les appels d’outils. Choisis un autre modèle ou désactive les outils.');
+    if (project.isUnassigned && data.attachments?.length) throw fail(400, 'Choisis un projet pour joindre ses fichiers.');
+    const attachments = (await projectFiles.attachments(data.projectId, data.attachments, { allowImages: !!selectedModel.vision })).map(file => ({ ...file, projectId: data.projectId }));
     const attachmentReferences = attachments.map((file, index) => ({ rootId: file.rootId, path: file.path, hash: file.hash, ...(file.excerpt ? { selection: { start: data.attachments[index].selection.start, end: data.attachments[index].selection.end } } : {}) }));
     // Resolve file bytes and options now, but build history only when this turn starts.
     await conversationModelContext({ messages: [] }, text, selectedModel.contextLength, attachments, selectedModel.vision, fileAccess, undefined, {webAccess,scriptAccess});
@@ -243,7 +328,7 @@ async function sendChat(req, res, data) {
         chat = await readWeb(nativeContinuations.get(key));
       } else if (data.sessionId) {
         const original = await getConversation(data.projectId, data.sessionId);
-        chat = { id: 'web-' + randomUUID(), projectId: data.projectId, name: original.name + ' · suite web', model: data.model, source: 'web', readOnly: false, origin: { id: original.id, name: original.name }, messages: original.messages.map(message => ({ ...message, fromBionic: true })), importedTruncated: original.truncated, updatedAt: Date.now() };
+        chat = { id: 'web-' + randomUUID(), projectId: data.projectId, name: original.name + ' · suite web', model: data.model, source: 'web', readOnly: false, origin: { id: original.id, name: original.name, projectId: original.nativeProjectId || original.projectId }, messages: original.messages.map(message => ({ ...message, fromBionic: true })), importedTruncated: original.truncated, updatedAt: Date.now() };
         nativeContinuations.set(key, chat.id);
       } else {
         chat = { id: 'web-' + randomUUID(), projectId: data.projectId, name: text.slice(0, 65), model: data.model, source: 'web', readOnly: false, messages: [], updatedAt: Date.now() };
@@ -253,7 +338,7 @@ async function sendChat(req, res, data) {
       chat.queue ||= [];
       if (chat.queue.filter(item => item.status === 'queued').length >= 10) throw fail(409, 'Dix messages sont déjà en attente dans cette conversation. Attends une réponse avant d’en ajouter.');
       if (request.cancelRequested) throw fail(409, 'Demande arrêtée avant son exécution.');
-      const item = { requestId, text, model: data.model, reasoning: reasoning.choice, fileAccess, webAccess, scriptAccess, attachments, attachmentReferences, selectedModel: structuredClone(selectedModel), reasoningPayload: structuredClone(reasoning.payload), queuedAt: Date.now(), status: 'queued' };
+      const item = { requestId, projectId: data.projectId, text, model: data.model, reasoning: reasoning.choice, fileAccess, webAccess, scriptAccess, attachments, attachmentReferences, selectedModel: structuredClone(selectedModel), reasoningPayload: structuredClone(reasoning.payload), queuedAt: Date.now(), status: 'queued' };
       chat.queue.push(item); chat.updatedAt = Date.now(); request.id = chat.id; request.status = 'queued';
       busy.add(chat.id);
       try { await persistChat(chat); }
@@ -374,6 +459,7 @@ async function generateChat(res, chat, item, request) {
         for (const call of response.calls) {
           emit({ type: 'action-start', name: call.function.name });
           const { action, result, read, reads, external } = await agent.execute(call); actionCount++;
+          action.projectId = chat.projectId;
           addToolRead(context.receipt, action, read);
           for(const excerpt of reads||[])addToolRead(context.receipt,action,excerpt);
           addExternalContext(context.receipt,action,external);
@@ -462,11 +548,16 @@ async function handle(req, res) {
         json(res,200,await toolApprovals.decide(input));return;
       }
       if(req.method==='POST'&&url.pathname==='/api/file/restore-trash'){
-        const input=await body(req),chat=await readChat(input.projectId,input.chatId);
-        if(busy.has(chat.id))throw fail(409,'Attends la fin de cette réponse avant de restaurer le fichier.');
-        const action=chat.messages.flatMap(message=>message.actions||[]).find(action=>action.id===input.actionId);
-        if(!action?.ok||!action.trashId||action.restored)throw fail(409,'Cette action ne permet pas une restauration.');
-        const result=await projectFiles.restoreTrashed(input.projectId,action.trashId);action.restored=true;await persistChat(chat);json(res,200,result);return;
+        const input=await body(req,4096);
+        if(!webId(input.chatId||''))throw fail(400,'Conversation invalide.');
+        const result=await withConversationManagement({projectId:input.projectId,id:input.chatId},async()=>{
+          const chat=await readChat(input.projectId,input.chatId);
+          if(busy.has(chat.id))throw fail(409,'Attends la fin de cette réponse avant de restaurer le fichier.');
+          const action=chat.messages.flatMap(message=>message.actions||[]).find(action=>action.id===input.actionId);
+          if(!action?.ok||!action.trashId||action.restored||(action.projectId&&action.projectId!==input.projectId))throw fail(409,'Cette action ne permet pas une restauration dans ce projet.');
+          const restored=await projectFiles.restoreTrashed(input.projectId,action.trashId);action.restored=true;chat.updatedAt=Date.now();await persistChat(chat);return restored;
+        });
+        json(res,200,result);return;
       }
       if (req.method === 'GET' && url.pathname === '/api/status') {
         let modelList = [], apiError = null;
@@ -531,16 +622,20 @@ async function handle(req, res) {
       }
       if (req.method === 'POST' && url.pathname === '/api/file/restore') {
         const d = await body(req, 4096);
-        let chat, action;
-        if (d.chatId || d.actionId) {
-          if (!webId(d.chatId || '')) throw fail(400, 'Conversation invalide.');
-          if (busy.has(d.chatId)) throw fail(409, 'Attends la fin de la réponse avant de rétablir un fichier.');
-          chat = await readWeb(d.chatId);
-          action = chat.messages.flatMap(message => message.actions || []).find(item => item.id === d.actionId);
-          if (chat.projectId !== d.projectId || d.rootId !== 'project' || !action?.ok || action.restored || action.path !== d.path || action.hash !== d.hash || action.backupId !== d.backupId) throw fail(409, 'Cette action ne peut pas être rétablie depuis ce message. Actualise la conversation.');
-        }
-        const result = await projectFiles.write(d.projectId, d.rootId, d.path, d.hash, undefined, d.backupId);
-        if (chat) { action.restored = true; chat.updatedAt = Date.now(); await persistChat(chat); }
+        const restore = async () => {
+          let chat, action;
+          if (d.chatId || d.actionId) {
+            if (!webId(d.chatId || '')) throw fail(400, 'Conversation invalide.');
+            if (busy.has(d.chatId)) throw fail(409, 'Attends la fin de la réponse avant de rétablir un fichier.');
+            chat = await readWeb(d.chatId);
+            action = chat.messages.flatMap(message => message.actions || []).find(item => item.id === d.actionId);
+            if (chat.projectId !== d.projectId || (action?.projectId && action.projectId !== d.projectId) || d.rootId !== 'project' || !action?.ok || action.restored || action.path !== d.path || action.hash !== d.hash || action.backupId !== d.backupId) throw fail(409, 'Cette action ne peut pas être rétablie depuis ce message. Actualise la conversation.');
+          }
+          const result = await projectFiles.write(d.projectId, d.rootId, d.path, d.hash, undefined, d.backupId);
+          if (chat) { action.restored = true; chat.updatedAt = Date.now(); await persistChat(chat); }
+          return result;
+        };
+        const result = d.chatId || d.actionId ? await withConversationManagement({ projectId: d.projectId, id: d.chatId }, restore) : await restore();
         json(res, 200, result); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/sessions') {
@@ -551,6 +646,15 @@ async function handle(req, res) {
       if (req.method === 'GET' && url.pathname === '/api/conversation') {
         const id = url.searchParams.get('id'), pid = url.searchParams.get('projectId');
         json(res, 200, await readChat(pid, id)); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/conversation/move') {
+        json(res, 200, { conversation: await moveConversation(await body(req, 4096)) }); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/conversation/rename') {
+        json(res, 200, { conversation: await renameConversation(await body(req, 4096)) }); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/conversation/delete') {
+        json(res, 200, await deleteConversation(await body(req, 4096))); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/chat-request') {
         const requestId = url.searchParams.get('requestId'), projectId = url.searchParams.get('projectId');

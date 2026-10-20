@@ -65,7 +65,7 @@ test('script approval routes integrate with persisted conversation jobs without 
       if (options.signal?.aborted) throw Object.assign(new Error('Stopped synthetic stream'), { name: 'AbortError' });
       const body = JSON.parse(options.body); upstream.push(structuredClone(body));
       const name = body.messages.findLast(message => message.role === 'user')?.content;
-      assert(['approved', 'denied', 'cancelled', 'restart'].includes(name));
+      assert(['approved', 'denied', 'cancelled', 'restart', 'management-pending', 'before-move', 'after-move'].includes(name));
       const completed = body.messages.some(message => message.role === 'tool');
       const event = completed ? { choices: [{ delta: { content: 'Synthetic final answer.' }, finish_reason: 'stop' }] } : { choices: [{ delta: { tool_calls: [{ index: 0, id: 'synthetic-script-' + name, function: { name: 'run_project_script', arguments: JSON.stringify({ runtime: 'node', code: codeFor(name), timeoutSeconds: 5 }) } }] }, finish_reason: 'tool_calls' }] };
       return { ok: true, status: 200, body: new ReadableStream({ start(controller) { controller.enqueue(Buffer.from('data: ' + JSON.stringify(event) + '\n\ndata: [DONE]\n\n')); controller.close(); } }) };
@@ -84,16 +84,17 @@ test('script approval routes integrate with persisted conversation jobs without 
       assert.equal(response.statusCode, 200); return response.headers['set-cookie'].split(';')[0];
     };
     cookie = await login(first);
-    const decide = (module, approval, decision, options = {}) => request(module, '/api/tool-approval', { method: 'POST', headers: { cookie, ...options.headers }, body: { id: approval.id, projectId: 'p1', chatId: approval.chatId, decision, ...options.body } });
+    const decide = (module, approval, decision, options = {}) => request(module, '/api/tool-approval', { method: 'POST', headers: { cookie, ...options.headers }, body: { id: approval.id, projectId: approval.projectId || 'p1', chatId: approval.chatId, decision, ...options.body } });
     const readStored = async id => JSON.parse(await fs.readFile(path.join(root, 'data', 'chats', id + '.json'), 'utf8'));
-    const start = async name => {
+    const start = async (name, { projectId = 'p1', sessionId, fileAccess = false } = {}) => {
       const response = new Response();
-      const job = first.handle(req('/api/chat', { method: 'POST', headers: { cookie }, body: { projectId: 'p1', model: 'synthetic', text: name, requestId: randomUUID(), scriptAccess: true } }), response);
+      const job = first.handle(req('/api/chat', { method: 'POST', headers: { cookie }, body: { projectId, sessionId, model: 'synthetic', text: name, requestId: randomUUID(), fileAccess, scriptAccess: true } }), response);
       jobs.add(job); job.finally(() => jobs.delete(job)).catch(() => {});
       const event = await until(() => response.records().find(item => item.type === 'approval' && item.approval.status === 'pending'), 'A pending script approval was not emitted: ' + response.text());
       const begin = response.records().find(item => item.type === 'start');
-      assert(begin?.id); assert.equal(event.approval.code, codeFor(name)); assert.equal(event.approval.runtime, 'node'); assert.equal(event.approval.cwd, project);
-      await assert.rejects(fs.stat(path.join(project, name + '.txt')), { code: 'ENOENT' });
+      const expectedDirectory = projectId === 'p2' ? secondProject : project;
+      assert(begin?.id); assert.equal(event.approval.code, codeFor(name)); assert.equal(event.approval.runtime, 'node'); assert.equal(event.approval.cwd, expectedDirectory);
+      await assert.rejects(fs.stat(path.join(expectedDirectory, name + '.txt')), { code: 'ENOENT' });
       assert.equal((await readStored(begin.id)).generation.awaitingApproval, true);
       return { response, job, id: begin.id, approval: event.approval };
     };
@@ -143,6 +144,64 @@ test('script approval routes integrate with persisted conversation jobs without 
       const result = JSON.parse(reply.contextReceipt.external.find(item => item.kind === 'script').text);
       assert.equal(result.executed, false); assert.equal(result.status, 'denied');
       assert.equal(pending.response.records().at(-1).type, 'done');
+    });
+
+    await t.test('move, rename and deletion are blocked while the script is awaiting approval', async () => {
+      const pending = await start('management-pending');
+      const before = await readStored(pending.id);
+      for (const action of ['move', 'rename', 'delete']) {
+        const response = await request(first, '/api/conversation/' + action, { method: 'POST', headers: { cookie }, body: { projectId: 'p1', id: pending.id, targetProjectId: 'p2', name: 'Must not be applied' } });
+        assert.equal(response.statusCode, 409, action + ' must wait until the pending script is decided');
+        await assert.rejects(fs.stat(path.join(project, 'management-pending.txt')), { code: 'ENOENT' });
+        await assert.rejects(fs.stat(path.join(secondProject, 'management-pending.txt')), { code: 'ENOENT' });
+      }
+      const unchanged = await readStored(pending.id);
+      assert.equal(unchanged.projectId, 'p1'); assert.equal(unchanged.name, before.name);
+      assert.equal(unchanged.messages.at(-1).approvals[0].status, 'pending');
+      assert.equal((await decide(first, pending.approval, 'deny')).statusCode, 200);
+      await pending.job;
+      assert.equal(pending.response.records().at(-1).type, 'done');
+      assert.equal((await readStored(pending.id)).messages.at(-1).approvals[0].status, 'denied');
+      await assert.rejects(fs.stat(path.join(project, 'management-pending.txt')), { code: 'ENOENT' });
+    });
+
+    await t.test('moving a completed script conversation resets file and script permissions and later actions use the target project', async () => {
+      const original = await start('before-move', { fileAccess: true });
+      assert.equal((await decide(first, original.approval, 'approve')).statusCode, 200);
+      await original.job;
+      const before = await readStored(original.id);
+      assert.equal(before.fileAccess, true); assert.equal(before.scriptAccess, true);
+      assert.equal(await fs.readFile(path.join(project, 'before-move.txt'), 'utf8'), 'one execution\n');
+      let response = await request(first, '/api/conversation/move', { method: 'POST', headers: { cookie }, body: { projectId: 'p1', id: original.id, targetProjectId: 'p2' } });
+      assert.equal(response.statusCode, 200);
+      const moved = JSON.parse(response.text()).conversation;
+      assert.equal(moved.id, original.id); assert.equal(moved.projectId, 'p2');
+      assert.equal(moved.fileAccess, false); assert.equal(moved.scriptAccess, false);
+      assert.equal(moved.messages.at(-1).actions[0].projectId, 'p1');
+      assert.equal(moved.messages.at(-1).approvals[0].projectId, 'p1');
+      assert.equal(moved.messages.at(-1).approvals[0].cwd, project);
+      assert.equal(moved.messages.at(-1).approvals[0].status, 'approved');
+      const persisted = await readStored(original.id);
+      assert.equal(persisted.fileAccess, false); assert.equal(persisted.scriptAccess, false);
+      await assert.rejects(fs.stat(path.join(secondProject, 'before-move.txt')), { code: 'ENOENT' });
+      response = await request(first, '/api/conversation?projectId=p1&id=' + original.id, { headers: { cookie } });
+      assert.equal(response.statusCode, 404);
+
+      // Re-enabling execution on the next message still requires a fresh approval.
+      const followup = await start('after-move', { projectId: 'p2', sessionId: original.id, fileAccess: true });
+      assert.equal(followup.approval.projectId, 'p2'); assert.equal(followup.approval.cwd, secondProject);
+      assert.notEqual(followup.approval.id, original.approval.id);
+      await assert.rejects(fs.stat(path.join(project, 'after-move.txt')), { code: 'ENOENT' });
+      assert.equal((await decide(first, followup.approval, 'approve')).statusCode, 200);
+      await followup.job;
+      const completed = await readStored(original.id);
+      assert.equal(completed.messages.at(-1).actions[0].projectId, 'p2');
+      assert.equal(completed.messages.at(-1).actions[0].stdout, 'stdout-after-move');
+      assert.equal(completed.messages.at(-1).approvals[0].projectId, 'p2');
+      assert.equal(await fs.readFile(path.join(secondProject, 'after-move.txt'), 'utf8'), 'one execution\n');
+      await assert.rejects(fs.stat(path.join(project, 'after-move.txt')), { code: 'ENOENT' });
+      assert.equal(await fs.readFile(path.join(project, 'before-move.txt'), 'utf8'), 'one execution\n');
+      assert.equal(followup.response.records().at(-1).type, 'done');
     });
 
     await t.test('cancelling a conversation while awaiting approval revokes it and completes the job', async () => {

@@ -18,6 +18,8 @@ Les choix sont conservés avec le chat et ses brouillons, puis **figés à l’e
 
 Une branche de conversation démarre toujours avec Internet et les scripts désactivés. Elle reprend le droit de fichiers d’une source web qui l’avait activé ; une branche issue d’un historique natif ne l’active pas. Vérifiez ces choix avant d’envoyer votre nouvelle demande.
 
+Un déplacement de conversation désactive les fichiers et les scripts, y compris dans le brouillon transféré. Dans **Sans projet**, ces deux permissions restent désactivées côté serveur et dans l’interface ; la recherche web reste activable. Un chat qui attend une validation de script ne peut pas être déplacé, renommé ou supprimé avant la fin ou l’arrêt de son tour.
+
 ## Fichiers du projet
 
 Les outils directs de fichiers utilisent uniquement le dossier de travail du projet Bionic. Les dossiers liés et `extraRoots` restent accessibles manuellement selon leurs droits, sans devenir des racines autorisées pour ces outils. Les protections de chemins, de liens et de versions restent appliquées côté serveur.
@@ -36,6 +38,8 @@ Les outils directs de fichiers utilisent uniquement le dossier de travail du pro
 Les changements par ces outils sont immédiats lorsqu’ils sont autorisés pour le message. Ils n’attendent pas le bouton d’approbation réservé aux scripts. Leur résultat apparaît dans **Actions de l’agent**. Une version devenue ancienne ou une destination occupée provoque un refus ; le modèle doit adapter sa demande au résultat de l’outil.
 
 **Restaurer le fichier**, sous une mise à la corbeille réussie, restitue sa copie au chemin d’origine, dans le même projet. La restauration est disponible après la fin de la réponse et refuse d’écraser un fichier revenu à ce chemin. Les octets et métadonnées de corbeille sont conservés dans `data/file-backups/`. Ils ne sont pas purgés automatiquement. **Rétablir la version précédente** d’une édition est une opération distincte, également soumise à un contrôle de version.
+
+Après un déplacement de chat, une ancienne action ne permet pas de restaurer un fichier dans le projet cible. Une restauration déjà acceptée se termine avant un déplacement, renommage ou suppression concurrent de son chat ; elle ne recrée pas un chat supprimé.
 
 La lecture directe est limitée à six fichiers distincts par demande, avec des extraits de 3 000 caractères au maximum. Les nouveaux extraits, y compris ceux d’une recherche de contenu, partagent un budget dépendant du contexte du modèle et plafonné à 12 000 caractères. Une recherche peut inspecter davantage de fichiers sur le disque sans envoyer tout leur contenu : au plus 300 fichiers, 80 dossiers, 200 000 caractères inspectés et 20 correspondances, avec indication d’un résultat partiel. Les fichiers trop grands pour cette recherche sont ignorés et signalés.
 
@@ -97,6 +101,8 @@ Le code proposé, les décisions et les sorties restent dans `data/chats/`. Le c
 Une réponse assistant encore en cours ne peut pas être le dernier message copié. Choisissez un point antérieur, y compris pendant une génération dans le fil source, ou attendez sa fin. Les messages qui arrivent ensuite dans la source ne sont pas ajoutés à la branche. Les demandes en attente et les brouillons ne sont pas copiés.
 
 Les messages et pièces jointes copiés gardent leur contenu enregistré, dans les limites déjà disponibles pour un historique Bionic. Les messages copiés reçoivent de nouveaux identifiants. Les actions précédentes deviennent un **historique passif** : leurs anciens identifiants de restauration, d’approbation et d’exécution ne donnent aucun droit dans le nouveau fil. Un reçu copié est marqué historique et ne prétend pas qu’un outil vient d’être rejoué.
+
+Le nom de la branche est limité à 120 caractères, suffixe inclus, comme les noms saisis dans le menu de renommage. La provenance garde le projet affiché et, pour une source native déplacée, son projet Bionic d’origine.
 
 Internet et les scripts sont désactivés dans la nouvelle branche. Le modèle et les choix d’effort disponibles peuvent être repris ; vérifiez le modèle et les droits de fichiers avant de continuer. Une branche issue de Bionic demeure une conversation du compagnon et ne s’écrit pas dans l’application native.
 

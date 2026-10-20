@@ -11,10 +11,11 @@ import { setTimeout as sleep } from 'node:timers/promises';
 const root=await fs.mkdtemp(path.join(os.tmpdir(),'bionic-mobile-server-test-'));
 const sourceRoot=fileURLToPath(new URL('../',import.meta.url));
 const fileRoot=path.join(root,'project-files');await fs.mkdir(fileRoot,{recursive:true});await fs.writeFile(path.join(fileRoot,'notes.md'),'Synthetic project file.');
-await fs.writeFile(path.join(root,'files-registry.json'),JSON.stringify({projects:[['p1',{projectWorkingDirectoryPath:fileRoot}]]}));
+const otherFileRoot=path.join(root,'other-project-files');await fs.mkdir(otherFileRoot);
+await fs.writeFile(path.join(root,'files-registry.json'),JSON.stringify({projects:[['p1',{projectWorkingDirectoryPath:fileRoot}],['p2',{projectWorkingDirectoryPath:otherFileRoot}]]}));
 process.env.BIONIC_MOBILE_PROJECT_REGISTRY=path.join(root,'files-registry.json');process.env.BIONIC_MOBILE_EXTRA_ROOTS='[]';
 await fs.cp(path.join(sourceRoot,'lib'),path.join(root,'lib'),{recursive:true});
-await fs.writeFile(path.join(root,'fixture-store.mjs'),`export function createBionicStore(){return {listProjects:async()=>[{id:'p1',name:'Synthetic',sessionsCount:1}],listSessions:async id=>{if(id!=='p1')throw Object.assign(new Error('Invalid'),{status:400});return [{id:'native-1',projectId:'p1',name:'Synthetic native',updatedAt:1}]},getConversation:async(projectId,id)=>{if(projectId!=='p1'||id!=='native-1')throw Object.assign(new Error('Missing'),{status:404});return {id,projectId,name:'Synthetic native',source:'bionic',messages:[{id:'m0',role:'user',text:'Synthetic historical text'}]}}}};`);
+await fs.writeFile(path.join(root,'fixture-store.mjs'),`export function createBionicStore(){return {listProjects:async()=>[{id:'p1',name:'Synthetic',sessionsCount:1},{id:'p2',name:'Other synthetic',sessionsCount:0}],listSessions:async id=>{if(id==='p2')return [];if(id!=='p1')throw Object.assign(new Error('Invalid'),{status:400});return [{id:'native-1',projectId:'p1',name:'Synthetic native',updatedAt:1}]},getConversation:async(projectId,id)=>{if(projectId!=='p1'||id!=='native-1')throw Object.assign(new Error('Missing'),{status:404});return {id,projectId,name:'Synthetic native',source:'bionic',messages:[{id:'m0',role:'user',text:'Synthetic historical text'}]}}}};`);
 const source=(await fs.readFile(path.join(sourceRoot,'server.mjs'),'utf8')).replace("from './lib/bionic-store.mjs'","from './fixture-store.mjs'");
 const marker=source.indexOf("server.listen(PORT, '0.0.0.0'");if(marker<0)throw new Error('Source shape changed');
 await fs.writeFile(path.join(root,'server.mjs'),source.slice(0,marker)+'\nexport {handle,server};\n');
@@ -29,6 +30,12 @@ globalThis.fetch=async(url,opt={})=>{
   const count=lastUpstreamBody.messages.filter(m=>m.role==='tool').length;
   if(count&&original==='AGENT_READ_NO_RESUME')return {ok:false,status:503,body:{cancel:async()=>{}}};
   const event=count?{choices:[{delta:{content:'Lecture terminée.'},finish_reason:'stop'}]}:{choices:[{delta:{tool_calls:[{index:0,id:'targeted-read',function:{name:'read_project_file',arguments:JSON.stringify({path:original==='AGENT_READ_FAIL'?'missing.md':'agent.md'})}}]},finish_reason:'tool_calls'}]};
+  return {ok:true,status:200,body:new ReadableStream({start(c){c.enqueue(Buffer.from('data: '+JSON.stringify(event)+'\n\ndata: [DONE]\n\n'));c.close()}})};
+ }
+ if(original==='AGENT_TRASH'){
+  const count=lastUpstreamBody.messages.filter(m=>m.role==='tool').length;
+  const fn={name:count===0?'inspect_project_file':'trash_project_file',arguments:JSON.stringify({path:'trash.txt'})};
+  const event=count<2?{choices:[{delta:{tool_calls:[{index:0,id:'trash-'+count,function:fn}]},finish_reason:'tool_calls'}]}:{choices:[{delta:{content:'Fichier mis à la corbeille.'},finish_reason:'stop'}]};
   return {ok:true,status:200,body:new ReadableStream({start(c){c.enqueue(Buffer.from('data: '+JSON.stringify(event)+'\n\ndata: [DONE]\n\n'));c.close()}})};
  }
  if(original==='AGENT_EDIT'||original==='UNSOLICITED_TOOL'||original==='AGENT_DETACHED'){
@@ -53,6 +60,8 @@ const findings=[];
 const runId=randomUUID(),backgroundRequestId=runId+'-checkpoint';
 try {
  let r=await request('/api/projects');findings.push({test:'unauthenticated API blocked',pass:r.statusCode===401,status:r.statusCode});
+ r=await request('/api/conversation/move',{method:'POST',body:{projectId:'p1',id:'native-1',targetProjectId:'p2'}});findings.push({test:'conversation move requires authentication',pass:r.statusCode===401});
+ for(const action of ['rename','delete']){r=await request('/api/conversation/'+action,{method:'POST',body:{projectId:'p1',id:'native-1',name:'Forbidden'}});findings.push({test:'conversation '+action+' requires authentication',pass:r.statusCode===401})}
  r=await request('/api/file?projectId=p1&rootId=project&path=notes.md');findings.push({test:'file contents require login',pass:r.statusCode===401});
  r=await request('/api/file/upload?projectId=p1&name=no.txt',{method:'POST',raw:Buffer.from('x')});findings.push({test:'phone upload requires login',pass:r.statusCode===401});
  r=await request('/api/conversation/fork',{method:'POST',body:{projectId:'p1',chatId:'native-1'}});findings.push({test:'conversation forks require login',pass:r.statusCode===401});
@@ -140,6 +149,7 @@ try {
  findings.push({test:'a queued request recovered after server restart remains interrupted and is never replayed',pass:JSON.parse(r.text()).status==='interrupted'&&!upstreamBodies.some(body=>body.messages.at(-1).content==='Never auto replay')});
  const holdRes=new Res();const holdJob=handle(req('/api/chat',{method:'POST',headers:{cookie},body:{...data('HOLD FIFO','native-1'),requestId:runId+'-fifo'}}),holdRes);
  for(let i=0;i<50&&!holdRes.records().some(e=>e.type==='start');i++)await sleep(10);const id=holdRes.records().find(e=>e.type==='start')?.id,n=upstreamCount;
+ for(const action of ['rename','delete']){r=await request('/api/conversation/'+action,{method:'POST',headers:{cookie},body:{projectId:'p1',id:'native-1',name:'Busy native'}});findings.push({test:'native '+action+' is blocked while its companion continuation is running',pass:r.statusCode===409})}
  const queuedOne=runId+'-queued-1',queuedCancel=runId+'-queued-cancel',queuedSnapshot=runId+'-queued-snapshot',queuedTool=runId+'-queued-tool';
  r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL queued first',id),requestId:queuedOne,reasoning:'off'}});
  const queuedReceipt=r.records().at(-1);
@@ -243,6 +253,8 @@ try {
  r=await request('/api/activity?projectId=p1',{headers:{cookie}});findings.push({test:'copied fork messages do not create new completion notifications',pass:!JSON.parse(r.text()).events.some(event=>event.chatId===forkResult.id)});
  // The queue limit counts only waiting entries, and canceling one frees a slot.
  const limitChatId=secondHoldRes.records().find(e=>e.type==='start').id,limitIds=[];
+ r=await request('/api/conversation/move',{method:'POST',headers:{cookie},body:{projectId:'p1',id:limitChatId,targetProjectId:'p2'}});findings.push({test:'a running conversation cannot move between project scopes',pass:r.statusCode===409});
+ for(const action of ['rename','delete']){r=await request('/api/conversation/'+action,{method:'POST',headers:{cookie},body:{projectId:'p1',id:limitChatId,name:'Busy edit'}});findings.push({test:'a running conversation cannot '+action+' while a response is active',pass:r.statusCode===409})}
  for(let i=0;i<10;i++){const requestId=runId+'-limit-'+i;limitIds.push(requestId);r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL limit '+i,limitChatId),requestId}});assert.equal(r.records().at(-1).type,'queued')}
  const beforeLimit=upstreamCount;r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL over limit',limitChatId),requestId:runId+'-over-limit'}});
  findings.push({test:'one conversation accepts at most ten waiting messages without disturbing other active chats',pass:r.statusCode===409&&upstreamCount===beforeLimit});
@@ -251,6 +263,112 @@ try {
  finishHold(upstream.shift());for(const c of upstream.splice(0))try{c.close()}catch{}await secondHoldJob;
  r=await request('/api/models/unload',{method:'POST',headers:{cookie},body:{instanceId:'loaded-synthetic'}});findings.push({test:'authenticated exact-instance unload succeeds after reply',pass:r.statusCode===200&&JSON.parse(r.text()).unloaded===true&&unloadCount===1});
  r=await request('/api/models/unload',{method:'POST',headers:{cookie},body:{instanceId:'loaded-synthetic'}});findings.push({test:'unload stale instance rejected without repeated mutation',pass:r.statusCode===409&&unloadCount===1});
+ const moveInput={projectId:'p1',id:'native-1',targetProjectId:'p2'};
+ r=await request('/api/conversation/move',{method:'POST',headers:{cookie},body:null});findings.push({test:'malformed move payload is rejected without changing conversation placement',pass:r.statusCode===400});
+ r=await request('/api/conversation/move',{method:'POST',headers:{cookie,origin:'https://attacker.example'},body:moveInput});findings.push({test:'cross-origin conversation moves are blocked',pass:r.statusCode===403});
+ r=await request('/api/conversation/move',{method:'POST',headers:{cookie},body:moveInput});const movedNative=JSON.parse(r.text()).conversation;
+ const oldNativeList=JSON.parse((await request('/api/sessions?projectId=p1',{headers:{cookie}})).text()).sessions;
+ const newNativeList=JSON.parse((await request('/api/sessions?projectId=p2',{headers:{cookie}})).text()).sessions;
+ findings.push({test:'native move changes only companion placement and preserves original store identity',pass:r.statusCode===200&&movedNative.nativeProjectId==='p1'&&movedNative.projectId==='p2'&&movedNative.messages[0].text==='Synthetic historical text'&&!oldNativeList.some(s=>s.id==='native-1')&&newNativeList.some(s=>s.id==='native-1')});
+ r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL relocated native','native-1'),projectId:'p2'}});findings.push({test:'replying to a relocated native conversation imports its real original history',pass:r.statusCode===200&&lastUpstreamBody.messages.some(message=>message.content==='Synthetic historical text')});
+ await fs.writeFile(path.join(fileRoot,'agent.md'),'before');r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_EDIT'),fileAccess:true}});const moveWebId=r.records().find(e=>e.type==='start').id;
+ const beforeMove=JSON.parse((await request('/api/conversation?projectId=p1&id='+moveWebId,{headers:{cookie}})).text());const oldAction=beforeMove.messages.at(-1).actions.find(action=>action.backupId);
+ await fs.writeFile(path.join(otherFileRoot,'agent.md'),'after');
+ r=await request('/api/deliverables',{method:'POST',headers:{cookie},body:{projectId:'p1',chatId:moveWebId,messageId:beforeMove.messages.at(-1).id,kind:'message'}});const retainedPin=JSON.parse(r.text());
+ r=await request('/api/conversation/move',{method:'POST',headers:{cookie},body:{projectId:'p1',id:moveWebId,targetProjectId:'p2'}});const movedWeb=JSON.parse(r.text()).conversation;
+ findings.push({test:'web move preserves ids and messages, resets file authorization and records old action scopes',pass:r.statusCode===200&&movedWeb.id===moveWebId&&movedWeb.projectId==='p2'&&movedWeb.fileAccess===false&&JSON.stringify(movedWeb.messages)===JSON.stringify(beforeMove.messages)&&movedWeb.messages.at(-1).actions.every(action=>action.projectId==='p1')});
+ r=await request('/api/conversation?projectId=p1&id='+moveWebId,{headers:{cookie}});findings.push({test:'a moved web conversation is no longer readable through its former project',pass:r.statusCode===404});
+ r=await request('/api/deliverables',{method:'POST',headers:{cookie},body:{projectId:'p2',chatId:moveWebId,messageId:movedWeb.messages.at(-1).id,actionId:oldAction.id,kind:'file'}});findings.push({test:'old file actions cannot pin a same-named target-project file after a move',pass:r.statusCode===409});
+ r=await request('/api/file/restore',{method:'POST',headers:{cookie},body:{projectId:'p2',rootId:'project',path:oldAction.path,hash:oldAction.hash,backupId:oldAction.backupId,chatId:moveWebId,actionId:oldAction.id}});findings.push({test:'old file actions cannot restore files across a moved conversation scope',pass:r.statusCode===409&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='after'&&await fs.readFile(path.join(otherFileRoot,'agent.md'),'utf8')==='after'});
+ r=await request('/api/deliverable/download?projectId=p1&id='+retainedPin.id,{headers:{cookie}});findings.push({test:'existing deliverable copies remain downloadable in their original project after a conversation moves',pass:r.statusCode===200&&r.text()==='Fichier modifié.'});
+ r=await request('/api/conversation/move',{method:'POST',headers:{cookie},body:{projectId:'p2',id:moveWebId,targetProjectId:null}});const unassigned=JSON.parse(r.text()).conversation.projectId;
+ r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL without project',moveWebId),projectId:unassigned,fileAccess:true,scriptAccess:true}});findings.push({test:'unassigned conversations accept replies without exposing file or script tools even when requested',pass:r.statusCode===200&&!lastUpstreamBody.tools&&r.records().at(-1).contextReceipt.toolsEnabled===false&&r.records().at(-1).contextReceipt.permissions.scriptAccess===false});
+ r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL public information',moveWebId),projectId:unassigned,fileAccess:true,scriptAccess:true,webAccess:true}});
+ findings.push({test:'unassigned conversations can enable public web independently of file and script permissions',pass:r.statusCode===200&&JSON.stringify(lastUpstreamBody.tools.map(tool=>tool.function.name))===JSON.stringify(['search_web','read_web_page'])&&r.records().at(-1).contextReceipt.permissions.webAccess===true});
+ r=await request('/api/conversation/fork',{method:'POST',headers:{cookie},body:{projectId:unassigned,chatId:moveWebId}});const unassignedFork=JSON.parse(await fs.readFile(path.join(root,'data/chats',JSON.parse(r.text()).id+'.json'),'utf8'));
+ findings.push({test:'a moved chat can fork inside unassigned without reviving former project permissions',pass:r.statusCode===201&&unassignedFork.projectId===unassigned&&!unassignedFork.fileAccess&&!unassignedFork.scriptAccess&&!unassignedFork.webAccess&&unassignedFork.messages.every(message=>!message.actions&&!message.approvals)});
+ const concurrentId=(await send('NORMAL concurrently relocated')).records().find(e=>e.type==='start').id;
+ const moves=await Promise.all(['p2',null].map(targetProjectId=>request('/api/conversation/move',{method:'POST',headers:{cookie},body:{projectId:'p1',id:concurrentId,targetProjectId}})));
+ findings.push({test:'concurrent web moves serialize and a stale source cannot reassign the conversation twice',pass:moves.filter(response=>response.statusCode===200).length===1&&moves.filter(response=>response.statusCode===404).length===1});
+ for(const action of ['rename','delete']){
+  r=await request('/api/conversation/'+action,{method:'POST',headers:{cookie,origin:'https://attacker.example'},body:{projectId:'p2',id:'native-1',name:'Forbidden'}});findings.push({test:'cross-origin conversation '+action+' is blocked',pass:r.statusCode===403});
+  r=await request('/api/conversation/'+action,{method:'POST',headers:{cookie},body:{projectId:'p1',id:'../native-1',name:'Forbidden'}});findings.push({test:'conversation '+action+' rejects unsafe identifiers',pass:r.statusCode===400});
+ }
+ const originalNativeStore=await fs.readFile(path.join(root,'fixture-store.mjs'),'utf8');
+ r=await request('/api/conversation/rename',{method:'POST',headers:{cookie},body:{projectId:'p2',id:'native-1',name:'  Mon historique natif  '}});const alias=JSON.parse(r.text()).conversation;
+ const aliasList=JSON.parse((await request('/api/sessions?projectId=p2',{headers:{cookie}})).text()).sessions;
+ findings.push({test:'native rename exposes the local alias in lists and reads while preserving original history identity',pass:r.statusCode===200&&alias.name==='Mon historique natif'&&alias.nativeProjectId==='p1'&&alias.messages[0].text==='Synthetic historical text'&&aliasList.some(item=>item.id==='native-1'&&item.name===alias.name)});
+ r=await request('/api/conversation/fork',{method:'POST',headers:{cookie},body:{projectId:'p2',chatId:'native-1'}});const relocatedFork=JSON.parse(await fs.readFile(path.join(root,'data/chats',JSON.parse(r.text()).id+'.json'),'utf8'));
+ findings.push({test:'forking a renamed native history preserves its alias and both displayed and native project origins',pass:r.statusCode===201&&relocatedFork.name==='Mon historique natif · branche'&&relocatedFork.origin.projectId==='p2'&&relocatedFork.origin.nativeProjectId==='p1'&&relocatedFork.messages[0].text==='Synthetic historical text'&&!relocatedFork.fileAccess});
+ r=await request('/api/conversation/delete',{method:'POST',headers:{cookie},body:{projectId:'p1',id:'native-1'}});findings.push({test:'a stale native project cannot delete the relocated conversation',pass:r.statusCode===404});
+ r=await request('/api/conversation/delete',{method:'POST',headers:{cookie},body:{projectId:'p2',id:'native-1'}});const nativeDeleted=JSON.parse(r.text());
+ const hiddenNative=await request('/api/conversation?projectId=p2&id=native-1',{headers:{cookie}});
+ const hiddenList=JSON.parse((await request('/api/sessions?projectId=p2',{headers:{cookie}})).text()).sessions;
+ const beforeHiddenReply=upstreamCount;const hiddenReply=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL hidden history','native-1'),projectId:'p2'}});
+ findings.push({test:'native delete persists a companion-only hide and blocks future replies without touching Bionic source bytes',pass:r.statusCode===200&&nativeDeleted.localOnly===true&&hiddenNative.statusCode===404&&!hiddenList.some(item=>item.id==='native-1')&&hiddenReply.statusCode===404&&upstreamCount===beforeHiddenReply&&await fs.readFile(path.join(root,'fixture-store.mjs'),'utf8')===originalNativeStore&&JSON.parse(await fs.readFile(path.join(root,'data','conversation-locations.json'),'utf8')).native.find(item=>item.id==='native-1').deletedAt>0});
+ await fs.writeFile(path.join(fileRoot,'agent.md'),'before');
+ const managedRequest=runId+'-managed';r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_EDIT'),requestId:managedRequest,fileAccess:true}});const managedId=r.records().find(event=>event.type==='start').id;
+ const managedBefore=JSON.parse((await request('/api/conversation?projectId=p1&id='+managedId,{headers:{cookie}})).text());
+ for(const name of ['', '   ', 'a'.repeat(121), 'Deux\nlignes', 2]){r=await request('/api/conversation/rename',{method:'POST',headers:{cookie},body:{projectId:'p1',id:managedId,name}});assert.equal(r.statusCode,400)}
+ findings.push({test:'web rename rejects empty long multiline and non-text names',pass:true});
+ r=await request('/api/conversation/rename',{method:'POST',headers:{cookie},body:{projectId:'p1',id:managedId,name:'  Conversation renommée  '}});const managedRenamed=JSON.parse(r.text()).conversation;
+ findings.push({test:'web rename persists its name without changing messages file permissions or origin metadata',pass:r.statusCode===200&&managedRenamed.name==='Conversation renommée'&&managedRenamed.fileAccess===managedBefore.fileAccess&&JSON.stringify(managedRenamed.messages)===JSON.stringify(managedBefore.messages)&&JSON.parse(await fs.readFile(path.join(root,'data','chats',managedId+'.json'),'utf8')).name===managedRenamed.name});
+ r=await request('/api/conversation/rename',{method:'POST',headers:{cookie},body:{projectId:'p2',id:managedId,name:'Wrong project'}});findings.push({test:'web rename verifies the current project scope',pass:r.statusCode===404});
+ r=await request('/api/conversation/delete',{method:'POST',headers:{cookie},body:{projectId:'p2',id:managedId}});findings.push({test:'web delete verifies the current project scope',pass:r.statusCode===404});
+ r=await request('/api/deliverables',{method:'POST',headers:{cookie},body:{projectId:'p1',chatId:managedId,messageId:managedRenamed.messages.at(-1).id,kind:'message'}});const managedPin=JSON.parse(r.text());
+ const restoreAction=managedRenamed.messages.at(-1).actions.find(action=>action.backupId);
+ const actualRename=fs.rename;let reachedRestore,releaseRestore;
+ const restoreReached=new Promise(resolve=>{reachedRestore=resolve}),restoreReleased=new Promise(resolve=>{releaseRestore=resolve});
+ fs.rename=async(from,to)=>{if(to===path.join(fileRoot,'agent.md')){reachedRestore();await restoreReleased}return actualRename(from,to)};
+ let restoreResponse,renameResponse,deleteResponse,renameDone=false,deleteDone=false;
+ try{
+  const restoreJob=request('/api/file/restore',{method:'POST',headers:{cookie},body:{projectId:'p1',rootId:'project',path:restoreAction.path,hash:restoreAction.hash,backupId:restoreAction.backupId,chatId:managedId,actionId:restoreAction.id}});
+  await Promise.race([restoreReached,sleep(3000).then(()=>{throw new Error('Restore did not reach atomic save')})]);
+  const renameJob=request('/api/conversation/rename',{method:'POST',headers:{cookie},body:{projectId:'p1',id:managedId,name:'Après restauration'}}).then(value=>{renameDone=true;return value});
+  await sleep(10);
+  const deleteJob=request('/api/conversation/delete',{method:'POST',headers:{cookie},body:{projectId:'p1',id:managedId}}).then(value=>{deleteDone=true;return value});
+  await sleep(20);findings.push({test:'conversation rename and delete wait for an already accepted file restoration',pass:!renameDone&&!deleteDone});
+  releaseRestore();[restoreResponse,renameResponse,deleteResponse]=await Promise.all([restoreJob,renameJob,deleteJob]);
+ }finally{releaseRestore();fs.rename=actualRename}
+ findings.push({test:'file restoration finishes before rename and deletion without stale snapshot resurrection',pass:restoreResponse.statusCode===200&&renameResponse.statusCode===200&&JSON.parse(renameResponse.text()).conversation.name==='Après restauration'&&JSON.parse(renameResponse.text()).conversation.messages.at(-1).actions.find(action=>action.id===restoreAction.id).restored===true&&deleteResponse.statusCode===200&&JSON.parse(deleteResponse.text()).deleted===true});
+ const deletedPath=path.join(root,'data','chats',managedId+'.json');let deletedFileExists=true;try{await fs.stat(deletedPath)}catch(error){if(error.code==='ENOENT')deletedFileExists=false;else throw error}
+ r=await request('/api/conversation?projectId=p1&id='+managedId,{headers:{cookie}});const deletedRead=r.statusCode;
+ const deletedList=JSON.parse((await request('/api/sessions?projectId=p1',{headers:{cookie}})).text()).sessions;
+ r=await request('/api/chat-request?projectId=p1&requestId='+managedRequest,{headers:{cookie}});
+ findings.push({test:'web deletion removes only its JSON cache list entry and request receipt',pass:!deletedFileExists&&deletedRead===404&&!deletedList.some(item=>item.id===managedId)&&r.statusCode===404});
+ r=await request('/api/deliverable/download?projectId=p1&id='+managedPin.id,{headers:{cookie}});
+ const retainedOther=await request('/api/conversation?projectId='+unassigned+'&id='+moveWebId,{headers:{cookie}});
+ findings.push({test:'web deletion preserves pinned deliverable copies project files backups and other conversations',pass:r.statusCode===200&&r.text()==='Fichier modifié.'&&retainedOther.statusCode===200&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='before'&&await fs.readFile(path.join(otherFileRoot,'agent.md'),'utf8')==='after'&&(await fs.readdir(path.join(root,'data','file-backups'))).length>0});
+ const beforeDeletedRetry=upstreamCount;
+ r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL deleted retry',managedId),requestId:runId+'-deleted-retry'}});
+ const deletedSend=r.statusCode;r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL duplicate deleted request'),requestId:managedRequest}});
+ findings.push({test:'neither a stale chat send nor a retry of its deleted request can resurrect that conversation',pass:deletedSend===404&&r.statusCode===409&&upstreamCount===beforeDeletedRetry});
+ const raceId=(await send('NORMAL deletion race')).records().find(event=>event.type==='start').id;
+ const deletionRace=await Promise.all([request('/api/conversation/delete',{method:'POST',headers:{cookie},body:{projectId:'p1',id:raceId}}),request('/api/conversation/rename',{method:'POST',headers:{cookie},body:{projectId:'p1',id:raceId,name:'Too late'}}),send('NORMAL deleted race send',raceId)]);
+ findings.push({test:'concurrent web deletion serializes with rename and message acceptance without resurrecting the file',pass:deletionRace[0].statusCode===200&&deletionRace[1].statusCode===404&&deletionRace[2].statusCode===404&&(await request('/api/conversation?projectId=p1&id='+raceId,{headers:{cookie}})).statusCode===404});
+ // The new recoverable-trash route shares the same management lock as edits.
+ const trashPath=path.join(fileRoot,'trash.txt');await fs.writeFile(trashPath,'Recover these exact bytes.');
+ r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_TRASH'),fileAccess:true}});const trashChatId=r.records().find(record=>record.type==='start').id,trashAction=r.records().find(record=>record.action?.trashId).action;
+ await assert.rejects(fs.stat(trashPath),{code:'ENOENT'});
+ findings.push({test:'trash actions retain the project that produced the recoverable backup',pass:trashAction.ok&&trashAction.projectId==='p1'});
+ await request('/api/conversation/move',{method:'POST',headers:{cookie},body:{projectId:'p1',id:trashChatId,targetProjectId:'p2'}});
+ r=await request('/api/file/restore-trash',{method:'POST',headers:{cookie},body:{projectId:'p2',chatId:trashChatId,actionId:trashAction.id}});
+ findings.push({test:'a moved trash journal cannot restore into another project',pass:r.statusCode===409});await assert.rejects(fs.stat(trashPath),{code:'ENOENT'});
+ await request('/api/conversation/move',{method:'POST',headers:{cookie},body:{projectId:'p2',id:trashChatId,targetProjectId:'p1'}});
+ const originalOpen=fs.open;let releaseTrash,reachedTrash,trashRenameDone=false,trashDeleteDone=false;
+ const trashReached=new Promise(resolve=>{reachedTrash=resolve}),trashReleased=new Promise(resolve=>{releaseTrash=resolve});
+ fs.open=async(...args)=>{if(args[0]===trashPath&&args[1]==='wx'){reachedTrash();await trashReleased}return originalOpen(...args)};
+ let restoredTrash,renamedTrash,deletedTrash;
+ try{
+  const restoreJob=request('/api/file/restore-trash',{method:'POST',headers:{cookie},body:{projectId:'p1',chatId:trashChatId,actionId:trashAction.id}});
+  await Promise.race([trashReached,sleep(3000).then(()=>{throw new Error('Trash restoration did not reach exclusive creation')})]);
+  const renameJob=request('/api/conversation/rename',{method:'POST',headers:{cookie},body:{projectId:'p1',id:trashChatId,name:'Restored trash'}}).then(value=>{trashRenameDone=true;return value});await sleep(10);
+  const deleteJob=request('/api/conversation/delete',{method:'POST',headers:{cookie},body:{projectId:'p1',id:trashChatId}}).then(value=>{trashDeleteDone=true;return value});await sleep(20);
+  findings.push({test:'rename and deletion wait for an accepted trash restoration',pass:!trashRenameDone&&!trashDeleteDone});releaseTrash();
+  [restoredTrash,renamedTrash,deletedTrash]=await Promise.all([restoreJob,renameJob,deleteJob]);
+ }finally{releaseTrash();fs.open=originalOpen}
+ findings.push({test:'trash restoration persists its result before rename and deletion without resurrecting the chat',pass:restoredTrash.statusCode===200&&renamedTrash.statusCode===200&&JSON.parse(renamedTrash.text()).conversation.messages.at(-1).actions.find(action=>action.id===trashAction.id).restored&&deletedTrash.statusCode===200&&(await request('/api/conversation?projectId=p1&id='+trashChatId,{headers:{cookie}})).statusCode===404&&await fs.readFile(trashPath,'utf8')==='Recover these exact bytes.'});
+ r=await request('/api/file/restore-trash',{method:'POST',headers:{cookie},body:{projectId:'p1',chatId:trashChatId,actionId:trashAction.id}});findings.push({test:'an old trash restore request cannot recreate a deleted conversation',pass:r.statusCode===404});
  for(const finding of findings)test(finding.test,()=>assert.equal(finding.pass,true,JSON.stringify(finding)));
  if(findings.some(f=>!f.pass))throw new Error('Server regression detected');
 }finally{for(const c of upstream)try{c.close()}catch{}server.close();const resolved=path.resolve(root);assert(resolved.startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(resolved).startsWith('bionic-mobile-server-test-'));await fs.rm(resolved,{recursive:true,force:true});}

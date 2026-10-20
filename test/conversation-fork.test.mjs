@@ -32,7 +32,7 @@ test('a full fork creates fresh ids, explicit origin and an independent writable
   assert.match(fork.id, /^web-[a-f0-9-]{36}$/);
   assert.notEqual(fork.id, original.id); assert.equal(fork.projectId, original.projectId);
   assert.equal(fork.source, 'web'); assert.equal(fork.readOnly, false); assert.equal(fork.name, 'Essai · branche');
-  assert.deepEqual(fork.origin, { kind: 'fork', id: original.id, name: 'Essai', source: 'web', messageId: 'answer-2', messageIndex: 3 });
+  assert.deepEqual(fork.origin, { kind: 'fork', id: original.id, projectId: 'project-1', name: 'Essai', source: 'web', messageId: 'answer-2', messageIndex: 3 });
   assert.equal(new Set(fork.messages.map(message => message.id)).size, 4);
   assert.ok(fork.messages.every((message, index) => message.id !== original.messages[index].id && message.fromFork));
   assert.deepEqual(fork.messages.map(message => message.text), original.messages.map(message => message.text));
@@ -58,7 +58,7 @@ test('attachments, receipts, metrics and model settings are deep independent sna
   assert.equal(receipt.attachments[0].messageId, fork.messages[0].id);
   assert.equal(receipt.toolReads[0].text, original.messages[1].contextReceipt.toolReads[0].text);
   assert.equal(receipt.initialTransmitted, true); assert.equal(receipt.historical, true);
-  assert.deepEqual(receipt.origin, { chatId: original.id, messageId: 'answer-1', source: 'web' });
+  assert.deepEqual(receipt.origin, { chatId: original.id, projectId: 'project-1', messageId: 'answer-1', source: 'web' });
   fork.messages[0].attachments[0].text = 'Changed in fork'; receipt.toolReads[0].text = 'Changed';
   fork.messages[1].metrics.inputTokens = 0; fork.reasoningByModel['local-model'] = 'off';
   assert.equal(original.messages[0].attachments[0].text, 'Exact captured bytes');
@@ -150,8 +150,55 @@ test('native read-only history becomes an independent web branch without importi
   const before = structuredClone(original), fork = forkConversation({ source: original });
   assert.equal(fork.source, 'web'); assert.equal(fork.readOnly, false); assert.equal(fork.importedTruncated, true);
   assert.equal(fork.origin.source, 'bionic'); assert.equal(fork.messages[0].fromBionic, true);
+  assert.equal(fork.origin.projectId, 'project-1'); assert.equal(fork.origin.nativeProjectId, 'project-1');
   assert.equal(fork.headId, undefined); assert.equal(fork.storageReadMode, undefined);
   fork.omitted.attachments = 0; assert.deepEqual(original, before);
+});
+
+test('a renamed source at the organizer name limit yields a valid default branch name including its suffix', () => {
+  const original = source(); original.name = 'R'.repeat(120);
+  const fork = forkConversation({ source: original });
+  assert.equal(fork.name, 'R'.repeat(110) + ' · branche'); assert.equal(fork.name.length, 120);
+  assert.equal(fork.origin.name, original.name);
+  assert.equal(forkConversation({ source: original, name: 'N'.repeat(120) }).name.length, 120);
+  for (const name of ['N'.repeat(121), 'Name\u0085next', 'Name\u2028next', 'Name\u2029next']) assert.throws(() => forkConversation({ source: original, name }), { status: 400 });
+});
+
+test('native aliases keep their displayed project and distinct original project when session ids are shared', () => {
+  const original = { id: 'shared-native-id', projectId: 'display-project', name: 'Nom renommé localement', source: 'bionic', nativeProjectId: 'native-a', fileAccess: false, messages: [{ id: 'shared-message-id', role: 'assistant', text: 'Une réponse native.', actions: [{ id: 'original-action', name: 'read_project_file', path: 'notes.md', ok: true, message: 'Lu' }], contextReceipt: { current: { messageId: 'shared-message-id' }, history: { messages: [] }, attachments: [] } }] };
+  const first = forkConversation({ source: original });
+  const second = forkConversation({ source: { ...original, nativeProjectId: 'native-b' } });
+  for (const [fork, nativeProjectId] of [[first, 'native-a'], [second, 'native-b']]) {
+    assert.equal(fork.projectId, 'display-project'); assert.equal(fork.name, 'Nom renommé localement · branche');
+    assert.equal(fork.origin.projectId, 'display-project'); assert.equal(fork.origin.nativeProjectId, nativeProjectId);
+    assert.equal(fork.messages[0].origin.nativeProjectId, nativeProjectId); assert.equal(fork.messages[0].origin.projectId, 'display-project');
+    assert.equal(fork.messages[0].contextReceipt.origin.nativeProjectId, nativeProjectId);
+    assert.equal(fork.messages[0].historicalActions[0].origin.nativeProjectId, nativeProjectId);
+    assert.equal(fork.fileAccess, false); assert.equal(fork.nativeProjectId, undefined);
+  }
+  assert.notDeepEqual(first.origin, second.origin);
+  const further = forkConversation({ source: first });
+  assert.equal(further.origin.projectId, 'display-project');
+  assert.deepEqual(further.messages[0].historicalActions[0].origin, first.messages[0].historicalActions[0].origin);
+});
+
+test('moved web chats retain old attachment snapshots and neutralize prior actions in their new project or unassigned', () => {
+  for (const projectId of ['destination-project', 'companion-unassigned']) {
+    const original = source(); original.previousProjectId = original.projectId; original.projectId = projectId; original.fileAccess = false;
+    original.messages[0].attachments.forEach(attachment => { attachment.projectId = 'project-1'; });
+    original.messages[1].actions[0].projectId = 'project-1';
+    const before = structuredClone(original), fork = forkConversation({ source: original, messageId: 'answer-1' });
+    assert.equal(fork.projectId, projectId); assert.equal(fork.origin.projectId, projectId);
+    assert.equal(fork.fileAccess, false); assert.equal(fork.webAccess, false); assert.equal(fork.scriptAccess, false);
+    assert.deepEqual(fork.messages[0].attachments, original.messages[0].attachments);
+    assert.equal(fork.messages[0].attachments[0].projectId, 'project-1');
+    assert.equal(fork.messages[0].attachments[0].text, 'Exact captured bytes');
+    assert.equal(fork.messages[1].origin.projectId, projectId); assert.equal(fork.messages[1].contextReceipt.origin.projectId, projectId);
+    assert.equal(fork.messages[1].historicalActions[0].origin.projectId, projectId);
+    assert.equal(fork.messages[1].actions, undefined); assert.equal(fork.messages[1].approvals, undefined);
+    assert.equal(fork.messages[1].historicalActions[0].backupId, undefined); assert.equal(fork.messages[1].historicalActions[0].trashId, undefined);
+    assert.deepEqual(original, before);
+  }
 });
 
 test('forking a fork preserves the original journal provenance and never revives authority', () => {
@@ -179,7 +226,8 @@ test('invalid sources, duplicate ids, missing boundaries and invalid branch name
   }
   assert.throws(() => forkConversation({ source: source(), messageId: 'missing' }), { status: 404 });
   for (const messageId of [null, '', '../file', 1]) assert.throws(() => forkConversation({ source: source(), messageId }), { status: 400 });
-  for (const name of [null, '', ' ', 'x'.repeat(161), 'bad\nname']) assert.throws(() => forkConversation({ source: source(), name }), { status: 400 });
+  for (const name of [null, '', ' ', 'x'.repeat(121), 'bad\nname']) assert.throws(() => forkConversation({ source: source(), name }), { status: 400 });
+  assert.throws(() => forkConversation({ source: { ...source(), source: 'bionic', nativeProjectId: '../other' } }), { status: 400 });
   const duplicate = source(); duplicate.messages[2].id = duplicate.messages[0].id;
   assert.throws(() => forkConversation({ source: duplicate }), { status: 400 });
 });
