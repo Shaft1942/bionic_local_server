@@ -92,7 +92,8 @@ function createProjectFileBrowser({ api, node, icon, toast, getProject, isBusy, 
   }
   function close() {
     if (!canLeave()) return;
-    ++state.sequence; $('files-view').hidden = true; $('app').hidden = false; $('attach-file').focus();
+    ++state.sequence; $('files-view').hidden = true; $('app').hidden = false;
+    ($('composer-files').open ? $('attach-file') : $('files-menu-toggle')).focus();
   }
   function renderAttachments() {
     $('attachments').replaceChildren(); $('attachments').hidden = !state.attachments.length;

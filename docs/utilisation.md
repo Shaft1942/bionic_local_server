@@ -14,6 +14,8 @@ Vous pouvez aussi commencer un nouveau chat dans le projet sélectionné. Le mod
 
 Sur téléphone, le modèle et l’effort se choisissent côte à côte sous le texte. L’envoi se trouve à droite du message ; pendant une réponse, la flèche ajoute le message à la file et le bouton carré arrête la réponse de ce chat. L’aide détaillée de l’effort apparaît quand ce sélecteur est actif et reste associée au champ pour les lecteurs d’écran.
 
+Le menu **Fichiers**, juste au-dessus de la saisie sur téléphone, regroupe **Fichier du projet**, **Importer un fichier** et l’autorisation de modification par le modèle. Son libellé indique toujours si les modifications sont autorisées ou désactivées. Le panneau s’ouvre au-dessus du bouton et se ferme avec un nouvel appui, un appui ailleurs ou la touche Échap. Les pièces jointes et le suivi d’import restent visibles hors du menu. Sur bureau, les trois commandes restent directement accessibles.
+
 La zone de saisie reste disponible pendant la génération. Vous pouvez préparer le message suivant sans interrompre le modèle. **Ajouter à la file** transmet ce message au serveur du PC : il attend la fin du tour précédent dans la même conversation. Un message en attente peut être retiré avant son démarrage. La file accepte au maximum dix messages en attente par conversation.
 
 Le modèle, l’effort, les droits de modification et les pièces jointes sont ceux choisis au moment de l’envoi. Les pièces jointes sont copiées à cet instant ; les modifier ensuite sur le PC ne change pas silencieusement la demande déjà acceptée. L’historique transmis au modèle est construit lorsque le tour commence, pour inclure la réponse précédente.

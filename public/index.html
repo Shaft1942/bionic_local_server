@@ -49,9 +49,14 @@
       <div id="message-error" class="message-error" role="alert" hidden></div>
       <form id="composer" class="composer">
         <div id="attachments" class="attachments" aria-label="Fichiers joints au prochain message" hidden></div>
-        <div class="attachment-tools"><button id="attach-file" class="attach-file" type="button">Fichier du projet</button><button id="upload-file" class="attach-file" type="button">Importer un fichier</button><input id="phone-files" class="sr-only" type="file" multiple tabindex="-1" aria-label="Fichiers de cet appareil à importer dans le projet"></div>
+        <details id="composer-files" class="composer-files">
+          <summary id="files-menu-toggle" aria-controls="composer-files-options"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l8-8"></path></svg><span>Fichiers</span><span id="files-permission-state" class="files-permission-state">Modifications autorisées</span><svg class="files-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"></path></svg></summary>
+          <div id="composer-files-options" class="composer-files-menu">
+            <div class="attachment-tools"><button id="attach-file" class="attach-file" type="button">Fichier du projet</button><button id="upload-file" class="attach-file" type="button">Importer un fichier</button><input id="phone-files" class="sr-only" type="file" multiple tabindex="-1" aria-label="Fichiers de cet appareil à importer dans le projet"></div>
+            <label class="agent-files-option"><input id="agent-files" type="checkbox" checked><span>Le modèle peut modifier les textes du projet</span></label>
+          </div>
+        </details>
         <p id="upload-status" class="upload-status" role="status" hidden></p>
-        <label class="agent-files-option"><input id="agent-files" type="checkbox" checked><span>Le modèle peut modifier les textes du projet</span></label>
         <p id="composer-activity" class="composer-activity" role="status" hidden></p>
         <div class="composer-box">
           <label class="sr-only" for="prompt">Ton message</label><textarea id="prompt" rows="2" placeholder="Écrire un message…" maxlength="16000"></textarea>

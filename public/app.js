@@ -1,5 +1,26 @@
 'use strict';
 const $ = id => document.getElementById(id);
+const composerFiles = $('composer-files'), composerFilesToggle = $('files-menu-toggle');
+const mobileComposer = matchMedia('(max-width:760px)');
+function closeComposerFiles(restoreFocus = false) {
+  if (!mobileComposer.matches || !composerFiles.open) return;
+  composerFiles.open = false;
+  if (restoreFocus) composerFilesToggle.focus({ preventScroll: true });
+}
+function syncComposerFilesLayout() {
+  const focusInside = composerFiles.contains(document.activeElement);
+  composerFiles.open = !mobileComposer.matches;
+  if (mobileComposer.matches && focusInside) composerFilesToggle.focus({ preventScroll: true });
+}
+syncComposerFilesLayout();
+mobileComposer.addEventListener('change', syncComposerFilesLayout);
+composerFiles.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && mobileComposer.matches && composerFiles.open) { event.preventDefault(); closeComposerFiles(true); }
+});
+composerFiles.addEventListener('focusout', event => {
+  if (event.relatedTarget && !composerFiles.contains(event.relatedTarget)) closeComposerFiles();
+});
+document.addEventListener('pointerdown', event => { if (!composerFiles.contains(event.target)) closeComposerFiles(); });
 const icons = {
   refresh: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 18 17"/>',
   plus: '<path d="M12 5v14M5 12h14"/>', search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>',
@@ -422,6 +443,7 @@ function setSending() {
   $('model').disabled = locked;
   for (const id of ['files-open-sidebar', 'attach-file', 'upload-file']) $(id).disabled = locked || !state.projectId;
   $('agent-files').disabled = locked;
+  $('files-permission-state').textContent = $('agent-files').checked ? 'Modifications autorisées' : 'Modifications désactivées';
   $('logout').disabled = state.uploading;
   document.querySelectorAll('.restore-action').forEach(button => button.disabled = locked || state.sending || button.dataset.restored === 'true');
   $('effort').disabled = locked || !(state.status?.models || []).find(model => model.id === $('model').value)?.reasoning?.allowedOptions.length;
@@ -649,6 +671,7 @@ async function start() {
   await recoverReplies(); scheduleRecovery();
 }
 function hidePrivateViews() {
+  closeComposerFiles();
   state.authenticated = false; ++state.authEpoch; ++state.viewSeq; ++state.projectSeq; clearTimeout(recoveryTimer); clearTimeout(renderTimer);
   for (const job of jobs.values()) job.controller?.abort();
   $('models-dialog').close(); $('files-view').hidden = true; $('app').hidden = true; $('login').hidden = false;
@@ -671,7 +694,8 @@ $('project').addEventListener('change', async () => {
   try { await loadSessions(); renderSessions(); scheduleRecovery(); } catch (e) { error(e.message); }
 });
 $('agent-files').addEventListener('change', () => { state.draftFileAccess = $('agent-files').checked; saveDraft(); setSending(); });
-$('upload-file').addEventListener('click', () => { if (!state.loading && !state.uploading && state.projectId) $('phone-files').click(); });
+$('attach-file').addEventListener('click', () => closeComposerFiles());
+$('upload-file').addEventListener('click', () => { if (!state.loading && !state.uploading && state.projectId) { closeComposerFiles(true); $('phone-files').click(); } });
 $('phone-files').addEventListener('change', async () => {
   const selected = [...$('phone-files').files]; $('phone-files').value = '';
   if (!selected.length || state.loading || state.uploading || !state.projectId) return;
