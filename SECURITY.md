@@ -6,7 +6,7 @@ Bionic Mobile est un compagnon personnel pour un **réseau local de confiance**.
 
 N’exposez pas directement le serveur sur Internet, n’ajoutez pas de redirection NAT et n’utilisez pas un Wi-Fi public ou invité non maîtrisé. Cette application ne fournit ni isolation entre utilisateurs, ni rôles, ni comptes séparés. Toute personne qui dispose du code accède au même périmètre du compagnon, avec les possibilités de lecture et d’écriture correspondantes.
 
-Le navigateur contacte le compagnon ; le compagnon appelle l’API Bionic en boucle locale. L’API Bionic n’a pas besoin d’être exposée au réseau. Le serveur rejette les adresses d’API distantes dans sa configuration normale.
+Le navigateur contacte le compagnon ; le compagnon appelle l’API Bionic en boucle locale. L’API Bionic n’a pas besoin d’être exposée au réseau. Le serveur rejette les adresses d’API distantes dans sa configuration normale. L’option web distincte permet des connexions sortantes du PC vers le moteur de recherche et les pages publiques demandées. Les recherches et URL sont donc communiquées aux services concernés ; ne les utilisez pas pour transmettre des secrets.
 
 ## Protections présentes et limites
 
@@ -16,10 +16,14 @@ Le navigateur contacte le compagnon ; le compagnon appelle l’API Bionic en bou
 - Des chemins de fichiers contrôlés, des catégories sensibles masquées et le refus de liens de fichiers ou de sorties du dossier autorisé.
 - Des sauvegardes avant remplacement et une vérification de version avant l’écriture, pour limiter les écrasements en cas de changement concurrent.
 - La consultation des historiques natifs sans écriture ni migration de leurs bases.
+- Pour les outils web : adresses publiques contrôlées, résolution DNS vérifiée et connexion fixée à l’adresse contrôlée, redirections revérifiées, taille et durée bornées, extraction passive sans JavaScript. Seul un endpoint SearXNG explicitement configuré peut viser un moteur local ; cette confiance ne s’étend pas aux URL de pages choisies par le modèle.
+- Pour les scripts : options désactivées par défaut, accord humain lié au code exact, au projet et au chat, sans réutilisation après décision ou redémarrage. Les branches n’héritent d’aucune attente de validation ni d’aucun pouvoir de restauration du journal source.
 
 Ces protections ne constituent pas un audit de sécurité exhaustif. Le logiciel, le système, Bionic, les modèles et les documents peuvent encore comporter des défauts. Le filtrage de noms de fichiers ne garantit pas qu’un document autorisé ne contient aucun secret.
 
 L’option de modification par le modèle est cochée par défaut dans un nouveau chat. Lorsqu’elle est active, les écritures autorisées sont **immédiates**, sans approbation par fichier. Un contenu de document peut aussi tromper un modèle malgré les consignes de séparation entre données et instructions. Utilisez un projet de test pour les documents non fiables, décochez cette option quand elle n’est pas nécessaire et conservez des sauvegardes indépendantes.
+
+L’option de scripts permet de proposer du code Python, Node.js ou PowerShell. **Chaque proposition exige un accord explicite, puis s’exécute avec les droits du compte du PC : ce n’est pas un bac à sable.** Le dossier de travail du projet ne limite pas ses accès aux fichiers ou au réseau. L’environnement transmis est réduit, mais le code approuvé peut lire les données accessibles au compte. L’expiration, les limites de durée et l’arrêt de processus ne garantissent ni l’annulation des modifications ni l’arrêt de descendants détachés. Le code et ses sorties sont conservés dans les conversations privées. Voir le [guide des outils](docs/outils-agents.md).
 
 ## Ce qui ne doit pas être publié
 

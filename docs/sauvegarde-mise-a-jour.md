@@ -8,25 +8,32 @@ Le dépôt GitHub et les archives publiques contiennent le programme. Vos conver
 
 | Emplacement | Contenu à protéger |
 | --- | --- |
-| `data/` | Conversations web et reçus de contexte, copies de pièces jointes, livrables dans `data/workspace/`, sauvegardes de fichiers et authentification |
+| `data/` | Conversations web et branches, propositions de scripts et leurs sorties, reçus de contexte, copies de pièces jointes, livrables dans `data/workspace/`, sauvegardes et corbeille dans `data/file-backups/`, authentification |
 | `config.local.json` | Vos ports, chemins et réglages privés |
 | `ACCES-PRIVE.txt` | Code d’accès en clair et adresses de connexion |
 | Dossiers de travail de vos projets | Fichiers modifiés et dossier `Imports telephone/` |
 | Dossiers de données Bionic | Projets et historiques natifs, gérés séparément par Bionic |
 | `runtime/` et journaux | Informations d’exécution et chemins locaux ; ce ne sont pas des archives publiques |
+| Environnement privé du serveur | Jeton Bionic, éventuelle clé Brave et endpoint SearXNG ; ces réglages ne sont pas automatiquement copiés avec `config.local.json` |
 
 Une sauvegarde du seul dossier du compagnon ne protège pas les fichiers des projets situés ailleurs. Les copies de `data/file-backups/` aident à annuler des remplacements ; elles ne remplacent pas une sauvegarde indépendante de vos projets.
+
+La corbeille conserve les octets des fichiers retirés par l’outil dédié, dans `data/file-backups/`. Gardez aussi les chats qui contiennent leurs actions d’origine pour retrouver les boutons de restauration. Une branche copie le journal sous forme historique et ne transfère pas ces droits. La restauration refuse d’écraser un fichier qui occupe déjà le chemin d’origine.
+
+Les scripts approuvés peuvent modifier des fichiers en dehors du projet et ne produisent pas automatiquement de sauvegarde pour chaque changement. Leur code et leurs sorties peuvent contenir des informations privées ; ils sont conservés dans les conversations. `data/tool-runs/` sert aux fichiers temporaires d’exécution, normalement nettoyés après la fin : ce dossier n’est pas une bibliothèque de scripts à restaurer ou à publier.
 
 Le suivi des réponses consultées est conservé dans le navigateur de chaque appareil, pas dans `data/`. Une sauvegarde du serveur conserve l’étagère de livrables et ses copies, mais ne transporte pas ces repères de lecture sur un autre navigateur.
 
 ## Faire une sauvegarde cohérente
 
-1. Attendez la fin des réponses et des enregistrements, puis arrêtez le compagnon avec `Arreter.cmd`.
+1. Attendez la fin des réponses et des enregistrements. Refusez les propositions de script en attente et attendez la fin des scripts exécutés, puis arrêtez le compagnon avec `Arreter.cmd`.
 2. Copiez `data/`, `config.local.json` et `ACCES-PRIVE.txt` dans un emplacement privé.
 3. Sauvegardez séparément les dossiers de projets et les données Bionic selon votre pratique habituelle.
 4. Protégez cette copie comme vos documents originaux : elle peut contenir leurs textes, leurs images et leurs anciennes versions.
 
 `runtime/` est recréé au démarrage et ne doit pas être restauré depuis un autre PC.
+
+Une approbation en attente n’est pas un travail à relancer après restauration : au redémarrage du serveur elle expire, un script précédemment en cours est marqué interrompu et les messages en attente ne sont pas rejoués. Vérifiez les fichiers avant de proposer une nouvelle exécution ; une interruption du processus ne prouve pas qu’il n’a rien modifié.
 
 ## Installer une nouvelle version
 

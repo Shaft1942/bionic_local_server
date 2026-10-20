@@ -23,7 +23,7 @@ Le fichier `data/config.json` est différent : il est généré pour l’authent
 | `port` | Port HTTP du compagnon. Par défaut : `8769`. Choisissez un autre port s’il est déjà utilisé. |
 | `apiUrl` | Adresse de l’API Bionic sur ce PC, sans `/v1` final. L’exemple utilise `1235` ; vérifiez le port dans Bionic. Seules les adresses de boucle locale sont autorisées. |
 | `bionicRoot` | Dossier de données Bionic. Vide : détection dans `.lmstudio/apps/bionic` du compte utilisateur. Ce n’est pas le dossier de `Bionic.exe`. |
-| `python` | Exécutable Python destiné à l’extraction de documents. Vide : `python` sous Windows, `python3` ailleurs. Sans Python, le téléchargement reste disponible. |
+| `python` | Exécutable Python destiné à l’extraction de documents et aux scripts Python validés. Vide : `python` sous Windows, `python3` ailleurs. Sans Python, ces deux usages sont indisponibles ; les autres fonctions restent disponibles. |
 | `extraRoots` | Dossiers supplémentaires visibles manuellement dans l’explorateur de fichiers. Tableau vide par défaut. |
 
 N’utilisez pas l’adresse IP du téléphone ni une IP publique pour `apiUrl`. Le téléphone appelle le compagnon ; seul le compagnon contacte l’API Bionic locale. CORS n’est pas nécessaire pour ce trajet.
@@ -47,7 +47,7 @@ Vous pouvez ajouter un dossier à l’explorateur manuel :
 }
 ```
 
-Chaque dossier doit avoir un identifiant distinct, un nom et un chemin absolu existant. `writable: false` limite l’usage à la consultation ; `true` permet l’édition manuelle des textes compatibles. Ces dossiers sont disponibles depuis les projets du compagnon : ne choisissez pas un dossier personnel trop large. Ils n’élargissent pas le périmètre des outils du modèle, qui restent dans le dossier de travail du projet Bionic.
+Chaque dossier doit avoir un identifiant distinct, un nom et un chemin absolu existant. `writable: false` limite l’usage à la consultation ; `true` permet l’édition manuelle des textes compatibles. Ces dossiers sont disponibles depuis les projets du compagnon : ne choisissez pas un dossier personnel trop large. Ils n’élargissent pas le périmètre des outils directs de fichiers du modèle, qui restent dans le dossier de travail du projet Bionic. Un script validé dispose toutefois des droits du compte du PC et n’est pas limité à ce périmètre.
 
 ## Variables d’environnement
 
@@ -61,8 +61,10 @@ Les variables prennent le pas sur le fichier local. Elles sont utiles pour un la
 | `BIONIC_MOBILE_BIONIC_ROOT` | Dossier de données Bionic |
 | `BIONIC_MOBILE_PROJECT_REGISTRY` | Chemin explicite du registre de projets pour le service de fichiers ; par défaut dérivé du dossier Bionic |
 | `BIONIC_MOBILE_EXTRA_ROOTS` | Tableau JSON de dossiers supplémentaires |
-| `BIONIC_MOBILE_PYTHON` | Exécutable Python pour l’extraction |
+| `BIONIC_MOBILE_PYTHON` | Exécutable Python pour l’extraction et les scripts validés ; utilisez un chemin absolu pour imposer un interpréteur précis |
 | `BIONIC_MOBILE_NODE` | Exécutable Node.js utilisé par les lanceurs Windows |
+| `BIONIC_SEARCH_URL` | Endpoint HTTP(S) complet de recherche SearXNG, par exemple `http://127.0.0.1:8080/search`, sans identifiant, paramètres ni fragment |
+| `BIONIC_BRAVE_SEARCH_KEY` | Clé privée facultative pour Brave Search, utilisée seulement si aucun endpoint SearXNG n’est configuré |
 
 Le registre de projets interne est normalement `.internal/projects-registry.json` sous le dossier Bionic. Il est préférable de laisser sa détection automatique ; un registre de fichiers différent ne transforme pas une collection quelconque en projets natifs Bionic.
 
@@ -74,6 +76,38 @@ npm start
 ```
 
 Si votre API Bionic requiert un jeton, définissez `BIONIC_API_TOKEN` dans votre environnement privé, sans le copier dans une issue, une capture ou une commande publiée. Consultez [Sécurité](../SECURITY.md) pour les données à conserver privées.
+
+## Moteur de recherche des agents
+
+Le web est désactivé par défaut dans le chat. Lorsqu’il est autorisé pour un message, le choix du moteur suit cet ordre :
+
+1. `BIONIC_SEARCH_URL` défini : SearXNG à l’adresse configurée.
+2. Sinon, `BIONIC_BRAVE_SEARCH_KEY` défini : Brave Search.
+3. Sinon : page HTML publique de DuckDuckGo, sans clé.
+
+Un échec du moteur choisi n’entraîne pas de bascule silencieuse vers un autre fournisseur. DuckDuckGo peut refuser les robots ou demander une vérification humaine ; le compagnon affiche alors une erreur, sans inventer de résultats.
+
+Pour votre propre instance SearXNG, indiquez **l’endpoint complet**, normalement terminé par `/search`. Le compagnon ajoute lui-même `q` et `format=json`. Le format JSON doit être activé dans le `settings.yml` de SearXNG, en conservant vos autres réglages :
+
+```yaml
+search:
+  formats:
+    - html
+    - json
+```
+
+Une instance qui n’autorise pas le JSON peut répondre HTTP 403 ; de nombreuses instances publiques limitent cet accès. Voir l’[API de recherche SearXNG](https://docs.searxng.org/dev/search_api.html) et le [réglage `search.formats`](https://docs.searxng.org/admin/settings/settings_search.html#formats).
+
+Exemple de lancement PowerShell, pour une instance locale que vous avez installée séparément :
+
+```powershell
+$env:BIONIC_SEARCH_URL = 'http://127.0.0.1:8080/search'
+npm start
+```
+
+L’endpoint SearXNG explicitement configuré peut être local et utiliser un autre port ; ses redirections sont refusées. Cette exception n’ouvre pas la lecture de pages privées aux agents. Les URL de résultats restent filtrées comme des pages publiques. Utilisez un endpoint de confiance : les mots recherchés lui seront transmis.
+
+Ces deux variables de recherche se règlent **uniquement dans l’environnement du serveur**, pas comme nouveaux champs de `config.local.json`. Relancez le serveur pour les appliquer. Si vous utilisez `Demarrer.cmd`, il doit hériter du même environnement. Conservez toute clé Brave dans votre configuration privée ; ne la placez ni dans le navigateur, ni dans un fichier versionné, ni dans une archive. Les limites du web et des scripts sont décrites dans [Outils des agents](outils-agents.md).
 
 ## Changement de réseau ou de port
 

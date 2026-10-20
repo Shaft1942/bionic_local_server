@@ -190,6 +190,7 @@ function createWorkspace({ api, node, icon, toast, getState, openTarget }) {
     const summary = node('summary', '', 'Contexte utilisé'); summary.dataset.workspaceFocus = 'context-summary:' + (message.id || message.localRequestId); details.append(summary);
     if (!receipt || receipt.version !== 1) { details.append(node('p', '', 'Relevé indisponible pour cette réponse. Les anciens échanges ne permettent pas de reconstituer les fichiers réellement transmis.')); return details; }
     details.append(node('p', '', 'Ce relevé décrit les messages et les pièces jointes sélectionnés, ainsi que les lectures effectuées par les outils. Il ne décrit pas le raisonnement du modèle.'));
+    if(receipt.historical)details.append(node('p','','Relevé historique copié du fil source. Ces outils n’ont pas été rejoués dans cette branche.'));
     details.append(node('p', '', 'Les consignes du compagnon et les outils autorisés s’ajoutent à ces éléments.'));
     details.append(node('p', '', receipt.initialTransmitted ? 'L’envoi initial a été accepté par le serveur du modèle. Cela ne garantit pas que le modèle a pris en compte chaque élément.' : 'Envoi initial préparé ; transmission non confirmée à ce stade.'));
     const history = receipt.history || {}, messages = history.messages || [];
@@ -216,7 +217,7 @@ function createWorkspace({ api, node, icon, toast, getState, openTarget }) {
       if (file.messageId) entry.append(button('Voir le message avec cette pièce jointe', () => jumpTo(file.messageId))); details.append(entry);
     }
     const reads = receipt.toolReads || []; details.append(node('h3', '', `Lectures par les outils · ${reads.length}`));
-    details.append(node('p', '', receipt.toolsEnabled ? 'Les outils de fichiers étaient disponibles. Seules les lectures ci-dessous ont été effectuées.' : 'Les outils de fichiers n’étaient pas disponibles pour cette réponse.'));
+    details.append(node('p', '', receipt.toolsEnabled ? 'Les outils autorisés étaient disponibles. Les extraits ci-dessous ont été renvoyés au modèle ; une recherche peut avoir inspecté d’autres fichiers sans en transmettre le contenu.' : 'Les outils n’étaient pas disponibles pour cette réponse.'));
     for (const read of reads) {
       const entry = node('details', 'context-file'); entry.dataset.disclosureKey = 'read:' + read.actionId;
       entry.append(node('summary', '', (read.path || 'Fichier') + ' · ' + (read.transmitted ? 'résultat transmis' : 'lu sur le PC · transmission non confirmée')));
@@ -225,6 +226,7 @@ function createWorkspace({ api, node, icon, toast, getState, openTarget }) {
       if (read.truncated) entry.append(node('p', '', 'Lecture partielle. Le modèle n’a pas reçu tout le fichier lors de cet appel.'));
       if (read.hash) entry.append(node('p', 'context-hash', 'Empreinte du fichier au moment de la lecture : ' + read.hash)); details.append(entry);
     }
+    if(receipt.external?.length){details.append(node('h3','','Web et sorties de scripts'));for(const output of receipt.external){const entry=node('details','context-file');entry.dataset.disclosureKey='external:'+output.actionId;entry.append(node('summary','',(output.kind==='search'?'Recherche web':output.kind==='web'?'Page web':'Sortie de script')+' · '+(output.transmitted?'résultat transmis':'transmission non confirmée')),node('p','',output.url||output.query||output.title||''),node('pre','',output.text||''));if(output.truncated)entry.append(node('p','','L’aperçu du reçu est borné ; le résultat transmis peut être plus long.'));details.append(entry);}}
     details.querySelectorAll('button,.context-file>summary').forEach((el, index) => el.dataset.workspaceFocus = 'context:' + (message.id || message.localRequestId) + ':' + index);
     return details;
   }

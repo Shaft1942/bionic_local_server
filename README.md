@@ -10,13 +10,16 @@ Ce projet communautaire est indépendant de Bionic. Bionic et ses modèles ne so
 - Choisir un modèle, régler l’effort lorsqu’il le prend en charge et consulter les mesures de génération disponibles.
 - Voir les instances chargées et les décharger pour libérer la mémoire du PC.
 - Lire, télécharger et modifier les fichiers texte du projet depuis le téléphone.
-- Autoriser le modèle à lire des extraits pertinents, créer et modifier des textes, avec journal des actions et sauvegardes.
+- Autoriser le modèle à rechercher dans le projet, créer et modifier des textes, copier, déplacer et retirer des fichiers vers une corbeille récupérable.
+- Activer la recherche et la lecture de pages Internet publiques pour une demande.
+- Faire proposer un script Python, Node.js ou PowerShell et **valider son code exact avant chaque exécution** sur le PC.
+- Créer une branche indépendante d’une conversation entière ou jusqu’à un message inclus, sans rejouer ses outils.
 - Importer des fichiers du téléphone dans le projet et joindre des textes, des documents ou des images compatibles au chat.
 - Quitter le navigateur pendant une réponse et retrouver la génération en cours à la réouverture, tant que le PC et les serveurs restent actifs.
 - Rédiger le message suivant, l’ajouter à la file de la conversation et ouvrir un autre chat pendant les réponses en cours.
 - Retrouver les réponses terminées depuis une absence, conserver des livrables et consulter le contexte réellement utilisé pour une nouvelle réponse.
 
-**Les messages écrits ici ne sont pas ajoutés aux conversations natives de Bionic.** Les outils d’agent, MCP et compétences de Bionic ne sont pas hérités. Le compagnon possède ses propres outils limités aux fichiers du projet.
+**Les messages écrits ici ne sont pas ajoutés aux conversations natives de Bionic.** Les outils d’agent, MCP et compétences de Bionic ne sont pas hérités. Le compagnon fournit ses propres outils de fichiers, de web et de scripts, avec des autorisations distinctes.
 
 ## Démarrer
 
@@ -27,15 +30,17 @@ Ce projet communautaire est indépendant de Bionic. Bionic et ses modèles ne so
 5. Ouvrez **ACCES-PRIVE.txt**, créé au premier démarrage, pour trouver votre code personnel et l’adresse à ouvrir sur le téléphone.
 6. Connectez le téléphone au même Wi-Fi. Si le pare-feu bloque l’accès, lancez **Autoriser-reseau.cmd** sur un réseau Windows privé, puis réessayez.
 
-Aucune installation de dépendances npm n’est nécessaire pour exécuter le serveur. **Python est facultatif** : il sert seulement à extraire le texte des documents PDF, DOCX et XLSX. Le téléchargement des fichiers reste possible sans Python.
+Aucune installation de dépendances npm n’est nécessaire pour exécuter le serveur. **Python est facultatif** : il sert à extraire le texte des documents PDF, DOCX et XLSX et à exécuter les scripts Python que vous validez. Le téléchargement des fichiers et les autres fonctions restent disponibles sans Python.
 
 Le guide [Installation](docs/installation.md) détaille ces étapes et les options Python.
 
 ## À savoir avant d’utiliser les fichiers
 
-L’option **« Le modèle peut modifier les textes du projet »** autorise des enregistrements immédiats sur le PC. Elle est cochée par défaut dans une nouvelle conversation. Décochez-la pour discuter sans les outils de fichiers. Les remplacements conservent une copie précédente ; une sauvegarde indépendante de vos projets reste utile.
+L’option **« Gérer et modifier les fichiers du projet »** autorise des opérations immédiates sur le PC. Elle est cochée par défaut dans une nouvelle conversation ordinaire. Décochez-la pour discuter sans les outils directs de fichiers. Les remplacements conservent une copie précédente et les retraits passent par une corbeille récupérable ; une sauvegarde indépendante de vos projets reste utile.
 
 L’application n’envoie pas automatiquement toute votre bibliothèque au modèle. Les lectures par outil sont limitées à des extraits et à un budget par demande. Les fichiers que vous joignez explicitement font partie du contexte envoyé.
+
+**Internet et les scripts sont désactivés par défaut.** Le menu **Outils** permet de les activer pour les messages suivants. Les scripts approuvés s’exécutent avec les droits de votre compte, au-delà du seul dossier du projet : **ce n’est pas un bac à sable**. Une modification par script n’a pas de sauvegarde automatique garantie. Consultez le [guide des outils](docs/outils-agents.md) avant d’autoriser une proposition.
 
 Ce serveur utilise **HTTP** et un code d’accès pour un **réseau local de confiance**. Il ne doit pas être exposé directement sur Internet. N’ouvrez pas de redirection de port sur votre routeur. Lisez [Sécurité](SECURITY.md) avant de partager un accès.
 
@@ -45,6 +50,7 @@ Ce serveur utilise **HTTP** et un code d’accès pour un **réseau local de con
 | --- | --- |
 | Installer et accéder depuis le téléphone | [Installation](docs/installation.md) |
 | Conversations, fichiers, modèles et reprise | [Utilisation](docs/utilisation.md) |
+| Recherche web, corbeille, validation des scripts et branches de conversations | [Outils des agents](docs/outils-agents.md) |
 | Ports, dossiers et variables d’environnement | [Configuration](docs/configuration.md) |
 | Page inaccessible, API ou documents indisponibles | [Dépannage](docs/depannage.md) |
 | Préserver ses données pendant une mise à jour | [Sauvegarde et mise à jour](docs/sauvegarde-mise-a-jour.md) |
@@ -53,6 +59,7 @@ Ce serveur utilise **HTTP** et un code d’accès pour un **réseau local de con
 | Évolution du projet | [Journal des versions](CHANGELOG.md) |
 | Idées d’évolution et bonnes pratiques des interfaces d’IA | [20 pistes UX](docs/PISTES-UX.md) et [méta-prompts d’exploration](docs/metaprompts-exploration.md) |
 | Agents utilisés et portée des contrôles | [Méta prompts](docs/metaprompts.md) et [Vérification](docs/verification.md) |
+| Consignes exécutées pour les outils et les branches 1.8 | [Méta-prompts d’implémentation 1.8](docs/metaprompts-implementation-1.8.md) |
 
 ## Compatibilité
 

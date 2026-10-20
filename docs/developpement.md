@@ -26,6 +26,11 @@ Copiez `config.example.json` en `config.local.json`, choisissez un port de test 
 | `lib/bionic-store.mjs` | Projection en lecture seule des projets et conversations natifs |
 | `lib/project-files.mjs` | Périmètres de dossiers, lecture, imports, sauvegardes et écritures contrôlées |
 | `lib/file-agent.mjs` | Outils de fichiers, budget de lecture et décodage des appels d’outils |
+| `lib/agent-tools.mjs` | Sélection des outils par permissions figées, budgets web et journal des résultats |
+| `lib/web-tools.mjs` | Recherche, lecture passive, filtrage public des adresses et transport HTTP épinglé |
+| `lib/tool-approvals.mjs` | Propositions de code immuables, validation unique, expiration et annulation |
+| `lib/script-tools.mjs` | Interpréteurs locaux, exécution après accord, délais et sorties bornées |
+| `lib/conversation-fork.mjs` | Instantanés indépendants des messages, historique passif et retrait des capacités d’exécution |
 | `lib/model-service.mjs` | Liste des modèles, capacités et déchargement |
 | `lib/reasoning.mjs` | Choix d’effort selon le modèle |
 | `lib/generation-metrics.mjs` | Mesures de génération disponibles |
@@ -36,7 +41,11 @@ Copiez `config.example.json` en `config.local.json`, choisissez un port de test 
 | `test/` | Fixtures fictives et tests automatisés |
 | `scripts/` | Aides de distribution et de vérification |
 
-Le navigateur utilise une session authentifiée pour joindre le serveur. Le serveur relaie les générations vers l’API locale Bionic, puis conserve les réponses web dans son propre `data/`. La génération ne dépend pas de la présence continue du navigateur. Les outils de fichiers sont exécutés par le compagnon : ils ne réutilisent pas l’agent natif Bionic.
+Le navigateur utilise une session authentifiée pour joindre le serveur. Le serveur relaie les générations vers l’API locale Bionic, puis conserve les réponses web dans son propre `data/`. La génération et l’attente d’une validation ne dépendent pas de la présence continue du navigateur. Les outils sont exécutés par le compagnon : ils ne réutilisent pas l’agent, les MCP ni les compétences natifs Bionic.
+
+Les trois permissions sont capturées à l’acceptation du message et conservées dans la file. Le contexte se construit au démarrage de son tour. Les propositions et décisions de script sont enregistrées avant la reprise ; l’API authentifiée de validation vérifie le projet, le chat et l’identifiant de la proposition. Le code affiché ne peut pas être remplacé par le corps de la requête d’approbation. Le redémarrage n’hydrate pas d’anciennes validations exécutables.
+
+Le reçu de contexte note les sorties externes reçues avec `transmitted: false`. Seule une réponse HTTP réussie de l’API du modèle confirme leur retransmission. Les textes et journaux copiés par un fork restent des données historiques ; ses validations, identifiants de demande, files et droits de restauration ne sont pas transférés. Les fichiers vivants du projet restent partagés entre les conversations.
 
 ## Vérifications
 
@@ -71,6 +80,13 @@ Selon la modification, vérifiez aussi :
 - L’annulation d’une seule demande, l’isolation de ses réglages et l’absence de relance automatique après un redémarrage.
 - Le téléphone en largeur étroite, les contrôles accessibles et l’affichage des erreurs.
 - La consultation ciblée d’un événement sans marquage global, la conservation d’une copie malgré un changement de source et les reçus après erreur de transmission.
+- Le filtrage IPv4/IPv6, les DNS mixtes, le rebinding et chaque redirection, en injectant résolution et transport plutôt qu’en contactant un réseau privé.
+- Les schémas des moteurs, les CAPTCHA, les contenus trop grands ou non textuels, les délais DNS/HTTP et les sorties HTML passives.
+- Le refus d’exécuter sans accord, le double clic, le mauvais projet ou chat, la modification de la proposition, l’expiration, l’arrêt et les checkpoints en erreur.
+- Les sorties excessives, les erreurs d’interpréteur, la persistance après fermeture du téléphone et l’absence de replay après redémarrage.
+- Les branches jusqu’au message inclus, la source intacte, les identifiants renouvelés, l’historique passif et les permissions web/scripts désactivées.
+
+Les contrats, limites et liens vers les API primaires figurent dans [Outils des agents](outils-agents.md). Les [méta-prompts d’implémentation 1.8](metaprompts-implementation-1.8.md) décrivent la répartition et les revues croisées. Les résultats d’essais, y compris les fonctionnalités non vérifiées en réseau réel, restent dans [Vérification](verification.md).
 
 ## Adaptateur Bionic
 

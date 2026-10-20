@@ -55,6 +55,7 @@ try {
  let r=await request('/api/projects');findings.push({test:'unauthenticated API blocked',pass:r.statusCode===401,status:r.statusCode});
  r=await request('/api/file?projectId=p1&rootId=project&path=notes.md');findings.push({test:'file contents require login',pass:r.statusCode===401});
  r=await request('/api/file/upload?projectId=p1&name=no.txt',{method:'POST',raw:Buffer.from('x')});findings.push({test:'phone upload requires login',pass:r.statusCode===401});
+ r=await request('/api/conversation/fork',{method:'POST',body:{projectId:'p1',chatId:'native-1'}});findings.push({test:'conversation forks require login',pass:r.statusCode===401});
  for(const route of ['/api/activity','/api/deliverables?projectId=p1','/api/deliverable?projectId=p1&id=x','/api/deliverable/download?projectId=p1&id=x']){r=await request(route);findings.push({test:'workspace API requires login: '+route,pass:r.statusCode===401})}
  r=await request('/api/models/unload',{method:'POST',body:{instanceId:'loaded-synthetic'}});findings.push({test:'unauthenticated unload blocked',pass:r.statusCode===401&&unloadCount===0});
  const access=await fs.readFile(path.join(root,'ACCES-PRIVE.txt'),'utf8');const code=/Code d’accès : (.+)/.exec(access)[1].trim();
@@ -223,6 +224,23 @@ try {
  r=await request('/api/deliverable?projectId=another-project&id='+pinned.id,{headers:{cookie}});findings.push({test:'deliverable route denies access through a different project',pass:r.statusCode===404});
  r=await request('/api/deliverable/rename',{method:'POST',headers:{cookie},body:{projectId:'p1',id:pinned.id,title:'Renamed answer'}});findings.push({test:'deliverable rename route changes its local title',pass:r.statusCode===200&&JSON.parse(r.text()).title==='Renamed answer'});
  r=await request('/api/deliverable/remove',{method:'POST',headers:{cookie},body:{projectId:'p1',id:pinned.id}});findings.push({test:'deliverable remove route removes only its saved entry',pass:r.statusCode===200&&JSON.parse(r.text()).removed===true&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='after'});
+ const forkInput={projectId:'p1',chatId:agentChatId};
+ r=await request('/api/conversation/fork',{method:'POST',headers:{cookie,origin:'https://untrusted.example'},body:forkInput});findings.push({test:'fork mutations reject an unrelated Origin',pass:r.statusCode===403});
+ const sourcePath=path.join(root,'data/chats',agentChatId+'.json'),sourceBeforeFork=await fs.readFile(sourcePath,'utf8');
+ r=await request('/api/conversation/fork',{method:'POST',headers:{cookie},body:forkInput});const forkResult=JSON.parse(r.text());
+ const forked=JSON.parse(await fs.readFile(path.join(root,'data/chats',forkResult.id+'.json'),'utf8'));
+ findings.push({test:'full fork persists a detached snapshot and preserves the source bytes',pass:r.statusCode===201&&forked.messages.length===restoredChat.messages.length&&await fs.readFile(sourcePath,'utf8')===sourceBeforeFork&&forked.origin.kind==='fork'&&!forked.generation&&!forked.queue.length});
+ findings.push({test:'forked tool journals have no live action, approval or restoration authority',pass:forked.messages.every(message=>!message.actions&&!message.approvals&&!message.requestId&&!message.finishedAt&&!message.outcome)&&forked.messages.at(-1).historicalActions?.length>0&&!forked.webAccess&&!forked.scriptAccess});
+ r=await request('/api/conversation/fork',{method:'POST',headers:{cookie},body:{...forkInput,messageId:restoredChat.messages[0].id}});const boundaryFork=JSON.parse(await fs.readFile(path.join(root,'data/chats',JSON.parse(r.text()).id+'.json'),'utf8'));
+ findings.push({test:'fork route copies through the selected message inclusively with new ids',pass:r.statusCode===201&&boundaryFork.messages.length===1&&boundaryFork.messages[0].text===restoredChat.messages[0].text&&boundaryFork.messages[0].id!==restoredChat.messages[0].id});
+ r=await request('/api/conversation/fork',{method:'POST',headers:{cookie},body:{...forkInput,projectId:'another-project'}});findings.push({test:'fork route cannot read another project through a chat id',pass:r.statusCode===404});
+ r=await request('/api/conversation/fork',{method:'POST',headers:{cookie},body:{projectId:'p1',chatId:'native-1'}});const nativeFork=JSON.parse(await fs.readFile(path.join(root,'data/chats',JSON.parse(r.text()).id+'.json'),'utf8'));
+ findings.push({test:'native Bionic history can be forked without inherited write permission',pass:r.statusCode===201&&nativeFork.origin.source==='bionic'&&nativeFork.messages[0].fromBionic&&!nativeFork.fileAccess});
+ const activeForkId=secondHoldRes.records().find(e=>e.type==='start').id;
+ r=await request('/api/conversation/fork',{method:'POST',headers:{cookie},body:{projectId:'p1',chatId:activeForkId}});findings.push({test:'forking an in-progress answer is refused',pass:r.statusCode===409});
+ const activeForkChat=JSON.parse(await fs.readFile(path.join(root,'data/chats',activeForkId+'.json'),'utf8'));
+ r=await request('/api/conversation/fork',{method:'POST',headers:{cookie},body:{projectId:'p1',chatId:activeForkId,messageId:activeForkChat.messages[0].id}});findings.push({test:'an earlier message can be forked while the source answer keeps running',pass:r.statusCode===201&&JSON.parse(await fs.readFile(path.join(root,'data/chats',activeForkId+'.json'),'utf8')).generation.status==='running'});
+ r=await request('/api/activity?projectId=p1',{headers:{cookie}});findings.push({test:'copied fork messages do not create new completion notifications',pass:!JSON.parse(r.text()).events.some(event=>event.chatId===forkResult.id)});
  // The queue limit counts only waiting entries, and canceling one frees a slot.
  const limitChatId=secondHoldRes.records().find(e=>e.type==='start').id,limitIds=[];
  for(let i=0;i<10;i++){const requestId=runId+'-limit-'+i;limitIds.push(requestId);r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL limit '+i,limitChatId),requestId}});assert.equal(r.records().at(-1).type,'queued')}

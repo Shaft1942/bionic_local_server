@@ -10,15 +10,23 @@ Si vous répondez à une conversation native, le compagnon crée une **suite web
 
 Vous pouvez aussi commencer un nouveau chat dans le projet sélectionné. Le modèle reçoit un historique limité pour respecter son contexte ; l’affichage du fil complet ne garantit pas que chaque ancien message soit transmis au modèle à chaque demande.
 
+## Créer une branche d’une conversation
+
+Choisissez **Créer une branche du chat** dans le menu **Outils**, ou **Créer une branche depuis ici** sous un message. Le compagnon crée un nouveau chat web contenant les messages jusqu’au point choisi **inclus**. Le fil source reste intact ; aucune demande n’est envoyée au modèle pendant cette copie.
+
+Les suites sont indépendantes : les nouveaux messages ne se synchronisent ni avec la source ni vers Bionic. Les journaux d’outils et les reçus éventuellement copiés sont des traces historiques passives : aucun script, fichier ou restauration n’est rejoué et aucune validation en attente n’est transférée. Le web et les scripts sont désactivés dans la branche ; vérifiez aussi le droit de fichiers avant votre prochain message.
+
+Vous pouvez créer une branche à partir d’un message précédent pendant qu’une réponse continue dans la source. Une réponse assistant en cours ne peut pas servir de point de départ : attendez sa fin ou choisissez un message antérieur. Une branche reste dans le même projet ; **elle partage donc les fichiers du PC**, même si son historique est séparé. Voir [les règles des branches](outils-agents.md#branches-de-conversations).
+
 ## Écrire et changer de chat pendant une réponse
 
 Sur téléphone, le modèle et l’effort se choisissent côte à côte sous le texte. L’envoi se trouve à droite du message ; pendant une réponse, la flèche ajoute le message à la file et le bouton carré arrête la réponse de ce chat. L’aide détaillée de l’effort apparaît quand ce sélecteur est actif et reste associée au champ pour les lecteurs d’écran.
 
-Le menu **Fichiers**, juste au-dessus de la saisie sur téléphone, regroupe **Fichier du projet**, **Importer un fichier** et l’autorisation de modification par le modèle. Son libellé indique toujours si les modifications sont autorisées ou désactivées. Le panneau s’ouvre au-dessus du bouton et se ferme avec un nouvel appui, un appui ailleurs ou la touche Échap. Les pièces jointes et le suivi d’import restent visibles hors du menu. Sur bureau, les trois commandes restent directement accessibles.
+Le menu **Outils**, juste au-dessus de la saisie, regroupe **Fichier du projet**, **Importer un fichier**, la création d’une branche et les permissions de fichiers, de web et de scripts. Son libellé indique les droits actifs même quand il est fermé. Le panneau s’ouvre au-dessus du bouton et se ferme avec un nouvel appui, un appui ailleurs ou la touche Échap. Les pièces jointes et le suivi d’import restent visibles hors du menu.
 
 La zone de saisie reste disponible pendant la génération. Vous pouvez préparer le message suivant sans interrompre le modèle. **Ajouter à la file** transmet ce message au serveur du PC : il attend la fin du tour précédent dans la même conversation. Un message en attente peut être retiré avant son démarrage. La file accepte au maximum dix messages en attente par conversation.
 
-Le modèle, l’effort, les droits de modification et les pièces jointes sont ceux choisis au moment de l’envoi. Les pièces jointes sont copiées à cet instant ; les modifier ensuite sur le PC ne change pas silencieusement la demande déjà acceptée. L’historique transmis au modèle est construit lorsque le tour commence, pour inclure la réponse précédente.
+Le modèle, l’effort, les permissions de fichiers, de web et de scripts et les pièces jointes sont ceux choisis au moment de l’envoi. Modifier un réglage ensuite ne change pas une demande déjà reçue. Les pièces jointes sont copiées à cet instant ; les modifier ensuite sur le PC ne change pas silencieusement la demande déjà acceptée. L’historique transmis au modèle est construit lorsque le tour commence, pour inclure la réponse précédente.
 
 **Nouveau chat web**, les projets et les conversations restent accessibles pendant les réponses. Chaque fil conserve son brouillon et ses pièces jointes en préparation. Les brouillons sont stockés dans la session de cet onglet du navigateur : ils survivent à un rechargement, mais leur conservation après fermeture de l’onglet dépend du navigateur. Ils ne sont pas synchronisés entre appareils et ne sont jamais envoyés automatiquement.
 
@@ -64,6 +72,8 @@ Pour un message en attente, le reçu est construit lorsque son tour commence : i
 **Transmission non confirmée** signifie que le compagnon n’a pas obtenu de confirmation de l’API ; ce n’est pas une preuve que la requête n’a jamais été reçue. Une transmission confirmée indique une requête acceptée, sans garantir que le modèle a correctement utilisé chaque élément. Une lecture d’outil peut avoir réussi sur le PC alors que son résultat n’a pas encore été confirmé dans une requête au modèle.
 
 Le reçu ne révèle pas le raisonnement interne. Il décrit l’historique, les pièces jointes et les extraits ; les consignes du compagnon et les définitions des outils autorisés s’ajoutent à ces éléments. Les aperçus de pièces jointes sont courts ; leur message d’origine permet de retrouver la copie jointe. Aucun nombre exact de tokens n’est déduit du nombre de caractères. Une ancienne réponse sans reçu affiche **Relevé indisponible**.
+
+Les résultats web et les sorties de scripts apparaissent aussi dans le reçu. Un résultat peut avoir été reçu par le compagnon sans avoir encore été transmis au modèle ; le statut reste alors **Transmission non confirmée**. Leur aperçu partagé est limité à 12 000 caractères et peut être plus court que le résultat envoyé. Dans une branche, le reçu copié porte la mention historique et ne décrit pas une nouvelle exécution.
 
 ## Modèles, effort et vitesse
 
@@ -113,21 +123,37 @@ Les formats exploitables sont joints automatiquement dans la limite disponible. 
 
 Les images et les textes joints sont conservés avec la conversation pour que leur contenu ne change pas silencieusement si le fichier du projet évolue ensuite. Cela représente une copie supplémentaire de données privées dans `data/`.
 
-## Laisser le modèle modifier les textes
+## Gérer les fichiers avec le modèle
 
-L’option **« Le modèle peut modifier les textes du projet »** est cochée par défaut dans un nouveau chat et mémorisée dans la conversation. Lorsqu’elle est cochée, le modèle peut :
+L’option **« Gérer et modifier les fichiers du projet »** est cochée par défaut dans un nouveau chat ordinaire et mémorisée dans la conversation. Lorsqu’elle est cochée, le modèle peut :
 
 - Lister un dossier et lire des extraits de textes pertinents.
+- Chercher des noms ou des passages, inspecter la version d’un fichier et créer un dossier.
 - Créer un fichier texte ou de code dans le dossier de travail du projet.
 - Remplacer un passage exact et unique déjà lu ou explicitement donné dans votre message.
 - Réécrire entièrement un fichier seulement après l’avoir lu en totalité dans la demande.
+- Copier, déplacer ou renommer un fichier inspecté, sans écraser de destination existante ; le retirer vers la corbeille privée, avec restauration depuis le chat.
 
 **L’enregistrement est immédiat : il n’y a pas de demande d’approbation pour chaque modification.** Les actions apparaissent sous la réponse avec leur résultat. Une modification réussie offre une restauration de la copie précédente lorsque la version du fichier le permet. Une création ne supprime pas automatiquement le nouveau fichier lors d’une restauration.
 
 Exemple de demande ciblée : « Dans `notes.md`, trouve le paragraphe sur les délais et remplace la date du 12 par le 15. Ne modifie rien d’autre. »
 
-Les outils du modèle sont limités au **dossier de travail du projet**. Ils ne peuvent pas exécuter de commande, supprimer un fichier ou utiliser automatiquement les outils MCP de Bionic. Les dossiers supplémentaires et liés peuvent être parcourus manuellement selon leurs droits, mais ne deviennent pas une permission générale pour l’agent.
+Ces outils de fichiers sont limités au **dossier de travail du projet**. Ils ne suppriment pas définitivement les fichiers ni les dossiers et ne lancent pas de commandes. Les dossiers supplémentaires et liés peuvent être parcourus manuellement selon leurs droits, mais n’élargissent pas le périmètre de ces outils. L’autorisation distincte de scripts permet de proposer du code à valider ; elle a une portée plus large, décrite ci-dessous. Aucun de ces réglages n’importe les outils MCP de Bionic.
 
-Le modèle ne reçoit pas d’emblée le contenu de tous les fichiers. Les lectures par outil sont limitées à **3 000 caractères par extrait**, **6 fichiers distincts** et un budget total dépendant du contexte du modèle, plafonné à **12 000 caractères par demande**. Les extraits lus par outil ne sont pas automatiquement réinjectés au prochain tour. Les pièces jointes explicites ont leur propre budget de contexte.
+Le modèle ne reçoit pas d’emblée le contenu de tous les fichiers. La lecture directe est limitée à **3 000 caractères par extrait**, **6 fichiers distincts** et un budget total dépendant du contexte du modèle, plafonné à **12 000 caractères par demande**. La recherche de passages peut inspecter davantage de fichiers, mais seuls les extraits trouvés et bornés sont transmis dans ce même budget. Les extraits lus par outil ne sont pas automatiquement réinjectés au prochain tour. Les pièces jointes explicites ont leur propre budget de contexte.
 
 Si vous souhaitez seulement discuter, décochez l’option. Si le modèle ne sait pas utiliser les outils ou choisit de ne pas les appeler, aucune modification ne peut être déduite de sa seule réponse : vérifiez le journal des actions et le fichier.
+
+## Rechercher et lire Internet
+
+Activez **Rechercher et lire Internet** dans **Outils**, puis envoyez une demande précise. Le modèle peut chercher des sources et lire des extraits de pages publiques. Il ne reçoit pas automatiquement vos fichiers pour les envoyer au moteur de recherche ; évitez néanmoins toute recherche contenant un secret ou du texte privé inutile.
+
+Les résultats affichent leurs URL. Une page ne donne aucune autorisation d’agir sur le PC : ses instructions restent des données externes non fiables. Le compagnon ne se connecte pas à vos comptes, n’exécute pas le JavaScript des sites et ne parcourt pas le réseau local par cet outil. Un moteur bloqué ou un CAPTCHA produit une erreur explicite. Une URL directe peut rester lisible si la recherche échoue. Voir [moteurs, limites et configuration](outils-agents.md#internet-public).
+
+## Valider un script sur le PC
+
+Activez **Scripts sur le PC, avec validation** dans **Outils**. Cela autorise le modèle à **proposer** du code Python, Node.js ou PowerShell. Chaque proposition affiche le code exact et son dossier de travail dans le chat. Lisez-les puis choisissez **Exécuter ce script** ou **Refuser** ; un accord ne vaut pas pour la proposition suivante.
+
+**Le script validé a les droits de votre compte du PC.** Son dossier de départ est le projet, mais il peut agir ailleurs, accéder au réseau ou modifier des fichiers sans les sauvegardes des outils d’édition. Ce n’est pas un bac à sable. Un arrêt ou une erreur ne rétablit pas les changements déjà réalisés.
+
+Une demande de validation expire après dix minutes. Elle reste consultable si vous fermez puis rouvrez le navigateur avant expiration, tant que le serveur continue. Après un redémarrage du serveur, une attente abandonnée expire et n’est pas exécutée. Les statuts et les sorties restent dans le chat. Les limites de durée, de code et de sortie sont détaillées dans le [guide des outils](outils-agents.md#scripts-validés-sur-le-pc).
