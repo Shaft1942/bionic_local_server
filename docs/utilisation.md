@@ -10,6 +10,20 @@ Si vous répondez à une conversation native, le compagnon crée une **suite web
 
 Vous pouvez aussi commencer un nouveau chat dans le projet sélectionné. Le modèle reçoit un historique limité pour respecter son contexte ; l’affichage du fil complet ne garantit pas que chaque ancien message soit transmis au modèle à chaque demande.
 
+## Écrire et changer de chat pendant une réponse
+
+La zone de saisie reste disponible pendant la génération. Vous pouvez préparer le message suivant sans interrompre le modèle. **Ajouter à la file** transmet ce message au serveur du PC : il attend la fin du tour précédent dans la même conversation. Un message en attente peut être retiré avant son démarrage. La file accepte au maximum dix messages en attente par conversation.
+
+Le modèle, l’effort, les droits de modification et les pièces jointes sont ceux choisis au moment de l’envoi. Les pièces jointes sont copiées à cet instant ; les modifier ensuite sur le PC ne change pas silencieusement la demande déjà acceptée. L’historique transmis au modèle est construit lorsque le tour commence, pour inclure la réponse précédente.
+
+**Nouveau chat web**, les projets et les conversations restent accessibles pendant les réponses. Chaque fil conserve son brouillon et ses pièces jointes en préparation. Les brouillons sont stockés dans la session de cet onglet du navigateur : ils survivent à un rechargement, mais leur conservation après fermeture de l’onglet dépend du navigateur. Ils ne sont pas synchronisés entre appareils et ne sont jamais envoyés automatiquement.
+
+Les demandes reçues continuent sur le PC lorsque vous consultez un autre fil ou fermez le navigateur. Les conversations ont des historiques distincts, mais partagent la puissance de calcul et, selon le projet, les fichiers. Plusieurs chats peuvent soumettre des demandes ; le parallélisme réel dépend de Bionic et du modèle. Les protections contre les écritures concurrentes restent actives.
+
+Si vous arrêtez la réponse ou si elle échoue, les messages suivants restent conservés mais sont interrompus : ils ne partent pas automatiquement après un tour incomplet. Les autres chats continuent.
+
+Après un redémarrage du serveur, les générations et attentes abandonnées sont affichées comme interrompues. Elles ne sont pas exécutées automatiquement : relisez le fil et renvoyez la demande souhaitée.
+
 ## Modèles, effort et vitesse
 
 Sélectionnez un modèle disponible dans la liste. Le chargement à la demande dépend du réglage Bionic. Pour une image PNG, JPEG ou WebP, choisissez un modèle portant la mention **Vision**.

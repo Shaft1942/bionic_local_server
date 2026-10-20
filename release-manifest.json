@@ -23,6 +23,7 @@
     "Retirer-autorisation-reseau.ps1",
     "SECURITY.md",
     "config.example.json",
+    "docs/PISTES-UX.md",
     "docs/configuration.md",
     "docs/depannage.md",
     "docs/developpement.md",

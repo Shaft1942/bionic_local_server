@@ -1,5 +1,5 @@
 'use strict';
-function createProjectFileBrowser({ api, node, icon, toast, getProject, isBusy, onAttach }) {
+function createProjectFileBrowser({ api, node, icon, toast, getProject, isBusy, onAttach, onChange = () => {} }) {
   const $ = id => document.getElementById(id);
   const state = { roots: [], projectId: null, rootId: null, path: '', file: null, busy: false, original: '', attachments: [], sequence: 0 };
   const dirty = () => !!state.file?.editable && $('file-editor').value !== state.original;
@@ -75,7 +75,7 @@ function createProjectFileBrowser({ api, node, icon, toast, getProject, isBusy, 
     if (sequence === state.sequence) showFile(file);
   }
   async function open() {
-    if (isBusy()) return toast('Attends la fin de la réponse pour ouvrir les fichiers.');
+    if (isBusy()) return toast('Attends la fin de l’import ou du chargement pour ouvrir les fichiers.');
     const project = getProject(); if (!project) return;
     state.projectId = project.id; $('files-title').textContent = 'Fichiers · ' + project.name;
     $('app').hidden = true; $('files-view').hidden = false; resetFile();
@@ -100,7 +100,7 @@ function createProjectFileBrowser({ api, node, icon, toast, getProject, isBusy, 
       const chip = node('div', 'attachment-chip');
       chip.append(icon('file'), node('span', '', file.name + (file.selection ? ' · extrait' : '')));
       const remove = node('button', 'icon-button'); remove.type = 'button'; remove.append(icon('close')); remove.setAttribute('aria-label', 'Retirer ' + file.name); remove.disabled = isBusy();
-      remove.addEventListener('click', () => { state.attachments.splice(index, 1); renderAttachments(); }); chip.append(remove); $('attachments').append(chip);
+      remove.addEventListener('click', () => { state.attachments.splice(index, 1); renderAttachments(); onChange(); }); chip.append(remove); $('attachments').append(chip);
     }
   }
   $('files-close').append(icon('back')); $('file-up').append(icon('up')); $('files-refresh').append(icon('refresh')); $('files-open-sidebar').prepend(icon('folder')); $('attach-file').prepend(icon('attach'));
@@ -137,8 +137,8 @@ function createProjectFileBrowser({ api, node, icon, toast, getProject, isBusy, 
     if (file.truncated && !selection) return fail('Cet aperçu est partiel. Sélectionne le passage que tu veux joindre.');
     if ((selection ? end - start : file.text?.length || 0) > 160000) return fail('Ce texte est trop long. Sélectionne seulement le passage utile à ta question.');
     state.attachments.push({ rootId: state.rootId, path: file.path, hash: file.hash, name: file.name, ...(selection ? { selection } : {}) });
-    renderAttachments(); close(); onAttach(); toast(selection ? 'Extrait joint au prochain message.' : 'Fichier joint au prochain message.');
+    renderAttachments(); onChange(); close(); onAttach(); toast(selection ? 'Extrait joint au prochain message.' : 'Fichier joint au prochain message.');
   });
   window.addEventListener('beforeunload', event => { if (!$('files-view').hidden && dirty()) { event.preventDefault(); event.returnValue = ''; } });
-  return { clear() { state.attachments = []; renderAttachments(); }, references() { return state.attachments.map(({ name, ...reference }) => reference); }, refresh: renderAttachments, addImported(file) { if (!file.attachable || file.truncated || state.attachments.length >= 4) return false; state.attachments.push({ rootId: file.rootId, path: file.path, hash: file.hash, name: file.name }); renderAttachments(); return true; } };
+  return { clear() { state.attachments = []; renderAttachments(); }, snapshot() { return state.attachments.map(file => ({ ...file, ...(file.selection ? { selection: { ...file.selection } } : {}) })); }, restore(attachments) { state.attachments = (Array.isArray(attachments) ? attachments : []).slice(0, 4).map(file => ({ rootId: file.rootId, path: file.path, hash: file.hash, name: file.name || file.path?.split(/[\\/]/).pop() || 'Fichier', ...(file.selection ? { selection: { start: file.selection.start, end: file.selection.end } } : {}) })); renderAttachments(); }, references() { return state.attachments.map(({ name, ...reference }) => ({ ...reference, ...(reference.selection ? { selection: { ...reference.selection } } : {}) })); }, refresh: renderAttachments, addImported(file) { if (!file.attachable || file.truncated || state.attachments.length >= 4) return false; state.attachments.push({ rootId: file.rootId, path: file.path, hash: file.hash, name: file.name }); renderAttachments(); return true; } };
 }

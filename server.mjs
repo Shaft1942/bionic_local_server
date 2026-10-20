@@ -53,6 +53,9 @@ const failures = new Map();
 const busy = new Set();
 const active = new Map();
 const chatRequests = new Map();
+const chatStates = new Map();
+const acceptanceLocks = new Map();
+const nativeContinuations = new Map();
 let modelManagementBusy = false;
 const allowedHosts = new Set(['127.0.0.1', 'localhost', ...localIPs]);
 let requestCounter = 0;
@@ -78,12 +81,23 @@ const webId = id => /^web-[a-f0-9-]{36}$/.test(id);
 function webPath(id) { if (!webId(id)) throw fail(400, 'Conversation invalide.'); return path.join(DATA, 'chats', id + '.json'); }
 async function readWeb(id) {
   try {
-    if (active.has(id)) return active.get(id).chat;
-    const chat = JSON.parse(await fs.readFile(webPath(id), 'utf8'));
+    if (chatStates.has(id)) return chatStates.get(id).chat;
+    const serialized = await fs.readFile(webPath(id), 'utf8');
+    // Another reader may have populated and started this chat while the disk read awaited.
+    if (chatStates.has(id)) return chatStates.get(id).chat;
+    const chat = JSON.parse(serialized);
+    let recovered = false;
     if (chat.generation?.status === 'running') {
-      chat.generation = { ...chat.generation, status: 'interrupted', message: 'Le serveur du PC a redémarré pendant cette réponse.' };
+      chat.generation = { ...chat.generation, status: 'interrupted', message: 'Le serveur du PC a redémarré pendant cette réponse. Renvoie une demande pour continuer.' };
       const reply = chat.messages.at(-1); if (reply?.role === 'assistant') reply.interrupted = true;
+      const user = chat.messages.findLast(message => message.role === 'user'); if (user?.requestId) user.requestStatus = 'interrupted';
+      recovered = true;
     }
+    for (const item of chat.queue || []) if (item.status === 'queued') {
+      item.status = 'interrupted'; item.message = 'Le serveur du PC a redémarré. Ce message n’a pas été exécuté ; renvoie-le si nécessaire.'; recovered = true;
+    }
+    chatStates.set(id, { chat, writes: Promise.resolve(), running: false });
+    if (recovered) await persistChat(chat);
     return chat;
   }
   catch (e) { if (e.code === 'ENOENT') throw fail(404, 'Conversation introuvable.'); throw e; }
@@ -93,12 +107,29 @@ async function saveWeb(chat) {
   await fs.writeFile(temp, JSON.stringify(chat), { mode: 0o600 });
   await fs.rename(temp, file);
 }
+// Checkpoints and queue acceptance share one write chain: an older response snapshot
+// can never overwrite a newly accepted message or resurrect a cancelled queue entry.
+function persistChat(chat) {
+  let state = chatStates.get(chat.id);
+  if (!state) { state = { chat, writes: Promise.resolve(), running: false }; chatStates.set(chat.id, state); }
+  const snapshot = structuredClone(chat);
+  state.writes = state.writes.catch(() => {}).then(() => saveWeb(snapshot));
+  return state.writes;
+}
+async function withAcceptanceLock(key, work) {
+  const previous = acceptanceLocks.get(key) || Promise.resolve();
+  let release; const current = new Promise(resolve => { release = resolve; });
+  acceptanceLocks.set(key, current);
+  await previous;
+  try { return await work(); }
+  finally { release(); if (acceptanceLocks.get(key) === current) acceptanceLocks.delete(key); }
+}
 async function webChats(projectId) {
   const result = [];
   for (const name of await fs.readdir(path.join(DATA, 'chats'))) {
     if (!/^web-[a-f0-9-]{36}\.json$/.test(name)) continue;
     const chat = await readWeb(name.slice(0, -5));
-    if (chat.projectId === projectId) result.push({ id: chat.id, projectId, name: chat.name, model: chat.model, updatedAt: chat.updatedAt, source: 'web', origin: chat.origin, generation: chat.generation });
+    if (chat.projectId === projectId) result.push({ id: chat.id, projectId, name: chat.name, model: chat.model, updatedAt: chat.updatedAt, source: 'web', origin: chat.origin, generation: chat.generation, queueCount: (chat.queue || []).filter(item => item.status === 'queued').length });
   }
   return result;
 }
@@ -139,44 +170,123 @@ const validRequestId = id => typeof id === 'string' && /^[a-zA-Z0-9-]{16,100}$/.
 async function findChatRequest(projectId, requestId) {
   const current = chatRequests.get(requestId);
   if (current) return current.projectId === projectId ? current : null;
-  for (const chat of await webChats(projectId)) {
-    const stored = await readWeb(chat.id);
-    if (stored.messages.some(message => message.requestId === requestId)) return { projectId, id: chat.id, status: stored.generation?.status || 'completed' };
+  for (const info of await webChats(projectId)) {
+    const stored = await readWeb(info.id);
+    const queued = stored.queue?.find(item => item.requestId === requestId);
+    if (queued) return { projectId, id: stored.id, status: queued.status, message: queued.message, position: queuePosition(stored, requestId) };
+    const message = stored.messages.find(message => message.requestId === requestId && message.role === 'user');
+    if (message) return { projectId, id: stored.id, status: message.requestStatus || (stored.generation?.requestId === requestId ? stored.generation.status : 'completed') };
   }
   return null;
 }
-async function sendChat(req, res, data) {
-  let request;
-  if (data.requestId !== undefined) {
-    if (!validRequestId(data.requestId)) throw fail(400, 'Identifiant de demande invalide.');
-    if (await findChatRequest(data.projectId, data.requestId)) throw fail(409, 'Ce message a déjà été reçu. Rouvre sa conversation pour retrouver la réponse.');
-    // The lock is acquired before any model/network work. A retry never runs tools twice.
-    if (chatRequests.has(data.requestId)) throw fail(409, 'Ce message a déjà été reçu.');
-    request = { projectId: data.projectId, status: 'starting', id: null };
-    chatRequests.set(data.requestId, request);
-    if (chatRequests.size > 2000) for (const [id, record] of chatRequests) { if (!['starting', 'running'].includes(record.status)) { chatRequests.delete(id); break; } }
-  }
-  try { await generateChat(req, res, data, request); }
-  catch (e) { if (request) { request.status = 'error'; request.message = e.status ? e.message : 'Le PC n’a pas pu démarrer la réponse.'; } throw e; }
+function queuePosition(chat, requestId) { const position = (chat.queue || []).filter(item => item.status === 'queued').findIndex(item => item.requestId === requestId); return position < 0 ? undefined : position + 1; }
+function queueReceipt(res, item, chat) {
+  if (res.destroyed || res.writableEnded) return;
+  res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
+  res.end(JSON.stringify({ type: 'queued', id: chat.id, requestId: item.requestId, position: queuePosition(chat, item.requestId), status: 'queued', name: chat.name }) + '\n');
 }
-async function generateChat(req, res, data, request) {
-  if (modelManagementBusy) throw fail(409, 'Un modèle est en cours de déchargement. Attends la fin pour envoyer ton message.');
-  const text = typeof data.text === 'string' ? data.text.trim() : '';
-  if (!text || text.length > 16000) throw fail(400, 'Saisis un message de 1 à 16 000 caractères.');
-  const project = (await listProjects()).find(p => p.id === data.projectId);
-  if (!project) throw fail(404, 'Projet introuvable. Actualise la liste.');
-  const available = await models();
-  if (modelManagementBusy) throw fail(409, 'Un modèle est en cours de déchargement. Attends la fin pour envoyer ton message.');
-  if (!available.some(m => m.id === data.model)) throw fail(400, 'Sélectionne un modèle local disponible.');
-  const reasoning = reasoningRequest(available.find(model => model.id === data.model), data.reasoning);
-  const selectedModel = available.find(model => model.id === data.model);
-  const fileAccess = data.fileAccess === true;
-  if (fileAccess && selectedModel.tools === false) throw fail(400, 'Ce modèle ne propose pas les appels d’outils. Choisis un autre modèle ou désactive ses actions sur les fichiers.');
-  let chat, chatLock;
-  const lock = data.sessionId || `new:${data.projectId}`;
-  if (busy.has(lock)) throw fail(409, 'Une réponse est déjà en cours pour cette conversation.');
-  busy.add(lock);
+function silentResponse() { return { destroyed: true, writableEnded: true, on() {}, end() {} }; }
+async function sendChat(req, res, data) {
+  const requestId = data.requestId === undefined ? randomUUID() : data.requestId;
+  if (!validRequestId(requestId)) throw fail(400, 'Identifiant de demande invalide.');
+  if (await findChatRequest(data.projectId, requestId)) throw fail(409, 'Ce message a déjà été reçu. Rouvre sa conversation pour retrouver la réponse.');
+  if (chatRequests.has(requestId)) throw fail(409, 'Ce message a déjà été reçu.');
+  const request = { projectId: data.projectId, status: 'starting', id: null };
+  chatRequests.set(requestId, request);
+  data = { ...data, requestId };
+  if (chatRequests.size > 2000) for (const [id, record] of chatRequests) { if (!['starting', 'running', 'queued'].includes(record.status)) { chatRequests.delete(id); break; } }
+  try {
+    if (modelManagementBusy) throw fail(409, 'Un modèle est en cours de déchargement. Attends la fin pour envoyer ton message.');
+    const text = typeof data.text === 'string' ? data.text.trim() : '';
+    if (!text || text.length > 16000) throw fail(400, 'Saisis un message de 1 à 16 000 caractères.');
+    if (!(await listProjects()).some(project => project.id === data.projectId)) throw fail(404, 'Projet introuvable. Actualise la liste.');
+    const available = await models();
+    const selectedModel = available.find(model => model.id === data.model);
+    if (!selectedModel) throw fail(400, 'Sélectionne un modèle local disponible.');
+    const reasoning = reasoningRequest(selectedModel, data.reasoning), fileAccess = data.fileAccess === true;
+    if (fileAccess && selectedModel.tools === false) throw fail(400, 'Ce modèle ne propose pas les appels d’outils. Choisis un autre modèle ou désactive ses actions sur les fichiers.');
+    const attachments = await projectFiles.attachments(data.projectId, data.attachments, { allowImages: !!selectedModel.vision });
+    const attachmentReferences = attachments.map((file, index) => ({ rootId: file.rootId, path: file.path, hash: file.hash, ...(file.excerpt ? { selection: { start: data.attachments[index].selection.start, end: data.attachments[index].selection.end } } : {}) }));
+    // Resolve file bytes and options now, but build history only when this turn starts.
+    await conversationModelContext({ messages: [] }, text, selectedModel.contextLength, attachments, selectedModel.vision, fileAccess);
+    const key = data.sessionId ? data.projectId + ':' + data.sessionId : 'new:' + requestId;
+    let execute;
+    await withAcceptanceLock(key, async () => {
+      if (modelManagementBusy) throw fail(409, 'Un modèle est en cours de déchargement. Attends la fin pour envoyer ton message.');
+      let chat;
+      if (data.sessionId && webId(data.sessionId)) {
+        chat = await readWeb(data.sessionId);
+        if (chat.projectId !== data.projectId) throw fail(404, 'Conversation introuvable dans ce projet.');
+      } else if (data.sessionId && nativeContinuations.has(key)) {
+        chat = await readWeb(nativeContinuations.get(key));
+      } else if (data.sessionId) {
+        const original = await getConversation(data.projectId, data.sessionId);
+        chat = { id: 'web-' + randomUUID(), projectId: data.projectId, name: original.name + ' · suite web', model: data.model, source: 'web', readOnly: false, origin: { id: original.id, name: original.name }, messages: original.messages.map(message => ({ ...message, fromBionic: true })), importedTruncated: original.truncated, updatedAt: Date.now() };
+        nativeContinuations.set(key, chat.id);
+      } else {
+        chat = { id: 'web-' + randomUUID(), projectId: data.projectId, name: text.slice(0, 65), model: data.model, source: 'web', readOnly: false, messages: [], updatedAt: Date.now() };
+      }
+      let state = chatStates.get(chat.id);
+      if (!state) { state = { chat, writes: Promise.resolve(), running: false }; chatStates.set(chat.id, state); }
+      chat.queue ||= [];
+      if (chat.queue.filter(item => item.status === 'queued').length >= 10) throw fail(409, 'Dix messages sont déjà en attente dans cette conversation. Attends une réponse avant d’en ajouter.');
+      if (request.cancelRequested) throw fail(409, 'Demande arrêtée avant son exécution.');
+      const item = { requestId, text, model: data.model, reasoning: reasoning.choice, fileAccess, attachments, attachmentReferences, selectedModel: structuredClone(selectedModel), reasoningPayload: structuredClone(reasoning.payload), queuedAt: Date.now(), status: 'queued' };
+      chat.queue.push(item); chat.updatedAt = Date.now(); request.id = chat.id; request.status = 'queued';
+      busy.add(chat.id);
+      try { await persistChat(chat); }
+      catch (error) { chat.queue.splice(chat.queue.indexOf(item), 1); if (!state.running && !chat.queue.some(entry => entry.status === 'queued')) busy.delete(chat.id); throw error; }
+      if (state.running) { queueReceipt(res, item, chat); return; }
+      // Claim execution before leaving the acceptance lock, including the async start.
+      state.running = true;
+      execute = drainChat(state, item, res);
+    });
+    if (execute) await execute;
+  } catch (error) { request.status = 'error'; request.message = error.status ? error.message : 'Le PC n’a pas pu démarrer la réponse.'; throw error; }
+}
+async function drainChat(state, first, response) {
+  try {
+    let item = first;
+    while (item) {
+      const request = chatRequests.get(item.requestId);
+      if (item.status !== 'queued') { item = state.chat.queue.find(entry => entry.status === 'queued'); response = silentResponse(); continue; }
+      state.chat.queue.splice(state.chat.queue.indexOf(item), 1);
+      let succeeded = false;
+      try {
+        await generateChat(response, state.chat, item, request);
+        succeeded = state.chat.generation?.requestId === item.requestId && state.chat.generation.status === 'completed';
+      }
+      catch (error) {
+        const message = error.status ? error.message : 'Le PC n’a pas pu démarrer la réponse.';
+        item.status = 'error'; item.message = message; state.chat.queue.push(item);
+        if (request) { request.status = 'error'; request.message = message; }
+        await persistChat(state.chat);
+        if (response !== undefined && !response.destroyed && !response.headersSent) json(response, error.status || 500, { error: message });
+      }
+      if (!succeeded) {
+        for (const pending of state.chat.queue) if (pending.status === 'queued') {
+          pending.status = 'interrupted';
+          pending.message = 'La réponse précédente a été arrêtée ou interrompue. Ce message n’a pas été exécuté ; renvoie-le pour continuer.';
+          const receipt = chatRequests.get(pending.requestId);
+          if (receipt) { receipt.status = 'interrupted'; receipt.message = pending.message; }
+        }
+        await persistChat(state.chat);
+      }
+      response = silentResponse();
+      item = state.chat.queue.find(entry => entry.status === 'queued');
+    }
+  } finally {
+    state.running = false; busy.delete(state.chat.id);
+    for (const [key, id] of nativeContinuations) if (id === state.chat.id) nativeContinuations.delete(key);
+  }
+}
+async function generateChat(res, chat, item, request) {
+  const { text, selectedModel, fileAccess, attachments } = item;
+  const data = { projectId: chat.projectId, model: item.model, requestId: item.requestId };
+  const reasoning = { choice: item.reasoning, payload: item.reasoningPayload };
   const controller = new AbortController();
+  active.set(chat.id, { controller, chat, requestId: data.requestId });
+  if (request) { request.id = chat.id; request.status = 'running'; }
   if (request) { request.controller = controller; if (request.cancelRequested) controller.abort(); }
   const timeout = setTimeout(() => controller.abort(), 600000);
   // A phone may suspend or close the HTTP stream. Only explicit Stop/timeout cancels the job.
@@ -184,27 +294,9 @@ async function generateChat(req, res, data, request) {
   res.on('close', () => { detached = true; });
   res.on('error', () => { detached = true; });
   let responseStarted = false;
-  let checkpointTimer, dirty = false, writes = Promise.resolve();
-  const persist = () => {
-    dirty = false;
-    const snapshot = structuredClone(chat);
-    writes = writes.catch(() => {}).then(() => saveWeb(snapshot));
-    return writes;
-  };
+  let checkpointTimer, dirty = false;
+  const persist = () => { dirty = false; return persistChat(chat); };
   try {
-    if (data.sessionId && webId(data.sessionId)) {
-      chat = await readWeb(data.sessionId);
-      if (chat.projectId !== data.projectId) throw fail(404, 'Conversation introuvable dans ce projet.');
-    } else if (data.sessionId) {
-      const original = await getConversation(data.projectId, data.sessionId);
-      chat = { id: 'web-' + randomUUID(), projectId: data.projectId, name: original.name + ' · suite web', model: data.model, source: 'web', readOnly: false, origin: { id: original.id, name: original.name }, messages: original.messages.map(m => ({ ...m, fromBionic: true })), importedTruncated: original.truncated, updatedAt: Date.now() };
-    } else {
-      chat = { id: 'web-' + randomUUID(), projectId: data.projectId, name: text.slice(0, 65), model: data.model, source: 'web', readOnly: false, messages: [], updatedAt: Date.now() };
-    }
-    chatLock = chat.id;
-    if (chatLock !== lock && busy.has(chatLock)) throw fail(409, 'Une réponse est déjà en cours pour cette conversation.');
-    busy.add(chatLock);
-    const attachments = await projectFiles.attachments(data.projectId, data.attachments, { allowImages: !!selectedModel.vision });
     const context = await conversationModelContext(chat, text, selectedModel.contextLength, attachments, selectedModel.vision, fileAccess);
     const maxOutput = fileAccess ? Math.min(2048, Math.max(512, Math.floor(selectedModel.contextLength / 4))) : 2048;
     const requestModel = async () => {
@@ -225,11 +317,10 @@ async function generateChat(req, res, data, request) {
     chat.model = data.model;
     chat.reasoningByModel = { ...chat.reasoningByModel, [data.model]: reasoning.choice };
     chat.fileAccess = fileAccess;
-    chat.messages.push({ id: randomUUID(), role: 'user', text, createdAt: Date.now(), ...(data.requestId ? { requestId: data.requestId } : {}), ...(attachments.length ? { attachments } : {}) });
-    const reply = { id: randomUUID(), role: 'assistant', text: '', createdAt: Date.now(), reasoning: reasoning.choice, actions: [] };
+    chat.messages.push({ id: randomUUID(), role: 'user', text, createdAt: Date.now(), requestId: data.requestId, requestStatus: 'running', ...(attachments.length ? { attachments } : {}) });
+    const reply = { id: randomUUID(), role: 'assistant', text: '', createdAt: Date.now(), reasoning: reasoning.choice, requestId: data.requestId, actions: [] };
     chat.messages.push(reply);
-    chat.generation = { status: 'running', startedAt: Date.now(), replyId: reply.id };
-    active.set(chat.id, { controller, chat });
+    chat.generation = { status: 'running', requestId: data.requestId, startedAt: Date.now(), replyId: reply.id };
     if (request) { request.id = chat.id; request.status = 'running'; }
     chat.updatedAt = Date.now();
     await persist();
@@ -238,7 +329,7 @@ async function generateChat(req, res, data, request) {
     if (!detached && !res.destroyed) res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
     responseStarted = true;
     const emit = x => { if (!detached && !res.destroyed && !res.writableEnded) { try { res.write(JSON.stringify(x) + '\n'); } catch { detached = true; } } };
-    emit({ type: 'start', id: chat.id, name: chat.name, contextOmitted: context.contextOmitted, source: 'web', reasoning: reasoning.choice, fileAccess });
+    emit({ type: 'start', id: chat.id, requestId: data.requestId, name: chat.name, contextOmitted: context.contextOmitted, source: 'web', reasoning: reasoning.choice, fileAccess });
     const agent = createFileAgent({ files: projectFiles, projectId: data.projectId, readLimit: 3000, readBudget: Math.min(12000, Math.max(1600, Math.floor(selectedModel.contextLength * 0.6))), signal: controller.signal, userPrompt: text, initialReads: attachments });
     const phases = [];
     let done = false, actionCount = 0;
@@ -265,18 +356,20 @@ async function generateChat(req, res, data, request) {
       if (!reply.text.trim()) throw fail(502, fileAccess ? 'Le modèle n’a pas rédigé de réponse finale. Les actions déjà réalisées restent visibles dans le chat.' : 'Le modèle a produit uniquement du raisonnement. Essaie un autre modèle.');
       reply.complete = done;
       chat.generation.status = 'completed';
+      chat.messages.find(message => message.requestId === data.requestId && message.role === 'user').requestStatus = 'completed';
       reply.metrics = phases.length === 1 ? phases[0] : { inputTokens: phases.reduce((n,m) => n + (m.inputTokens || 0), 0), outputTokens: phases.reduce((n,m) => n + (m.outputTokens || 0), 0), reasoningTokens: phases.reduce((n,m) => n + (m.reasoningTokens || 0), 0), responseSeconds: (performance.now() - startedAt) / 1000, firstFragmentSeconds: phases[0]?.firstFragmentSeconds, generationPhases: phases.length };
       chat.updatedAt = Date.now(); await persist();
       emit({ type: 'done', id: chat.id, limited: !!reply.limited, metrics: reply.metrics });
     } catch (e) {
       const message = controller.signal.aborted ? 'Génération arrêtée. Le texte reçu est conservé.' : (e.status ? e.message : 'La connexion entre le PC et Bionic a été interrompue.');
       reply.interrupted = true; chat.generation.status = controller.signal.aborted ? 'stopped' : 'error'; chat.generation.message = message;
+      chat.messages.find(entry => entry.requestId === data.requestId && entry.role === 'user').requestStatus = chat.generation.status;
       chat.updatedAt = Date.now(); await persist();
       emit({ type: 'error', message });
     } finally { if (request) { request.status = chat.generation.status; request.message = chat.generation.message; } if (!detached && !res.destroyed) res.end(); }
   } finally {
-    clearInterval(checkpointTimer); await writes.catch(() => {});
-    clearTimeout(timeout); busy.delete(lock); if (chatLock) busy.delete(chatLock); if (chat) active.delete(chat.id);
+    clearInterval(checkpointTimer); await chatStates.get(chat.id).writes.catch(() => {});
+    clearTimeout(timeout); active.delete(chat.id);
     if (!responseStarted) controller.abort();
   }
 }
@@ -303,7 +396,7 @@ async function handle(req, res) {
       if (!/^127\.|^::1$|^::ffff:127\./.test(req.socket.remoteAddress) || d.token !== config.adminToken) throw fail(403, 'Accès refusé.');
       json(res, 200, { ok: true }); setTimeout(() => { for (const job of active.values()) job.controller.abort(); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 1000); }, 100); return;
     }
-    if (req.method === 'GET' && url.pathname === '/api/ping') { json(res, 200, { app: 'bionic-mobile-local', version: '1.5.0', instanceId: config.instanceId }); return; }
+    if (req.method === 'GET' && url.pathname === '/api/ping') { json(res, 200, { app: 'bionic-mobile-local', version: '1.6.0', instanceId: config.instanceId }); return; }
     if (req.method === 'POST' && url.pathname === '/api/login') {
       const ip = req.socket.remoteAddress;
       let f = failures.get(ip);
@@ -375,7 +468,7 @@ async function handle(req, res) {
           if (chat.projectId !== d.projectId || d.rootId !== 'project' || !action?.ok || action.restored || action.path !== d.path || action.hash !== d.hash || action.backupId !== d.backupId) throw fail(409, 'Cette action ne peut pas être rétablie depuis ce message. Actualise la conversation.');
         }
         const result = await projectFiles.write(d.projectId, d.rootId, d.path, d.hash, undefined, d.backupId);
-        if (chat) { action.restored = true; chat.updatedAt = Date.now(); await saveWeb(chat); }
+        if (chat) { action.restored = true; chat.updatedAt = Date.now(); await persistChat(chat); }
         json(res, 200, result); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/sessions') {
@@ -394,14 +487,24 @@ async function handle(req, res) {
         if (!validRequestId(requestId)) throw fail(400, 'Identifiant de demande invalide.');
         const record = await findChatRequest(projectId, requestId);
         if (!record) throw fail(404, 'Envoi non retrouvé sur le PC.');
-        json(res, 200, { projectId: record.projectId, id: record.id, status: record.status, message: record.message }); return;
+        const chat = record.id ? chatStates.get(record.id)?.chat : undefined;
+        json(res, 200, { projectId: record.projectId, id: record.id, status: record.status, message: record.message, ...(chat ? { position: queuePosition(chat, requestId) } : {}) }); return;
       }
       if (req.method === 'POST' && url.pathname === '/api/chat') { await sendChat(req, res, await body(req)); return; }
       if (req.method === 'POST' && url.pathname === '/api/cancel') {
         const d = await body(req);
-        active.get(d.id)?.controller.abort();
-        const request = chatRequests.get(d.requestId);
-        if (request) { request.cancelRequested = true; request.controller?.abort(); }
+        const request = d.requestId ? chatRequests.get(d.requestId) : null;
+        const id = request?.id || d.id;
+        if (id) await withAcceptanceLock((request?.projectId || d.projectId || '') + ':' + id, async () => {
+          const chat = await readWeb(id);
+          const queued = d.requestId ? chat.queue?.find(item => item.requestId === d.requestId && item.status === 'queued') : null;
+          if (queued) {
+            queued.status = 'stopped'; queued.message = 'Message retiré de la file d’attente.';
+            if (request) { request.status = 'stopped'; request.message = queued.message; }
+            await persistChat(chat);
+          } else if (!d.requestId || active.get(id)?.requestId === d.requestId) active.get(id)?.controller.abort();
+        });
+        if (request && request.status === 'starting') { request.cancelRequested = true; request.controller?.abort(); }
         json(res, 200, { ok: true }); return;
       }
       throw fail(404, 'Action inconnue.');

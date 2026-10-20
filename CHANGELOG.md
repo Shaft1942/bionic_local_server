@@ -1,5 +1,13 @@
 # Journal des versions
 
+## 1.6.0 — en préparation
+
+- Rédaction du message suivant pendant la réponse du modèle, avec mise en attente dans la même conversation.
+- Navigation et nouveaux chats pendant les générations, avec suivi distinct des réponses.
+- Brouillons et pièces jointes séparés par conversation ; les réglages sont figés pour chaque message envoyé.
+- File d’attente conservée sur le PC et annulation ciblée. Un redémarrage du serveur ne rejoue pas automatiquement les demandes interrompues.
+- Pistes d’évolution de l’interface documentées à partir de sources publiques, distinctes des fonctions implémentées.
+
 ## 1.5.0 — 2026-10-20
 
 Préparation de la première distribution publique du compagnon local.

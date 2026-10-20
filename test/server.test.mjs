@@ -18,11 +18,11 @@ await fs.writeFile(path.join(root,'fixture-store.mjs'),`export function createBi
 const source=(await fs.readFile(path.join(sourceRoot,'server.mjs'),'utf8')).replace("from './lib/bionic-store.mjs'","from './fixture-store.mjs'");
 const marker=source.indexOf("server.listen(PORT, '0.0.0.0'");if(marker<0)throw new Error('Source shape changed');
 await fs.writeFile(path.join(root,'server.mjs'),source.slice(0,marker)+'\nexport {handle,server};\n');
-const upstream=[];let upstreamCount=0;let preStarted=false,preAborted=false,releasePre,releaseAgent;let fixtureLoaded=true,unloadCount=0,lastUpstreamBody;
+const upstream=[], upstreamBodies=[];let upstreamCount=0;let preStarted=false,preAborted=false,releasePre,releaseAgent;let fixtureLoaded=true,unloadCount=0,lastUpstreamBody;
 globalThis.fetch=async(url,opt={})=>{
  if(String(url).endsWith('/api/v1/models'))return {ok:true,json:async()=>({models:[{type:'llm',key:'synthetic',loaded_instances:fixtureLoaded?[{id:'loaded-synthetic',config:{context_length:4096}}]:[],capabilities:{vision:true,reasoning:{allowed_options:['off','on'],default:'on'}}}]})};
  if(String(url).endsWith('/api/v1/models/unload')){unloadCount++;fixtureLoaded=false;return {ok:true,json:async()=>({instance_id:'loaded-synthetic'})};}
- upstreamCount++;lastUpstreamBody=JSON.parse(opt.body);const lastContent=lastUpstreamBody.messages.at(-1).content;const text=typeof lastContent==='string'?lastContent:lastContent.filter(p=>p.type==='text').map(p=>p.text).join('\n');
+ upstreamCount++;lastUpstreamBody=JSON.parse(opt.body);upstreamBodies.push(structuredClone(lastUpstreamBody));const lastContent=lastUpstreamBody.messages.at(-1).content;const text=typeof lastContent==='string'?lastContent:lastContent.filter(p=>p.type==='text').map(p=>p.text).join('\n');
  const original=lastUpstreamBody.messages.findLast(m=>m.role==='user')?.content;
  if(original==='AGENT_EDIT'||original==='UNSOLICITED_TOOL'||original==='AGENT_DETACHED'){
   const count=lastUpstreamBody.messages.filter(m=>m.role==='tool').length;
@@ -32,7 +32,7 @@ globalThis.fetch=async(url,opt={})=>{
   const body=new ReadableStream({start(c){c.enqueue(Buffer.from('data: '+JSON.stringify(event)+'\n\ndata: '+JSON.stringify({choices:[],usage:{prompt_tokens:100,completion_tokens:20}})+'\n\ndata: [DONE]\n\n'));c.close()}});return {ok:true,status:200,body};
  }
  if(text==='PREHEADER') {preStarted=true;await new Promise(resolve=>{releasePre=resolve;opt.signal.addEventListener('abort',()=>{preAborted=true;resolve()},{once:true})});if(opt.signal.aborted)throw Object.assign(new Error('Abort'),{name:'AbortError'});}
- const body=new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{delta:{content:'Synthetic reply'}}]})+'\n\n'));if(text==='HOLD'){upstream.push(c);opt.signal.addEventListener('abort',()=>{try{c.error(Object.assign(new Error('Abort'),{name:'AbortError'}))}catch{}},{once:true});}else{if(text.startsWith('NORMAL')||text==='PREHEADER'){c.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{finish_reason:'stop'}]})+'\n\n'));c.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[],usage:{prompt_tokens:123,completion_tokens:45}})+'\n\ndata: [DONE]\n\n'));}c.close();}}});
+ const body=new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{delta:{content:'Synthetic reply'}}]})+'\n\n'));if(text.startsWith('HOLD')){upstream.push(c);opt.signal.addEventListener('abort',()=>{try{c.error(Object.assign(new Error('Abort'),{name:'AbortError'}))}catch{}},{once:true});}else{if(text.startsWith('NORMAL')||text==='PREHEADER'){c.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{finish_reason:'stop'}]})+'\n\n'));c.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[],usage:{prompt_tokens:123,completion_tokens:45}})+'\n\ndata: [DONE]\n\n'));}c.close();}}});
  return {ok:true,status:200,body};
 };
 const {handle,server}=await import(pathToFileURL(path.join(root,'server.mjs')));
@@ -40,6 +40,8 @@ class Res extends EventEmitter {constructor(){super();this.headers={};this.parts
 let cookie;function req(route,{method='GET',body,raw,headers={}}={}){const r=Readable.from(raw?[raw]:body?[Buffer.from(JSON.stringify(body))]:[]);r.method=method;r.url=route;r.headers={host:'127.0.0.1:8769',...headers};r.socket={remoteAddress:'127.0.0.1'};return r}
 async function request(route,opt){const res=new Res();await handle(req(route,opt),res);return res}
 const data=(text,sessionId=null)=>({projectId:'p1',sessionId,model:'synthetic',text});const send=(text,id=null)=>request('/api/chat',{method:'POST',headers:{cookie},body:data(text,id)});
+function finishHold(controller){controller.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n'));controller.close()}
+function activeRequestStatus(res){return JSON.parse(res.text()).status}
 const findings=[];
 const runId=randomUUID(),backgroundRequestId=runId+'-checkpoint';
 try {
@@ -110,11 +112,81 @@ try {
  r=await request('/api/cancel',{method:'POST',headers:{cookie},body:{requestId:backgroundRequestId}});await backgroundJob;
  r=await request('/api/conversation?projectId=p1&id='+backgroundId,{headers:{cookie}});const stopped=JSON.parse(r.text());
  findings.push({test:'explicit Stop still cancels a detached job and preserves partial text',pass:stopped.generation.status==='stopped'&&stopped.messages.at(-1).interrupted&&stopped.messages.at(-1).text==='Synthetic reply'});upstream.splice(0);
- const orphanId='web-11111111-1111-4111-8111-111111111111';await fs.writeFile(path.join(root,'data/chats',orphanId+'.json'),JSON.stringify({id:orphanId,projectId:'p1',generation:{status:'running'},messages:[{role:'assistant',text:'saved fragment'}]}));r=await request('/api/conversation?projectId=p1&id='+orphanId,{headers:{cookie}});
- findings.push({test:'server restart does not leave an orphaned job presented as running forever',pass:JSON.parse(r.text()).generation.status==='interrupted'&&JSON.parse(r.text()).messages.at(-1).interrupted});
- const holdRes=new Res();const holdJob=handle(req('/api/chat',{method:'POST',headers:{cookie},body:data('HOLD','native-1')}),holdRes);for(let i=0;i<50&&!holdRes.parts.some(x=>x.includes('"type":"start"'));i++)await sleep(10);const id=holdRes.records().find(x=>x.type==='start')?.id;const n=upstreamCount;const second=await send('NORMAL',id);findings.push({test:'concurrent send via new web ID blocked',pass:second.statusCode===409,status:second.statusCode,extraUpstreamCalls:upstreamCount-n});
+ const orphanId='web-11111111-1111-4111-8111-111111111111';await fs.writeFile(path.join(root,'data/chats',orphanId+'.json'),JSON.stringify({id:orphanId,projectId:'p1',generation:{status:'running',requestId:runId+'-orphan-active'},queue:[{requestId:runId+'-orphan-queued',text:'Never auto replay',status:'queued'}],messages:[{role:'user',text:'Previous request',requestId:runId+'-orphan-active',requestStatus:'running'},{role:'assistant',text:'saved fragment'}]}));r=await request('/api/conversation?projectId=p1&id='+orphanId,{headers:{cookie}});
+ findings.push({test:'server restart does not leave an orphaned job presented as running forever',pass:JSON.parse(r.text()).generation.status==='interrupted'&&JSON.parse(r.text()).messages.at(-1).interrupted&&JSON.parse(r.text()).queue[0].status==='interrupted'});
+ r=await request('/api/chat-request?projectId=p1&requestId='+runId+'-orphan-queued',{headers:{cookie}});
+ findings.push({test:'a queued request recovered after server restart remains interrupted and is never replayed',pass:JSON.parse(r.text()).status==='interrupted'&&!upstreamBodies.some(body=>body.messages.at(-1).content==='Never auto replay')});
+ const holdRes=new Res();const holdJob=handle(req('/api/chat',{method:'POST',headers:{cookie},body:{...data('HOLD FIFO','native-1'),requestId:runId+'-fifo'}}),holdRes);
+ for(let i=0;i<50&&!holdRes.records().some(e=>e.type==='start');i++)await sleep(10);const id=holdRes.records().find(e=>e.type==='start')?.id,n=upstreamCount;
+ const queuedOne=runId+'-queued-1',queuedCancel=runId+'-queued-cancel',queuedSnapshot=runId+'-queued-snapshot',queuedTool=runId+'-queued-tool';
+ r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL queued first',id),requestId:queuedOne,reasoning:'off'}});
+ const queuedReceipt=r.records().at(-1);
+ findings.push({test:'a second message is acknowledged and queued without another model call',pass:r.statusCode===200&&queuedReceipt.type==='queued'&&queuedReceipt.id===id&&queuedReceipt.requestId===queuedOne&&queuedReceipt.position===1&&upstreamCount===n});
+ r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL should never execute',id),requestId:queuedCancel}});
+ r=await request('/api/file?projectId=p1&rootId=project&path=notes.md',{headers:{cookie}});const queuedFile=JSON.parse(r.text());
+ r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL queued snapshot',id),requestId:queuedSnapshot,attachments:[{rootId:'project',path:'notes.md',hash:queuedFile.hash,selection:{start:0,end:7,discarded:true},discarded:true}],reasoning:'on'}});
+ await fs.writeFile(path.join(fileRoot,'agent.md'),'before');
+ r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_EDIT',id),requestId:queuedTool,fileAccess:true}});
+ findings.push({test:'a queued file action does not edit the project before its turn starts',pass:r.records().at(-1).type==='queued'&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='before'});
+ const onDiskQueue=JSON.parse(await fs.readFile(path.join(root,'data/chats',id+'.json'),'utf8'));
+ findings.push({test:'queued requests and frozen file bytes persist separately from current turn history',pass:onDiskQueue.queue.length===4&&onDiskQueue.queue[2].attachments[0].text==='Changed'&&!onDiskQueue.messages.some(message=>message.text.includes('queued first'))&&!JSON.stringify(upstreamBodies[n-1]).includes('queued first')});
+ findings.push({test:'queued excerpt recovery retains only validated canonical file references and selection bounds',pass:JSON.stringify(onDiskQueue.queue[2].attachmentReferences)===JSON.stringify([{rootId:'project',path:'notes.md',hash:queuedFile.hash,selection:{start:0,end:7}}])});
+ const duplicateCount=upstreamCount;r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL duplicate',id),requestId:queuedOne}});
+ findings.push({test:'retrying a queued request cannot duplicate its later model call or tools',pass:r.statusCode===409&&upstreamCount===duplicateCount});
+ r=await request('/api/chat-request?projectId=p1&requestId='+queuedSnapshot,{headers:{cookie}});
+ findings.push({test:'queued receipt exposes its conversation and live position',pass:JSON.parse(r.text()).status==='queued'&&JSON.parse(r.text()).id===id&&JSON.parse(r.text()).position===3});
+ r=await request('/api/cancel',{method:'POST',headers:{cookie},body:{id,projectId:'p1',requestId:queuedCancel}});
+ r=await request('/api/chat-request?projectId=p1&requestId='+queuedCancel,{headers:{cookie}});
+ findings.push({test:'removing one queued message keeps the active reply and remaining FIFO queue',pass:JSON.parse(r.text()).status==='stopped'&&upstreamCount===duplicateCount&&activeRequestStatus(await request('/api/chat-request?projectId=p1&requestId='+runId+'-fifo',{headers:{cookie}}))==='running'});
+ await fs.writeFile(path.join(fileRoot,'notes.md'),'Edited while waiting.');
+ const other=await send('NORMAL another chat');const otherId=other.records().find(e=>e.type==='start')?.id;
+ findings.push({test:'a new conversation in the same project answers while another conversation is running',pass:other.records().at(-1).type==='done'&&otherId&&otherId!==id});
+ const secondHoldRes=new Res();const secondHoldJob=handle(req('/api/chat',{method:'POST',headers:{cookie},body:{...data('HOLD independent new'),requestId:runId+'-independent'}}),secondHoldRes);
+ for(let i=0;i<50&&!secondHoldRes.records().some(e=>e.type==='delta');i++)await sleep(10);
+ findings.push({test:'two new conversations have independent active generations without a project-wide new lock',pass:secondHoldRes.records().some(e=>e.type==='delta')&&secondHoldRes.records().find(e=>e.type==='start').id!==id});
+ const fifoController=upstream.shift();finishHold(fifoController);await holdJob;
+ const executed=upstreamBodies.filter(body=>typeof body.messages.at(-1).content==='string'&&body.messages.at(-1).content.includes('NORMAL queued'));
+ const firstTurn=executed.find(body=>body.messages.at(-1).content==='NORMAL queued first'),snapshotTurn=executed.find(body=>body.messages.at(-1).content.startsWith('NORMAL queued snapshot'));
+ findings.push({test:'queued messages run once in order with completed prior history and their captured effort',pass:executed.length===2&&executed[0]===firstTurn&&executed[1]===snapshotTurn&&firstTurn.reasoning_effort==='none'&&snapshotTurn.reasoning_effort==='medium'&&snapshotTurn.messages.some(message=>message.role==='user'&&message.content==='NORMAL queued first')&&snapshotTurn.messages.some(message=>message.role==='assistant'&&message.content==='Synthetic reply')&&!upstreamBodies.some(body=>body.messages.at(-1).content==='NORMAL should never execute')});
+ r=await request('/api/conversation?projectId=p1&id='+id,{headers:{cookie}});const toolTurn=JSON.parse(r.text()).messages.find(message=>message.requestId===queuedTool&&message.role==='assistant');
+ findings.push({test:'a queued file-enabled turn executes tools only once with its own captured permission',pass:toolTurn.actions.length===2&&toolTurn.actions.some(action=>action.backupId)&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='after'});
+ findings.push({test:'a queued attachment uses accepted bytes despite later PC changes',pass:snapshotTurn.messages.at(-1).content.includes('\"contenu\":\"Changed\"')&&!snapshotTurn.messages.at(-1).content.includes('Edited while waiting.')});
+ r=await request('/api/chat-request?projectId=p1&requestId='+queuedOne,{headers:{cookie}});const firstCompleted=JSON.parse(r.text());
+ r=await request('/api/conversation?projectId=p1&id='+id,{headers:{cookie}});const drained=JSON.parse(r.text());
+ findings.push({test:'finished queued requests remain discoverable and only the canceled entry remains unexecuted',pass:firstCompleted.status==='completed'&&drained.generation.status==='completed'&&drained.queue.every(item=>item.status==='stopped')&&drained.messages.filter(message=>message.requestId===queuedOne&&message.role==='user').length===1});
+ // A slow cold read must not replace a chat already started by another request.
+ const coldId='web-22222222-2222-4222-8222-222222222222',coldPath=path.join(root,'data/chats',coldId+'.json');
+ await fs.writeFile(coldPath,JSON.stringify({id:coldId,projectId:'p1',name:'Cold concurrent',messages:[],queue:[],updatedAt:1}));
+ const originalReadFile=fs.readFile;let releaseCold,coldWaiting=false,delayColdOnce=true;
+ fs.readFile=async(...args)=>{const value=await originalReadFile(...args);if(args[0]===coldPath&&delayColdOnce){delayColdOnce=false;coldWaiting=true;await new Promise(resolve=>{releaseCold=resolve})}return value};
+ const coldRead=request('/api/conversation?projectId=p1&id='+coldId,{headers:{cookie}});
+ for(let i=0;i<50&&!coldWaiting;i++)await sleep(10);
+ const coldRes=new Res(),coldRequest=runId+'-cold';const coldJob=handle(req('/api/chat',{method:'POST',headers:{cookie},body:{...data('HOLD cold read',coldId),requestId:coldRequest}}),coldRes);
+ for(let i=0;i<50&&!coldRes.records().some(e=>e.type==='delta');i++)await sleep(10);
+ releaseCold();await coldRead;fs.readFile=originalReadFile;
+ const beforeColdQueue=upstreamCount,coldQueued=runId+'-cold-queued';r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL after canceled active',coldId),requestId:coldQueued}});
+ findings.push({test:'a concurrent cold snapshot read cannot replace the running state or lose its write chain',pass:r.records().at(-1).type==='queued'&&upstreamCount===beforeColdQueue});
+ r=await request('/api/cancel',{method:'POST',headers:{cookie},body:{id:coldId,projectId:'p1',requestId:coldRequest}});await coldJob;
+ r=await request('/api/chat-request?projectId=p1&requestId='+coldQueued,{headers:{cookie}});const afterActiveStop=JSON.parse(r.text());
+ r=await request('/api/chat-request?projectId=p1&requestId='+runId+'-independent',{headers:{cookie}});
+ findings.push({test:'stopping one active request interrupts its dependent queue and leaves another chat running',pass:afterActiveStop.status==='interrupted'&&!upstreamBodies.some(body=>body.messages.at(-1).content==='NORMAL after canceled active')&&JSON.parse(r.text()).status==='running'});
+ const errorRes=new Res(),errorRequest=runId+'-error-active',errorQueued=runId+'-error-queued';
+ const errorJob=handle(req('/api/chat',{method:'POST',headers:{cookie},body:{...data('HOLD invalid EOF'),requestId:errorRequest}}),errorRes);
+ for(let i=0;i<50&&!errorRes.records().some(e=>e.type==='delta');i++)await sleep(10);
+ const errorId=errorRes.records().find(e=>e.type==='start').id;
+ await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL must not run after error',errorId),requestId:errorQueued,fileAccess:true}});
+ upstream.pop().close();await errorJob;
+ r=await request('/api/chat-request?projectId=p1&requestId='+errorQueued,{headers:{cookie}});
+ const errorDisk=JSON.parse(await fs.readFile(path.join(root,'data/chats',errorId+'.json'),'utf8'));
+ findings.push({test:'an upstream response error persists its dependent queue as interrupted without executing later tools',pass:JSON.parse(r.text()).status==='interrupted'&&errorDisk.queue[0].status==='interrupted'&&!upstreamBodies.some(body=>body.messages.at(-1).content==='NORMAL must not run after error')});
+ // The queue limit counts only waiting entries, and canceling one frees a slot.
+ const limitChatId=secondHoldRes.records().find(e=>e.type==='start').id,limitIds=[];
+ for(let i=0;i<10;i++){const requestId=runId+'-limit-'+i;limitIds.push(requestId);r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL limit '+i,limitChatId),requestId}});assert.equal(r.records().at(-1).type,'queued')}
+ const beforeLimit=upstreamCount;r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL over limit',limitChatId),requestId:runId+'-over-limit'}});
+ findings.push({test:'one conversation accepts at most ten waiting messages without disturbing other active chats',pass:r.statusCode===409&&upstreamCount===beforeLimit});
+ for(const requestId of limitIds)await request('/api/cancel',{method:'POST',headers:{cookie},body:{id:limitChatId,projectId:'p1',requestId}});
  r=await request('/api/models/unload',{method:'POST',headers:{cookie},body:{instanceId:'loaded-synthetic'}});findings.push({test:'unload blocked while a reply is running',pass:r.statusCode===409&&unloadCount===0});
- for(const c of upstream.splice(0))c.close();await holdJob;
+ finishHold(upstream.shift());for(const c of upstream.splice(0))try{c.close()}catch{}await secondHoldJob;
  r=await request('/api/models/unload',{method:'POST',headers:{cookie},body:{instanceId:'loaded-synthetic'}});findings.push({test:'authenticated exact-instance unload succeeds after reply',pass:r.statusCode===200&&JSON.parse(r.text()).unloaded===true&&unloadCount===1});
  r=await request('/api/models/unload',{method:'POST',headers:{cookie},body:{instanceId:'loaded-synthetic'}});findings.push({test:'unload stale instance rejected without repeated mutation',pass:r.statusCode===409&&unloadCount===1});
  for(const finding of findings)test(finding.test,()=>assert.equal(finding.pass,true,JSON.stringify(finding)));

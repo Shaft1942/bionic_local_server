@@ -19,22 +19,49 @@ for (const [id, name] of [['refresh', 'refresh'], ['search-icon', 'search'], ['b
 for (const [id, name] of [['models-open-thread','models'], ['models-close','close'], ['models-refresh','refresh']]) $(id).append(icon(name));
 $('models-open-sidebar').prepend(icon('models'));
 $('new-chat').append(icon('plus'), document.createTextNode('Nouveau chat web'));
-const state = { projects: [], sessions: [], projectId: null, chat: null, sending: false, loading: false, uploading: false, status: null, streamId: null, viewSeq: 0, projectSeq: 0, controller: null, draftReasoning: {}, draftFileAccess: null };
-let pendingReply = readPendingReply(), recoveryTimer, recoveryBusy = false;
-function readPendingReply() {
+const state = { projects: [], sessions: [], projectId: null, chat: null, sending: false, loading: false, uploading: false, status: null, viewSeq: 0, projectSeq: 0, authenticated: false, authEpoch: 0, viewKey: null, draftReasoning: {}, draftFileAccess: null };
+const chats = new Map(), drafts = readDrafts(), jobs = readJobs();
+let recoveryTimer, recoveryBusy = false, renderTimer;
+function readJobs() {
   try {
-    const saved = JSON.parse(localStorage.getItem('bm_pending_reply'));
-    return saved && typeof saved.projectId === 'string' && /^[a-zA-Z0-9-]{16,100}$/.test(saved.requestId || '') ? saved : null;
-  } catch { return null; }
+    const saved = JSON.parse(localStorage.getItem('bm_pending_replies') || 'null') || [JSON.parse(localStorage.getItem('bm_pending_reply') || 'null')];
+    return new Map((Array.isArray(saved) ? saved : []).filter(job => job && typeof job.projectId === 'string' && /^[a-zA-Z0-9-]{16,100}$/.test(job.requestId || '')).slice(0, 100).map(job => [job.requestId, { ...job, status: job.status || 'reconnecting' }]));
+  } catch { return new Map(); }
 }
-function rememberReply(pending) {
-  pendingReply = pending;
-  try { if (pending) localStorage.setItem('bm_pending_reply', JSON.stringify(pending)); else localStorage.removeItem('bm_pending_reply'); } catch {}
+function rememberJobs() {
+  try {
+    localStorage.removeItem('bm_pending_reply');
+    const saved = [...jobs.values()].map(({ requestId, projectId, id, createdAt, status, viewKey }) => ({ requestId, projectId, id, createdAt, status, viewKey }));
+    if (saved.length) localStorage.setItem('bm_pending_replies', JSON.stringify(saved)); else localStorage.removeItem('bm_pending_replies');
+  } catch {}
 }
-function rememberChat() { if (state.chat?.id) localStorage.setItem('bm_chat_' + state.projectId, state.chat.id); }
+function readDrafts() {
+  try { const saved = JSON.parse(sessionStorage.getItem('bm_drafts') || '[]'); return new Map(Array.isArray(saved) ? saved.slice(-100) : []); } catch { return new Map(); }
+}
+function rememberDrafts() { try { sessionStorage.setItem('bm_drafts', JSON.stringify([...drafts.entries()].slice(-100))); } catch {} }
+function chatKey(projectId, id) { return projectId + '|' + (id || 'new'); }
+function currentJobs() { return [...jobs.values()].filter(job => job.projectId === state.projectId && (job.id ? job.id === state.chat?.id : job.viewKey === state.viewKey)); }
+function anyGeneration() { return jobs.size > 0 || state.sessions.some(chat => chat.generation?.status === 'running' || chat.queue?.some(item => item.status === 'queued')); }
+function draftForView() { return drafts.get(state.viewKey) || {}; }
+function saveDraft() {
+  if (!state.viewKey) return;
+  drafts.set(state.viewKey, { ...draftForView(), text: $('prompt').value, model: $('model').value, reasoning: { ...state.draftReasoning }, fileAccess: $('agent-files').checked, attachments: fileBrowser.snapshot(), uploadStatus: $('upload-status').hidden ? '' : $('upload-status').textContent });
+  rememberDrafts();
+}
+function restoreDraft(key) {
+  state.viewKey = key;
+  rememberView();
+  const draft = draftForView();
+  state.draftReasoning = { ...draft.reasoning }; state.draftFileAccess = draft.fileAccess ?? null;
+  $('prompt').value = draft.text || ''; fileBrowser.restore(draft.attachments || []);
+  $('upload-status').textContent = draft.uploadStatus || ''; $('upload-status').hidden = !draft.uploadStatus;
+  $('model').value = (state.status?.models || []).some(model => model.id === draft.model) ? draft.model : modelForChat();
+}
+function rememberView() { try { sessionStorage.setItem('bm_view', JSON.stringify({ projectId: state.projectId, key: state.viewKey })); } catch {} }
+function rememberChat() { if (state.chat?.id) { try { localStorage.setItem('bm_chat_' + state.projectId, state.chat.id); } catch {} } }
 const EFFORT_LABELS = { off: 'Désactivé', on: 'Activé', low: 'Faible', medium: 'Moyen', high: 'Élevé', xhigh: 'Très élevé' };
 const modelPanel = { models: [], loading: false, unloading: null, generationActive: false };
-const fileBrowser = createProjectFileBrowser({ api, node, icon, toast, getProject: () => state.projects.find(project => project.id === state.projectId), isBusy: () => state.sending || state.loading || state.uploading, onAttach: () => { $('app').classList.add('thread-open'); renderChat(); $('prompt').focus(); } });
+const fileBrowser = createProjectFileBrowser({ api, node, icon, toast, getProject: () => state.projects.find(project => project.id === state.projectId), isBusy: () => state.loading || state.uploading, onChange: saveDraft, onAttach: () => { $('app').classList.add('thread-open'); renderChat(); $('prompt').focus(); } });
 $('upload-file').prepend(icon('upload'));
 let toastTimeout;
 function toast(message) { $('toast').textContent = message; $('toast').hidden = false; clearTimeout(toastTimeout); toastTimeout = setTimeout(() => $('toast').hidden = true, 4500); }
@@ -43,7 +70,7 @@ function node(tag, className, text) { const el = document.createElement(tag); if
 async function api(route, options = {}) {
   const r = await fetch(route, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
   const j = await r.json().catch(() => ({ error: 'Réponse du serveur illisible.' }));
-  if (r.status === 401) { $('login').hidden = false; $('app').hidden = true; $('files-view').hidden = true; }
+  if (r.status === 401) hidePrivateViews();
   if (!r.ok) throw Object.assign(new Error(j.error || `Le serveur ne répond pas (HTTP ${r.status}).`), { status: r.status });
   return j;
 }
@@ -59,7 +86,7 @@ function setModels() {
   const list = state.status?.models || [];
   if (!list.length) $('model').append(new Option('Aucun modèle local disponible', ''));
   for (const m of list) $('model').append(new Option(`${m.loaded ? 'Chargé · ' : ''}${m.name}${m.vision ? ' · Vision' : ''}`, m.id));
-  $('model').value = list.find(m => m.id === previous)?.id || list.find(m => m.id === state.chat?.model)?.id || list.find(m => m.loaded)?.id || list[0]?.id || '';
+  $('model').value = list.find(m => m.id === draftForView().model)?.id || list.find(m => m.id === previous)?.id || list.find(m => m.id === state.chat?.model)?.id || list.find(m => m.loaded)?.id || list[0]?.id || '';
   setEffort();
   setSending(state.sending);
 }
@@ -72,7 +99,7 @@ function setEffort() {
   $('effort').replaceChildren(new Option(capability?.default ? `Par défaut (${EFFORT_LABELS[capability.default]})` : 'Par défaut', 'default'));
   for (const choice of choices) $('effort').append(new Option(EFFORT_LABELS[choice] || choice, choice));
   $('effort').value = valid ? stored : 'default';
-  $('effort').disabled = !choices.length || state.sending || state.loading || !!modelPanel.unloading;
+  $('effort').disabled = !choices.length || state.loading || !!modelPanel.unloading;
   const binary = choices.length && choices.every(choice => choice === 'on' || choice === 'off');
   $('effort-help').textContent = !valid ? 'Le niveau précédemment choisi n’est plus disponible. Le réglage par défaut sera utilisé.' : !choices.length ? 'Ce modèle ne propose pas de réglage d’effort par l’API.' : binary ? 'Ce modèle permet d’activer ou de désactiver le raisonnement, sans niveaux intermédiaires.' : 'Niveau de raisonnement appliqué au prochain message.';
 }
@@ -101,12 +128,12 @@ function renderLoadedModels() {
     details.append(node('p', 'loaded-model-meta', detail));
     if (instance.model.loadedInstances.length > 1) details.append(node('p', 'loaded-model-id', instance.id));
     const button = node('button', 'unload-button', modelPanel.unloading === instance.id ? 'Déchargement…' : 'Décharger');
-    button.type = 'button'; button.disabled = locked || state.sending || modelPanel.generationActive;
+    button.type = 'button'; button.disabled = locked || anyGeneration() || modelPanel.generationActive;
     button.setAttribute('aria-label', 'Décharger ' + instance.model.name + (instance.model.loadedInstances.length > 1 ? ' — ' + instance.id : ''));
     button.addEventListener('click', () => unloadModel(instance.id));
     row.append(details, button); $('models-list').append(row);
   }
-  if ((state.sending || modelPanel.generationActive) && !modelPanel.unloading) $('models-summary').textContent += ' · Une réponse est en cours. Le déchargement sera disponible après sa fin.';
+  if ((anyGeneration() || modelPanel.generationActive) && !modelPanel.unloading) $('models-summary').textContent += ' · Une réponse est en cours. Le déchargement sera disponible après sa fin.';
 }
 async function refreshLoadedModels() {
   if (modelPanel.unloading || modelPanel.loading) return;
@@ -121,7 +148,7 @@ async function refreshLoadedModels() {
 }
 function openModels() { if (!$('models-dialog').open) $('models-dialog').showModal(); refreshLoadedModels(); }
 async function unloadModel(instanceId) {
-  if (modelPanel.unloading || modelPanel.loading || state.sending || modelPanel.generationActive) return;
+  if (modelPanel.unloading || modelPanel.loading || anyGeneration() || modelPanel.generationActive) return;
   modelPanel.unloading = instanceId; modelError(''); renderLoadedModels(); setSending(state.sending);
   try {
     const result = await api('/api/models/unload', { method: 'POST', body: JSON.stringify({ instanceId }) });
@@ -153,16 +180,27 @@ async function loadSessions() {
 }
 function renderSessions() {
   const search = $('search').value.toLocaleLowerCase('fr');
-  const filtered = state.sessions.filter(s => s.name.toLocaleLowerCase('fr').includes(search));
+  const pending = [...jobs.values()].filter(job => job.projectId === state.projectId && !job.id).map(job => ({ id: 'pending:' + job.requestId, name: job.chat?.name || 'Envoi au PC…', source: 'web', generation: { status: 'running' }, pending: job }));
+  const filtered = [...pending, ...state.sessions].filter(s => s.name.toLocaleLowerCase('fr').includes(search));
   $('session-count').textContent = String(filtered.length);
   $('sessions').replaceChildren();
   if (!filtered.length) { $('sessions').append(node('p', 'list-empty', search ? 'Aucune conversation pour cette recherche.' : 'Aucune conversation dans ce projet. Commence un nouveau chat web.')); return; }
   for (const s of filtered) {
-    const button = node('button', 'session'); button.type = 'button'; button.disabled = state.sending;
-    button.setAttribute('aria-current', String(state.chat?.id === s.id));
+    const button = node('button', 'session'); button.type = 'button'; button.disabled = state.uploading;
+    button.setAttribute('aria-current', String(s.pending ? state.viewKey === s.pending.viewKey : state.chat?.id === s.id));
     button.append(node('span', 'session-name', s.name));
-    const meta = node('span', 'session-meta'); meta.append(node('span', s.source === 'web' ? 'web-label' : '', s.generation?.status === 'running' ? 'Réponse en cours sur le PC' : s.source === 'web' ? (s.origin ? 'Suite web' : 'Chat web') : 'Bionic'), node('span', '', shortDate(s.updatedAt)));
-    button.append(meta); button.addEventListener('click', () => openChat(s.id).catch(e => error(e.message))); $('sessions').append(button);
+    const active = [...jobs.values()].filter(job => job.projectId === state.projectId && job.id === s.id);
+    const queued = Math.max(s.queueCount || s.queue?.filter(item => item.status === 'queued').length || 0, active.filter(job => job.status === 'queued').length);
+    const running = s.generation?.status === 'running' || active.some(job => job.status !== 'queued');
+    const label = running ? 'Réponse en cours' + (queued ? ` · ${queued} en attente` : '') : queued ? `${queued} en attente` : s.source === 'web' ? (s.origin ? 'Suite web' : 'Chat web') : 'Bionic';
+    button.classList.toggle('session-active', running || queued > 0);
+    const meta = node('span', 'session-meta'); meta.append(node('span', s.source === 'web' ? 'web-label' : '', label), node('span', '', shortDate(s.updatedAt)));
+    button.append(meta); button.addEventListener('click', () => {
+      if (s.pending) {
+        saveDraft(); ++state.viewSeq; state.loading = false; state.chat = s.pending.chat || { name: s.name, source: 'web', messages: [] };
+        restoreDraft(s.pending.viewKey); $('app').classList.add('thread-open'); renderChat();
+      } else openChat(s.id).catch(e => error(e.message));
+    }); $('sessions').append(button);
   }
 }
 function inlineText(el, text) {
@@ -219,6 +257,8 @@ function addFileAction(article, action) {
 }
 function addMessage(message) {
   const article = node('article', 'message ' + message.role);
+  if (message.requestId || message.localRequestId) article.dataset.requestId = message.requestId || message.localRequestId;
+  article.dataset.messageKey = (message.requestId || message.localRequestId) ? (message.requestId || message.localRequestId) + '-' + message.role : message.id || '';
   const role = node('div', 'message-role', message.role === 'user' ? 'Toi' : 'Assistant');
   if (message.fromBionic) role.append(node('span', 'origin-tag', 'historique Bionic'));
   const content = node('div', 'message-body'); renderText(content, message.text || '');
@@ -262,8 +302,45 @@ function addMessage(message) {
   $('messages').append(article); return content;
 }
 function scrollBottom() { $('messages').scrollTop = $('messages').scrollHeight; }
+function renderQueue(chat) {
+  const queue = [...(chat?.queue || []).filter(item => ['queued', 'interrupted', 'error'].includes(item.status)), ...(draftForView().failed || [])];
+  for (const job of currentJobs()) {
+    if (job.payload && !chat?.messages?.some(message => message.requestId === job.requestId) && !queue.some(item => item.requestId === job.requestId)) queue.push({ ...job.payload, status: job.status === 'submitting' ? 'submitting' : 'queued' });
+  }
+  for (const item of queue) {
+    const article = node('article', 'message queued-message');
+    const interrupted = item.status === 'interrupted' || item.status === 'error', submitting = item.status === 'submitting';
+    article.append(node('div', 'message-role', interrupted ? 'Message non exécuté · à reprendre' : submitting ? 'Envoi au PC…' : 'Message en attente'));
+    const content = node('div', 'message-body'); renderText(content, item.text || ''); article.append(content);
+    if (item.attachments?.length) article.append(node('p', 'message-footer', item.attachments.length + ' fichier' + (item.attachments.length > 1 ? 's joints' : ' joint')));
+    const actions = node('div', 'queue-actions');
+    if (interrupted) {
+      const reuse = node('button', 'file-action', 'Reprendre dans le brouillon'); reuse.type = 'button';
+      reuse.addEventListener('click', () => {
+        if ($('prompt').value.trim() || fileBrowser.snapshot().length) return toast('Ton brouillon contient déjà un message. Envoie-le ou efface-le avant de reprendre celui-ci.');
+        $('prompt').value = item.text || ''; $('model').value = item.model || $('model').value;
+        state.draftReasoning[$('model').value] = item.reasoning || 'default'; state.draftFileAccess = item.fileAccess; $('agent-files').checked = item.fileAccess !== false;
+        const references = item.attachmentReferences || item.attachments || [];
+        fileBrowser.restore(references.map(reference => ({ ...reference, name: item.attachments?.find(file => file.path === reference.path && file.rootId === reference.rootId)?.name || reference.name })));
+        saveDraft(); setEffort(); $('prompt').focus();
+        if (item.local) { const draft = draftForView(); draft.failed = (draft.failed || []).filter(failed => failed.requestId !== item.requestId); rememberDrafts(); renderChat(); }
+      }); actions.append(reuse);
+    } else if (!submitting) {
+      const remove = node('button', 'file-action', 'Retirer de la file'); remove.type = 'button';
+      const target = { projectId: state.projectId, id: chat?.id, requestId: item.requestId };
+      remove.addEventListener('click', async () => {
+        remove.disabled = true;
+        try { await api('/api/cancel', { method: 'POST', body: JSON.stringify(target) }); await recoverReplies(); }
+        catch (e) { toast(e.message); remove.disabled = false; }
+      }); actions.append(remove);
+    }
+    article.append(actions); $('messages').append(article);
+  }
+}
 function renderChat() {
   const chat = state.chat, project = state.projects.find(p => p.id === state.projectId);
+  const expanded = new Set();
+  for (const article of $('messages').querySelectorAll('.message[data-message-key]')) article.querySelectorAll('details').forEach((detail, index) => { if (detail.open) expanded.add(article.dataset.messageKey + ':' + index); });
   $('agent-files').checked = state.draftFileAccess ?? chat?.fileAccess ?? true;
   $('thread-title').textContent = chat?.name || 'Nouveau chat web';
   $('thread-subtitle').textContent = (project?.name || 'Projet') + (chat?.source === 'bionic' ? ' · historique Bionic' : ' · conversation web');
@@ -274,122 +351,196 @@ function renderChat() {
   if (chat?.model && !(state.status?.models || []).some(m => m.id === chat.model)) banner += ' Le modèle d’origine n’est pas disponible sous le même nom dans l’API : vérifie le modèle sélectionné avant d’envoyer.';
   $('banner').textContent = banner;
   $('messages').replaceChildren();
-  if (chat?.messages?.length) for (const m of chat.messages) addMessage(m);
-  else { const empty = node('div', 'welcome'); empty.append(node('h2', '', 'Commence une nouvelle idée.'), node('p', '', 'Le modèle local répondra à partir de tes messages et des fichiers que tu choisis de joindre.')); $('messages').append(empty); }
-  $('model').value = modelForChat(); setEffort(); scrollBottom(); renderSessions();
-  if (chat?.generation?.status === 'running') {
-    const body = $('messages').lastElementChild?.querySelector('.message-body');
-    if (body && !body.textContent) body.textContent = 'Le modèle prépare sa réponse sur le PC…';
+  if (chat?.messages?.length) for (const m of chat.messages) {
+    const body = addMessage(m);
+    if (m.role === 'assistant' && !m.text && chat.generation?.status === 'running' && (m.requestId === chat.generation.requestId || m.localRequestId === chat.generation.requestId)) body.textContent = 'Le modèle prépare sa réponse sur le PC…';
   }
+  else { const empty = node('div', 'welcome'); empty.append(node('h2', '', 'Commence une nouvelle idée.'), node('p', '', 'Le modèle local répondra à partir de tes messages et des fichiers que tu choisis de joindre.')); $('messages').append(empty); }
+  renderQueue(chat);
+  for (const article of $('messages').querySelectorAll('.message[data-message-key]')) article.querySelectorAll('details').forEach((detail, index) => { if (expanded.has(article.dataset.messageKey + ':' + index)) detail.open = true; });
+  const selectedModel = draftForView().model;
+  $('model').value = (state.status?.models || []).some(model => model.id === selectedModel) ? selectedModel : modelForChat();
+  setEffort(); scrollBottom(); renderSessions();
+  setSending();
 }
 async function openChat(id) {
-  if (state.sending || state.uploading) return;
+  if (state.uploading) return;
+  saveDraft();
   const seq = ++state.viewSeq, pid = state.projectId;
-  state.loading = true; state.chat = null; state.draftReasoning = {}; state.draftFileAccess = null; setSending(false);
-  fileBrowser.clear();
-  $('upload-status').hidden = true;
+  state.loading = true; state.chat = chats.get(chatKey(pid, id)) || null; restoreDraft(chatKey(pid, id)); setSending();
   error(''); $('app').classList.add('thread-open');
   $('thread-title').textContent = 'Ouverture de la conversation…';
   $('messages').replaceChildren(node('p', 'loading-label', 'Ouverture de la conversation…'));
   try {
     const chat = await api(`/api/conversation?projectId=${encodeURIComponent(pid)}&id=${encodeURIComponent(id)}`);
     if (seq !== state.viewSeq || pid !== state.projectId) return;
-    state.chat = chat; rememberChat(); renderChat();
-  } catch (e) { if (seq === state.viewSeq) renderChat(); throw e; }
+    cacheChat(chat, pid); state.chat = chat; adoptJobs(chat, pid); rememberChat(); renderChat();
+  } catch (e) { if (seq === state.viewSeq) { renderChat(); throw e; } }
   finally {
     if (seq === state.viewSeq) {
-      state.loading = false; setSending(false);
-      if (state.chat?.generation?.status === 'running') {
-        const requestId = state.chat.messages.findLast(message => message.requestId)?.requestId;
-        if (requestId) { rememberReply({ requestId, projectId: pid, id, createdAt: Date.now() }); await recoverReply(); }
-      }
+      state.loading = false; setSending(); scheduleRecovery();
     }
   }
 }
-function setSending(sending) {
-  state.sending = sending;
-  const locked = sending || state.loading || state.uploading || !!modelPanel.unloading;
-  $('send').hidden = sending; $('stop').hidden = !sending;
+function setSending() {
+  const active = currentJobs(), unresolved = active.some(job => !job.id);
+  const running = state.chat?.generation?.status === 'running' || active.some(job => job.status !== 'queued');
+  state.sending = active.length > 0 || running;
+  const locked = state.loading || state.uploading || !!modelPanel.unloading;
+  $('send').hidden = false; $('stop').hidden = !running || !state.chat?.id;
   $('prompt').disabled = locked;
-  $('send').disabled = locked || !state.projectId || !state.status?.ok || !state.status?.models?.length;
-  for (const id of ['project', 'model', 'new-chat', 'refresh']) $(id).disabled = locked;
+  $('send').disabled = locked || unresolved || !state.projectId || !state.status?.ok || !state.status?.models?.length;
+  $('send').setAttribute('aria-label', state.sending ? 'Ajouter à la file' : 'Envoyer le message');
+  $('send').title = state.sending ? 'Ajouter à la file' : 'Envoyer le message';
+  $('send').classList.toggle('queue-send', state.sending);
+  $('send-label').textContent = state.sending ? 'Ajouter à la file' : '';
+  for (const id of ['project', 'new-chat', 'refresh']) $(id).disabled = state.uploading;
+  $('model').disabled = locked;
   for (const id of ['files-open-sidebar', 'attach-file', 'upload-file']) $(id).disabled = locked || !state.projectId;
   $('agent-files').disabled = locked;
   $('logout').disabled = state.uploading;
-  document.querySelectorAll('.restore-action').forEach(button => button.disabled = locked || button.dataset.restored === 'true');
+  document.querySelectorAll('.restore-action').forEach(button => button.disabled = locked || state.sending || button.dataset.restored === 'true');
   $('effort').disabled = locked || !(state.status?.models || []).find(model => model.id === $('model').value)?.reasoning?.allowedOptions.length;
-  document.querySelectorAll('.session').forEach(b => b.disabled = locked);
-  $('composer-note').textContent = sending ? 'La réponse continue sur le PC si tu quittes le navigateur. Elle sera retrouvée à ton retour.' : $('agent-files').checked ? 'Lecture ciblée des fichiers utiles. Une copie précède chaque remplacement.' : 'Le modèle reçoit les messages et les fichiers joints, sans modifier le projet.';
+  document.querySelectorAll('.session').forEach(b => b.disabled = state.uploading);
+  const queued = Math.max(state.chat?.queue?.filter(item => item.status === 'queued').length || 0, active.filter(job => job.status === 'queued').length);
+  $('composer-activity').hidden = !state.sending;
+  $('composer-activity').textContent = unresolved ? 'Envoi au PC… Tu peux préparer ton prochain message.' : (running ? 'Réponse en cours sur le PC.' : '') + (queued ? ` ${queued} message${queued > 1 ? 's' : ''} en attente.` : '') + ' Tu peux écrire ou ouvrir un autre chat.';
+  $('composer-note').textContent = state.sending ? 'Les messages de ce chat seront traités dans l’ordre. Les réponses continuent si tu quittes le navigateur.' : $('agent-files').checked ? 'Lecture ciblée des fichiers utiles. Une copie précède chaque remplacement.' : 'Le modèle reçoit les messages et les fichiers joints, sans modifier le projet.';
   fileBrowser.refresh();
 }
 function scheduleRecovery() {
   clearTimeout(recoveryTimer);
-  if (pendingReply) recoveryTimer = setTimeout(recoverReply, 2000);
+  if (state.authenticated) recoveryTimer = setTimeout(recoverReplies, jobs.size ? 1500 : 6000);
 }
-async function recoverReply() {
-  if (recoveryBusy || state.controller || !pendingReply || $('app').hidden) return;
+function cacheChat(chat, projectId) {
+  chats.set(chatKey(projectId, chat.id), chat);
+  if (projectId === state.projectId) {
+    const summary = { ...chat, messages: undefined };
+    const index = state.sessions.findIndex(session => session.id === chat.id);
+    if (index >= 0) state.sessions[index] = summary; else state.sessions.unshift(summary);
+  }
+}
+function adoptJobs(chat, projectId) {
+  const requestId = chat.generation?.requestId || (chat.generation?.status === 'running' ? chat.messages?.findLast(message => message.requestId)?.requestId : null);
+  if (requestId && chat.generation?.status === 'running' && !jobs.has(requestId)) jobs.set(requestId, { requestId, projectId, id: chat.id, createdAt: chat.generation.startedAt || Date.now(), status: 'running' });
+  for (const item of chat.queue || []) if (item.status === 'queued' && !jobs.has(item.requestId)) jobs.set(item.requestId, { requestId: item.requestId, projectId, id: chat.id, createdAt: item.queuedAt || Date.now(), status: 'queued' });
+  rememberJobs();
+}
+function showChatUpdate(chat, projectId) {
+  cacheChat(chat, projectId);
+  if (!state.authenticated || projectId !== state.projectId || state.chat?.id !== chat.id || state.loading) { renderSessions(); return; }
+  const nearBottom = $('messages').scrollHeight - $('messages').scrollTop - $('messages').clientHeight < 160;
+  const oldScroll = $('messages').scrollTop;
+  state.chat = chat; renderChat(); if (!nearBottom) $('messages').scrollTop = oldScroll;
+}
+async function recoverReplies() {
+  if (recoveryBusy || !state.authenticated) return;
   clearTimeout(recoveryTimer);
   if (document.visibilityState === 'hidden') { scheduleRecovery(); return; }
   recoveryBusy = true;
-  const pending = pendingReply;
-  setSending(true);
+  const epoch = state.authEpoch;
   try {
-    if (!pending.id) {
-      const receipt = await api('/api/chat-request?' + new URLSearchParams({ projectId: pending.projectId, requestId: pending.requestId }));
-      if (receipt.id) { pending.id = receipt.id; rememberReply(pending); }
-      else if (receipt.status === 'error') { rememberReply(null); error(receipt.message); return; }
-      else { $('composer-note').textContent = 'Demande reçue sur le PC. Préparation de la réponse…'; return; }
+    const pending = [...jobs.values()];
+    const snapshots = new Map();
+    await Promise.all(pending.map(async job => {
+      try {
+        const receipt = await api('/api/chat-request?' + new URLSearchParams({ projectId: job.projectId, requestId: job.requestId }));
+        if (epoch !== state.authEpoch || !state.authenticated) return;
+        if (receipt.id) bindJob(job, receipt.id);
+        job.status = receipt.status || job.status;
+        if (job.id) snapshots.set(chatKey(job.projectId, job.id), { projectId: job.projectId, id: job.id });
+        if (!['queued', 'running', 'starting', 'preparing', 'submitting', 'reconnecting'].includes(job.status)) {
+          jobs.delete(job.requestId);
+          if (receipt.message && job.projectId === state.projectId && job.id === state.chat?.id) error(receipt.message);
+        }
+      } catch (e) {
+        if (epoch !== state.authEpoch) return;
+        if (e.status === 404 && Date.now() - job.createdAt > 15000) {
+          jobs.delete(job.requestId);
+          if (job.projectId === state.projectId && (job.id === state.chat?.id || job.viewKey === state.viewKey)) error('Le PC n’a pas confirmé cet envoi. Vérifie la conversation avant de le renvoyer.');
+        } else if (e.status !== 401 && job.projectId === state.projectId && job.id === state.chat?.id) error('Reconnexion au PC… Les messages ne sont pas renvoyés.');
+      }
+    }));
+    if (epoch !== state.authEpoch || !state.authenticated) return;
+    for (const session of state.sessions) if (session.generation?.status === 'running' || session.queue?.some(item => item.status === 'queued')) snapshots.set(chatKey(state.projectId, session.id), { projectId: state.projectId, id: session.id });
+    await Promise.all([...snapshots.values()].map(async target => {
+      try {
+        const chat = await api('/api/conversation?' + new URLSearchParams(target));
+        if (epoch !== state.authEpoch || !state.authenticated) return;
+        adoptJobs(chat, target.projectId); showChatUpdate(chat, target.projectId);
+      } catch (e) { if (e.status !== 401 && target.projectId === state.projectId && target.id === state.chat?.id) error(e.message); }
+    }));
+    if (!pending.length && !snapshots.size && !state.loading) {
+      const projectId = state.projectId;
+      const response = await api('/api/sessions?projectId=' + encodeURIComponent(projectId));
+      if (epoch === state.authEpoch && projectId === state.projectId) { state.sessions = response.sessions; renderSessions(); }
     }
-    const chat = await api('/api/conversation?' + new URLSearchParams({ projectId: pending.projectId, id: pending.id }));
-    if (pending !== pendingReply) return;
-    const nearBottom = $('messages').scrollHeight - $('messages').scrollTop - $('messages').clientHeight < 160;
-    const oldScroll = $('messages').scrollTop;
-    state.chat = chat; state.streamId = chat.id; rememberChat();
-    fileBrowser.clear(); $('upload-status').hidden = true;
-    $('prompt').value = '';
-    renderChat(); $('app').classList.add('thread-open');
-    if (!nearBottom) $('messages').scrollTop = oldScroll;
-    error('');
-    if (chat.generation?.status !== 'running') {
-      rememberReply(null); state.streamId = null;
-      if (chat.generation?.message) error(chat.generation.message);
-      await loadSessions();
-    }
-  } catch (e) {
-    if (e.status === 404 && Date.now() - pending.createdAt > 15000) {
-      rememberReply(null); error('Le PC n’a pas confirmé cet envoi. Vérifie les conversations avant de le renvoyer.');
-    } else if (e.status !== 401) error('Reconnexion au PC… Le prompt ne sera pas renvoyé. La réponse sera récupérée dès le retour de la connexion.');
+    rememberJobs();
+  } catch (e) { if (e.status !== 401 && state.authenticated) $('status').textContent = 'Reconnexion au PC…';
   } finally {
-    recoveryBusy = false; state.loading = false;
-    setSending(!!pendingReply);
-    scheduleRecovery();
+    recoveryBusy = false; if (state.authenticated) { setSending(); renderSessions(); scheduleRecovery(); }
   }
 }
 function resumeReply() {
-  if (document.visibilityState === 'hidden' || $('app').hidden) return;
-  if (state.controller) state.controller.abort();
-  else recoverReply();
+  if (document.visibilityState !== 'hidden' && state.authenticated) recoverReplies();
+}
+function bindJob(job, id, name) {
+  if (!id) return;
+  const oldKey = job.viewKey, newKey = chatKey(job.projectId, id);
+  job.id = id;
+  if (oldKey && oldKey !== newKey) {
+    if (state.viewKey === oldKey) saveDraft();
+    if (drafts.has(oldKey)) { drafts.set(newKey, drafts.get(oldKey)); drafts.delete(oldKey); rememberDrafts(); }
+    if (state.viewKey === oldKey) {
+      state.viewKey = newKey;
+      rememberView();
+      if (state.chat) { state.chat.id = id; state.chat.name = name || state.chat.name; cacheChat(state.chat, job.projectId); }
+      rememberChat();
+    }
+  }
+  job.viewKey = newKey; rememberJobs();
+}
+function localChatForJob(job) {
+  return chats.get(chatKey(job.projectId, job.id)) || job.chat;
+}
+function redrawJob(job, full = false) {
+  if (!state.authenticated || job.projectId !== state.projectId || (job.id ? state.chat?.id !== job.id : state.viewKey !== job.viewKey)) return;
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(() => {
+    if (!state.authenticated || job.projectId !== state.projectId || (job.id ? state.chat?.id !== job.id : state.viewKey !== job.viewKey)) return;
+    const chat = localChatForJob(job); if (!chat) return;
+    const article = [...$('messages').querySelectorAll('.message.assistant')].find(message => message.dataset.requestId === job.requestId);
+    if (full || !article) { showChatUpdate(chat, job.projectId); return; }
+    const reply = replyForJob(chat, job.requestId), body = article.querySelector('.message-body');
+    if (!reply || !body) return;
+    const nearBottom = $('messages').scrollHeight - $('messages').scrollTop - $('messages').clientHeight < 160;
+    renderText(body, reply.text || 'Le modèle prépare sa réponse sur le PC…'); if (nearBottom) scrollBottom();
+  }, 40);
 }
 async function send(event) {
   event.preventDefault();
-  const text = $('prompt').value.trim(); if (!text || state.sending || state.loading || state.uploading || $('send').disabled) return;
-  ++state.viewSeq;
+  const text = $('prompt').value.trim(); if (!text || state.loading || state.uploading || $('send').disabled) return;
+  saveDraft();
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   const requestId = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
   error(''); const data = { requestId, projectId: state.projectId, sessionId: state.chat?.id || null, model: $('model').value, reasoning: $('effort').value, fileAccess: $('agent-files').checked, text, attachments: fileBrowser.references() };
-  rememberReply({ requestId, projectId: state.projectId, id: null, createdAt: Date.now() });
+  const originalDraft = draftForView(), oldKey = state.viewKey;
+  const viewKey = data.sessionId ? oldKey : chatKey(data.projectId, 'pending:' + requestId);
+  const chat = state.chat || { projectId: data.projectId, name: text.slice(0, 70), source: 'web', messages: [], model: data.model };
+  const job = { requestId, projectId: data.projectId, id: data.sessionId, viewKey, createdAt: Date.now(), status: 'submitting', payload: data, chat, controller: new AbortController(), epoch: state.authEpoch };
+  jobs.set(requestId, job); rememberJobs();
+  drafts.set(oldKey, { ...originalDraft, text: '', attachments: [], uploadStatus: '' });
+  if (oldKey !== viewKey) drafts.set(viewKey, { ...originalDraft, text: '', attachments: [], uploadStatus: '' });
+  state.chat = chat; restoreDraft(viewKey); rememberDrafts();
   $('app').classList.add('thread-open');
-  if (!$('messages').querySelector('.message')) $('messages').replaceChildren();
-  const user = { role: 'user', text }; addMessage(user);
-  const waiting = node('p', 'waiting', 'Connexion au modèle…'); $('messages').append(waiting); scrollBottom();
-  $('prompt').value = ''; setSending(true); state.controller = new AbortController();
-  let accepted = false, rejected = false, replyNode, replyText = '';
+  renderChat(); scheduleRecovery();
+  let rejected = false, replyText = '';
   try {
-    const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data), signal: state.controller.signal });
+    const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data), signal: job.controller.signal });
     if (!r.ok) {
-      const j = await r.json(); rejected = r.status !== 409;
-      if (rejected) rememberReply(null);
-      if (r.status === 401) { $('login').hidden = false; $('app').hidden = true; }
+      const j = await r.json(); rejected = r.status !== 409 || !/déjà.*reçu/i.test(j.error || '');
+      if (rejected) jobs.delete(requestId);
+      if (r.status === 401) hidePrivateViews();
       throw new Error(j.error || 'Le modèle ne peut pas répondre.');
     }
     const reader = r.body.getReader(), decoder = new TextDecoder(); let buffer = '';
@@ -399,53 +550,81 @@ async function send(event) {
       for (const line of lines) {
         if (!line.trim()) continue;
         const e = JSON.parse(line);
-        if (e.type === 'start') {
-          fileBrowser.clear();
-          $('upload-status').hidden = true;
-          accepted = true; state.streamId = e.id; waiting.remove();
-          rememberReply({ ...pendingReply, id: e.id });
-          state.chat = { id: e.id, projectId: state.projectId, name: e.name, source: 'web', model: data.model, reasoningByModel: { [data.model]: e.reasoning }, fileAccess: e.fileAccess };
-          rememberChat();
-          $('thread-title').textContent = e.name; $('thread-subtitle').textContent = 'Suite web · conservée sur ce PC';
-          $('banner').hidden = false; $('banner').textContent = 'Conversation web. Les nouveaux messages restent ici et ne sont pas synchronisés vers Bionic.' + (e.contextOmitted ? ' Seule la fin de l’historique a été transmise au modèle.' : '');
-          replyNode = addMessage({ role: 'assistant', text: '' }); replyNode.textContent = 'Le modèle prépare sa réponse…';
+        if (job.epoch !== state.authEpoch || !state.authenticated) return;
+        if (e.type === 'start' || e.type === 'queued') {
+          bindJob(job, e.id, e.name); job.status = e.type === 'queued' ? 'queued' : 'running';
+          const current = localChatForJob(job);
+          current.id = e.id; current.name = e.name || current.name; current.source = 'web'; current.model = data.model;
+          current.reasoningByModel = { ...current.reasoningByModel, [data.model]: e.reasoning || data.reasoning }; current.fileAccess = e.fileAccess ?? data.fileAccess;
+          if (e.type === 'start') {
+            current.messages ||= [];
+            if (!current.messages.some(message => message.requestId === requestId)) current.messages.push({ role: 'user', text, requestId });
+            current.messages.push({ role: 'assistant', text: '', localRequestId: requestId });
+            current.generation = { status: 'running', requestId };
+          }
+          cacheChat(current, job.projectId); redrawJob(job, true); rememberJobs(); setSending();
         } else if (e.type === 'delta') {
-          const nearBottom = $('messages').scrollHeight - $('messages').scrollTop - $('messages').clientHeight < 160;
-          replyText += e.text; replyNode.textContent = replyText; if (nearBottom) scrollBottom();
-        } else if (e.type === 'action-start') { if (!replyText) replyNode.textContent = 'Le modèle travaille sur les fichiers du projet…'; }
-        else if (e.type === 'action') { addFileAction(replyNode.closest('article'), e.action); scrollBottom(); }
-        else if (e.type === 'error') error(e.message);
-        else if (e.type === 'done' && e.limited) toast('Limite de réponse atteinte. Tu peux demander de continuer.');
+          replyText += e.text;
+          const current = localChatForJob(job), reply = replyForJob(current, requestId);
+          if (reply && replyText.length >= (reply.text || '').length) reply.text = replyText;
+          redrawJob(job);
+        } else if (e.type === 'action') {
+          const reply = replyForJob(localChatForJob(job), requestId);
+          if (reply) { reply.actions ||= []; if (!reply.actions.some(action => action.id === e.action.id)) reply.actions.push(e.action); }
+          redrawJob(job, true);
+        } else if (e.type === 'error') { if (jobIsVisible(job)) error(e.message); }
+        else if (e.type === 'done' && e.limited && jobIsVisible(job)) toast('Limite de réponse atteinte. Tu peux demander de continuer.');
       }
     }
-    if (replyNode) renderText(replyNode, replyText);
   } catch (e) {
-    if (rejected) error(e.message);
-    else if (document.visibilityState !== 'hidden') error('Reconnexion au PC… Récupération de la réponse en cours.');
-    if (!accepted) $('prompt').value = text;
+    if (job.epoch !== state.authEpoch || !state.authenticated) return;
+    if (rejected) {
+      if (jobIsVisible(job)) { error(e.message); saveDraft(); }
+      const key = job.id ? chatKey(job.projectId, job.id) : job.viewKey, current = drafts.get(key) || {};
+      if (!current.text && !current.attachments?.length) { drafts.set(key, originalDraft); if (jobIsVisible(job)) restoreDraft(key); }
+      else drafts.set(key, { ...current, failed: [...(current.failed || []), { ...data, attachments: originalDraft.attachments, status: 'error', local: true }] });
+      if (jobIsVisible(job)) renderChat();
+      rememberDrafts();
+    } else if (document.visibilityState !== 'hidden' && jobIsVisible(job)) error('Reconnexion au PC… Vérification de la réception du message, sans le renvoyer.');
   } finally {
-    waiting.remove(); state.controller = null;
-    if (pendingReply) await recoverReply();
-    else { state.streamId = null; renderChat(); setSending(false); }
+    job.controller = null; rememberJobs();
+    if (job.epoch === state.authEpoch && state.authenticated) { setSending(); await recoverReplies(); scheduleRecovery(); }
   }
 }
+function replyForJob(chat, requestId) {
+  if (!chat?.messages) return;
+  const index = chat.messages.findIndex(message => message.requestId === requestId);
+  return chat.messages.find((message, at) => message.role === 'assistant' && (message.localRequestId === requestId || (index >= 0 && at === index + 1)));
+}
+function jobIsVisible(job) { return state.authenticated && job.projectId === state.projectId && (job.id ? job.id === state.chat?.id : job.viewKey === state.viewKey); }
 function newChat(focus = true) {
-  if (state.sending || state.uploading) return; ++state.viewSeq; state.chat = null; state.draftReasoning = {}; state.draftFileAccess = null;
-  fileBrowser.clear(); $('app').classList.add('thread-open'); renderChat(); error('');
-  $('upload-status').hidden = true;
+  if (state.uploading) return; saveDraft(); ++state.viewSeq; state.loading = false; state.chat = null;
+  restoreDraft(chatKey(state.projectId)); $('app').classList.add('thread-open'); renderChat(); error('');
   if (focus) $('prompt').focus();
 }
 async function start() {
-  await checkStatus(); $('login').hidden = true; $('app').hidden = false;
-  if (pendingReply) state.projectId = pendingReply.projectId;
+  await checkStatus(); state.authenticated = true; ++state.authEpoch; $('login').hidden = true; $('app').hidden = false;
   await loadProjects();
-  if (pendingReply && state.projects.some(project => project.id === pendingReply.projectId)) {
-    $('app').classList.add('thread-open'); await recoverReply();
-  } else {
-    if (pendingReply) rememberReply(null);
-    const last = localStorage.getItem('bm_chat_' + state.projectId);
-    if (last && state.sessions.some(chat => chat.id === last)) await openChat(last);
+  let view;
+  try { view = JSON.parse(sessionStorage.getItem('bm_view') || 'null'); } catch {}
+  const savedKey = view?.projectId === state.projectId ? view.key : null;
+  const last = savedKey?.startsWith(state.projectId + '|') ? savedKey.slice(state.projectId.length + 1) : localStorage.getItem('bm_chat_' + state.projectId);
+  if (last && state.sessions.some(chat => chat.id === last)) await openChat(last);
+  else {
+    const pending = [...jobs.values()].find(job => !job.id && job.viewKey === savedKey);
+    state.chat = pending ? { name: 'Envoi au PC…', source: 'web', messages: [] } : null;
+    restoreDraft(pending ? savedKey : chatKey(state.projectId)); renderChat();
   }
+  await recoverReplies(); scheduleRecovery();
+}
+function hidePrivateViews() {
+  state.authenticated = false; ++state.authEpoch; ++state.viewSeq; ++state.projectSeq; clearTimeout(recoveryTimer); clearTimeout(renderTimer);
+  for (const job of jobs.values()) job.controller?.abort();
+  $('models-dialog').close(); $('files-view').hidden = true; $('app').hidden = true; $('login').hidden = false;
+  $('messages').replaceChildren(); $('sessions').replaceChildren(); $('prompt').value = ''; $('attachments').replaceChildren(); $('upload-status').textContent = '';
+  $('file-editor').value = ''; $('file-image').removeAttribute('src'); $('file-list').replaceChildren();
+  state.chat = null; state.viewKey = null; state.sessions = []; chats.clear(); drafts.clear(); rememberDrafts();
+  try { sessionStorage.removeItem('bm_view'); } catch {}
 }
 $('login-form').addEventListener('submit', async event => {
   event.preventDefault(); $('login-error').textContent = ''; $('login-button').disabled = true;
@@ -454,12 +633,16 @@ $('login-form').addEventListener('submit', async event => {
   finally { $('login-button').disabled = false; }
 });
 $('reveal').addEventListener('click', () => { const show = $('code').type === 'password'; $('code').type = show ? 'text' : 'password'; $('reveal').setAttribute('aria-pressed', String(show)); $('reveal').setAttribute('aria-label', show ? 'Masquer le code' : 'Afficher le code'); });
-$('project').addEventListener('change', async () => { if (state.sending || state.uploading) return; fileBrowser.clear(); $('upload-status').hidden = true; state.projectId = $('project').value; state.chat = null; state.draftReasoning = {}; state.draftFileAccess = null; ++state.viewSeq; $('search').value = ''; try { await loadSessions(); renderChat(); } catch (e) { error(e.message); } });
-$('agent-files').addEventListener('change', () => { state.draftFileAccess = $('agent-files').checked; setSending(state.sending); });
-$('upload-file').addEventListener('click', () => { if (!state.sending && !state.uploading && state.projectId) $('phone-files').click(); });
+$('project').addEventListener('change', async () => {
+  if (state.uploading) return; saveDraft(); state.projectId = $('project').value; state.chat = null; state.loading = false;
+  ++state.viewSeq; $('search').value = ''; restoreDraft(chatKey(state.projectId)); renderChat(); error('');
+  try { await loadSessions(); renderSessions(); scheduleRecovery(); } catch (e) { error(e.message); }
+});
+$('agent-files').addEventListener('change', () => { state.draftFileAccess = $('agent-files').checked; saveDraft(); setSending(); });
+$('upload-file').addEventListener('click', () => { if (!state.loading && !state.uploading && state.projectId) $('phone-files').click(); });
 $('phone-files').addEventListener('change', async () => {
   const selected = [...$('phone-files').files]; $('phone-files').value = '';
-  if (!selected.length || state.sending || state.uploading || !state.projectId) return;
+  if (!selected.length || state.loading || state.uploading || !state.projectId) return;
   if (selected.length > 10) return error('Choisis au maximum dix fichiers par import.');
   const projectId = state.projectId; state.uploading = true; setSending(false); error('');
   $('upload-status').hidden = false;
@@ -476,27 +659,34 @@ $('phone-files').addEventListener('change', async () => {
     $('upload-status').textContent = `${imported} fichier${imported > 1 ? 's' : ''} enregistré${imported > 1 ? 's' : ''} dans « Imports telephone » · ${attached} joint${attached > 1 ? 's' : ''} au prochain message.`;
     if (failures.length) error(failures.join(' '));
     if (imported) { $('app').classList.add('thread-open'); renderChat(); }
-  } finally { state.uploading = false; setSending(false); }
+  } finally { state.uploading = false; saveDraft(); setSending(); }
 });
-$('model').addEventListener('change', setEffort);
-$('effort').addEventListener('change', () => { state.draftReasoning[$('model').value] = $('effort').value; });
+$('model').addEventListener('change', () => { saveDraft(); setEffort(); });
+$('effort').addEventListener('change', () => { state.draftReasoning[$('model').value] = $('effort').value; saveDraft(); });
+$('prompt').addEventListener('input', saveDraft);
 $('search').addEventListener('input', renderSessions);
 $('new-chat').addEventListener('click', () => newChat());
 $('back').addEventListener('click', () => { $('app').classList.remove('thread-open'); $('project').focus(); });
-$('refresh').addEventListener('click', async () => { if (state.sending) return; $('refresh').disabled = true; try { error(''); await Promise.all([checkStatus(), loadProjects()]); if (state.chat) await openChat(state.chat.id); toast('Projets et conversations actualisés.'); } catch (e) { error(e.message); toast(e.message); } finally { $('refresh').disabled = false; } });
-$('logout').addEventListener('click', async () => { if (state.sending) { toast('Arrête d’abord la génération en cours.'); return; } try { await api('/api/logout', { method: 'POST', body: '{}' }); } catch {} $('app').hidden = true; $('login').hidden = false; $('code').focus(); });
+$('refresh').addEventListener('click', async () => { if (state.uploading) return; saveDraft(); $('refresh').disabled = true; try { error(''); await Promise.all([checkStatus(), loadProjects()]); if (state.chat?.id) await openChat(state.chat.id); toast('Projets et conversations actualisés.'); } catch (e) { error(e.message); toast(e.message); } finally { $('refresh').disabled = false; } });
+$('logout').addEventListener('click', async () => {
+  if (state.uploading) return;
+  hidePrivateViews(); $('code').focus();
+  try { await api('/api/logout', { method: 'POST', body: '{}' }); } catch {}
+});
 $('info-button').addEventListener('click', () => { const show = $('info').hidden; $('info').hidden = !show; $('info-button').setAttribute('aria-expanded', String(show)); });
 $('composer').addEventListener('submit', send);
 $('prompt').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); $('composer').requestSubmit(); } });
 $('stop').addEventListener('click', async () => {
+  const target = { id: state.chat?.id, projectId: state.projectId };
+  if (!target.id) return;
   try {
-    await api('/api/cancel', { method: 'POST', body: JSON.stringify({ id: state.streamId || pendingReply?.id, requestId: pendingReply?.requestId }) });
-    if (state.controller) state.controller.abort(); else recoverReply();
+    await api('/api/cancel', { method: 'POST', body: JSON.stringify(target) }); await recoverReplies();
   } catch { error('Impossible de joindre le PC pour arrêter la réponse. Réessaie après reconnexion.'); }
 });
 document.addEventListener('visibilitychange', resumeReply);
 window.addEventListener('pageshow', resumeReply);
 window.addEventListener('online', resumeReply);
+window.addEventListener('pagehide', saveDraft);
 $('models-open-sidebar').addEventListener('click', openModels);
 $('models-open-thread').addEventListener('click', openModels);
 $('models-refresh').addEventListener('click', refreshLoadedModels);

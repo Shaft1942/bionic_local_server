@@ -25,3 +25,13 @@ Résultat : README, licence, guides d’installation, utilisation, configuration
 > Assemble uniquement les sources autorisées dans une copie propre. Sépare configuration publique d’exemple et état privé généré à l’exécution. Ajoute des tests synthétiques, un contrôle des fichiers suivis par Git, un détecteur de motifs sensibles et un générateur de ZIP utilisant la même liste fermée. Vérifie la création d’une installation neuve, l’archive extraite, la documentation et les corrections remontées par les autres agents. Préserve l’installation utilisée par le propriétaire et ses données. La publication utilise exclusivement le contenu contrôlé de la distribution.
 
 Les résultats vérifiés et leurs limites sont décrits dans [Vérification](verification.md). Ces prompts ne remplacent pas une revue humaine des changements futurs ni des fichiers ajoutés au manifeste.
+
+## Agents utilisés pour les conversations parallèles (1.6.0 en préparation)
+
+> Agent interface : remplace le verrou global de rédaction par un suivi propre à chaque conversation. Préserve les brouillons, les réglages et les pièces jointes lors de la navigation ; une réponse reçue pour un autre fil ne doit jamais remplacer le chat affiché. Permets la mise en attente et la récupération de plusieurs demandes sans duplication.
+
+> Agent serveur : accepte les messages dans une file FIFO par conversation, conserve les options et les pièces jointes au moment de leur acceptation, et laisse les autres conversations progresser indépendamment. Sérialise les sauvegardes et vérifie l’annulation ciblée, les doublons, les conflits et le redémarrage sans répétition des outils. Utilise uniquement des données et modèles synthétiques dans les tests.
+
+> Agent recherche et revue : cherche sur Internet des recommandations primaires concernant les interfaces d’IA ; distingue les comportements documentés des propositions créatives pour ce compagnon. Priorise les usages et les critères de validation. Relis ensuite les changements de concurrence pour identifier les pertes de messages ou de données.
+
+Le coordinateur vérifie l’intégration dans un navigateur avec une API simulée, relit les limites et contrôle la distribution. Les pistes non livrées sont séparées dans [Pistes UX](PISTES-UX.md).

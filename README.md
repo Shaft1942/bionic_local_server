@@ -13,6 +13,7 @@ Ce projet communautaire est indépendant de Bionic. Bionic et ses modèles ne so
 - Autoriser le modèle à lire des extraits pertinents, créer et modifier des textes, avec journal des actions et sauvegardes.
 - Importer des fichiers du téléphone dans le projet et joindre des textes, des documents ou des images compatibles au chat.
 - Quitter le navigateur pendant une réponse et retrouver la génération en cours à la réouverture, tant que le PC et les serveurs restent actifs.
+- Rédiger le message suivant, l’ajouter à la file de la conversation et ouvrir un autre chat pendant les réponses en cours.
 
 **Les messages écrits ici ne sont pas ajoutés aux conversations natives de Bionic.** Les outils d’agent, MCP et compétences de Bionic ne sont pas hérités. Le compagnon possède ses propres outils limités aux fichiers du projet.
 
@@ -49,6 +50,7 @@ Ce serveur utilise **HTTP** et un code d’accès pour un **réseau local de con
 | Comprendre le code et lancer les vérifications | [Développement](docs/developpement.md) et [Contribution](CONTRIBUTING.md) |
 | Préparer un dépôt et une archive sans données privées | [Publication](docs/publication.md) |
 | Évolution du projet | [Journal des versions](CHANGELOG.md) |
+| Idées d’évolution et bonnes pratiques des interfaces d’IA | [Pistes UX](docs/PISTES-UX.md) |
 | Agents utilisés et portée des contrôles | [Méta prompts](docs/metaprompts.md) et [Vérification](docs/verification.md) |
 
 ## Compatibilité

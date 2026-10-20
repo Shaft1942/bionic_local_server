@@ -65,6 +65,8 @@ Selon la modification, vérifiez aussi :
 - Les imports homonymes, les limites de taille et les formats non exploitables.
 - Les outils désactivés, les lectures ciblées, les erreurs du modèle et la restauration.
 - La fermeture puis la réouverture du navigateur pendant une réponse, sans duplication d’envoi.
+- La navigation entre deux générations, les brouillons et pièces jointes propres à chaque fil, et l’ordre des messages en attente.
+- L’annulation d’une seule demande, l’isolation de ses réglages et l’absence de relance automatique après un redémarrage.
 - Le téléphone en largeur étroite, les contrôles accessibles et l’affichage des erreurs.
 
 ## Adaptateur Bionic
