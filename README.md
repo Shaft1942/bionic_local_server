@@ -50,7 +50,7 @@ Ce serveur utilise **HTTP** et un code d’accès pour un **réseau local de con
 | Comprendre le code et lancer les vérifications | [Développement](docs/developpement.md) et [Contribution](CONTRIBUTING.md) |
 | Préparer un dépôt et une archive sans données privées | [Publication](docs/publication.md) |
 | Évolution du projet | [Journal des versions](CHANGELOG.md) |
-| Idées d’évolution et bonnes pratiques des interfaces d’IA | [Pistes UX](docs/PISTES-UX.md) |
+| Idées d’évolution et bonnes pratiques des interfaces d’IA | [20 pistes UX](docs/PISTES-UX.md) et [méta-prompts d’exploration](docs/metaprompts-exploration.md) |
 | Agents utilisés et portée des contrôles | [Méta prompts](docs/metaprompts.md) et [Vérification](docs/verification.md) |
 
 ## Compatibilité

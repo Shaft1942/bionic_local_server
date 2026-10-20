@@ -35,3 +35,7 @@ Les résultats vérifiés et leurs limites sont décrits dans [Vérification](ve
 > Agent recherche et revue : cherche sur Internet des recommandations primaires concernant les interfaces d’IA ; distingue les comportements documentés des propositions créatives pour ce compagnon. Priorise les usages et les critères de validation. Relis ensuite les changements de concurrence pour identifier les pertes de messages ou de données.
 
 Le coordinateur vérifie l’intégration dans un navigateur avec une API simulée, relit les limites et contrôle la distribution. Les pistes non livrées sont séparées dans [Pistes UX](PISTES-UX.md).
+
+## Exploration créative des fonctionnalités
+
+Une nouvelle exploration du 20 octobre 2026 utilise trois angles indépendants : usage mobile, travail sur les fichiers et modèles locaux. Les [méta-prompts réutilisables et le bilan d’exécution](metaprompts-exploration.md) décrivent les consignes du coordinateur et des trois agents. Les propositions recoupées et leurs sources figurent dans [Pistes UX](PISTES-UX.md).

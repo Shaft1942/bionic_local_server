@@ -1,87 +1,184 @@
-# Pistes d’évolution de Bionic Mobile
+# Bionic Mobile : exploration des prochaines fonctionnalités
 
-Recherche et propositions du **20 octobre 2026** (Europe/Paris).
+**Recherche du 20 octobre 2026 — Europe/Paris.** Trois agents ont exploré indépendamment les usages mobiles, le travail sur les fichiers et les modèles locaux. Leurs 24 concepts ont été regroupés avec les pistes précédentes en **20 propositions priorisées**. Certaines approfondissent une idée antérieure ; ce ne sont pas vingt inventions inédites.
 
-**Statut : exploration, pas annonce de fonctionnalités livrées.** Ce document propose des évolutions ; leur présence ici ne signifie pas qu’elles sont implémentées. La documentation d’utilisation et le journal des versions décrivent les fonctions effectivement disponibles. Les pages de produits citées peuvent évoluer après cette date.
+**Statut : propositions, pas fonctions ajoutées.** Cette exploration ne modifie pas l’application. Elle se fonde sur les sources de la branche locale `feat/conversations-paralleles`, version 1.6.0 en préparation, et sur des documents Web primaires consultés à cette date. Elle ne permet pas de déduire quelle version tourne dans un navigateur ouvert.
 
-## Partir des usages de ce compagnon
+Les [méta-prompts réutilisables et le bilan d’exécution](metaprompts-exploration.md) décrivent la méthode. Aucun entretien utilisateur ni essai des fonctions proposées avec un modèle réel n’a été réalisé. Les priorités et efforts sont nos appréciations, à valider par des essais concrets.
 
-Bionic Mobile sert à travailler depuis un téléphone sur les modèles et les fichiers d’un PC du réseau local. Les priorités sont de pouvoir continuer à écrire, retrouver le travail en cours et comprendre ce qui a été lu ou modifié. Les ressources du PC et les fichiers peuvent être partagés entre plusieurs chats.
+## Le point de départ réel
 
-La base documentaire examinée comprend le README, le guide d’utilisation et les contrôles du chat de la version 1.5.0. Le compagnon possède ses propres conversations web et outils de fichiers : ces pistes ne supposent ni synchronisation en écriture avec les conversations natives, ni accès aux agents ou MCP de Bionic.
+| État dans la branche analysée | Fonctions |
+| --- | --- |
+| Déjà développées et testées en 1.6.0 | Rédaction pendant une réponse, file par conversation, chats parallèles, brouillons et pièces jointes séparés, retrait d’une attente, reprise après reconnexion. Ce ne sont plus des nouveautés à proposer. |
+| Déjà présentes, à enrichir | Journal d’actions de fichiers, sauvegardes et restauration ; sélection d’extraits ; effort selon le modèle ; instances chargées ; statistiques disponibles ; imports et téléchargements. |
+| Absentes ou partielles | Vue des résultats non lus, étagère de livrables, différences avant/après, recettes structurées, permissions limitées à une mission, provenance des affirmations. Le contexte réellement transmis n’a pas de reçu complet. |
+| Non observées par le compagnon | Mémoire GPU réellement libre, activité de tous les clients Bionic, qualité effective de chaque modèle, présence de toutes les nouvelles API documentées chez LM Studio. |
 
-## Ce que recommandent les sources
+Les conversations web et outils de fichiers du compagnon restent distincts des conversations natives Bionic. Une documentation LM Studio peut inspirer une fonction ; sa compatibilité avec Bionic doit être vérifiée avant implémentation.
 
-Les recommandations suivantes sont documentées ; les fonctionnalités du chapitre suivant sont nos propositions pour les appliquer ici.
+## Ce que la recherche conseille pour cette application
 
-- **Rendre l’IA compréhensible et corrigeable.** Les recommandations Microsoft HAX demandent d’indiquer les capacités et limites, de permettre la correction et d’expliquer les conséquences des actions. Elles proviennent de travaux de recherche ; ce ne sont pas une obligation d’ajouter un tableau de bord à chaque écran. [Microsoft HAX — Guidelines](https://www.microsoft.com/en-us/haxtoolkit/ai-guidelines/) et [présentation des 18 recommandations](https://www.microsoft.com/en-us/research/?p=564561).
-- **Distinguer attendre, réorienter et arrêter.** VS Code documente trois actions différentes pendant une requête : mettre un message en file, réorienter après une étape d’outil, ou arrêter puis envoyer. Les messages en attente peuvent être réordonnés. C’est un exemple de produit, pas la preuve qu’il faut reproduire toutes ses options. [VS Code — Send messages while a request is running](https://code.visualstudio.com/docs/chat/chat-overview#send-messages-while-a-request-is-running).
-- **Séparer les conversations ne sépare pas les fichiers.** La documentation des sessions VS Code distingue les historiques de chat de l’espace de travail partagé. Deux chats peuvent toucher les mêmes fichiers. [VS Code — Understand sessions and chats](https://code.visualstudio.com/docs/agents/concepts/sessions#chats-within-a-session).
-- **Conserver le contrôle au bon niveau.** Le guide PAIR conseille d’équilibrer automatisation et contrôle ; ses chapitres sur les explications et les erreurs insistent sur des attentes adaptées et une voie de reprise. [Google PAIR — Feedback + Control](https://pair.withgoogle.com/guidebook-v2/chapter/feedback-controls/), [Explainability + Trust](https://pair.withgoogle.com/guidebook-v2/chapter/explainability-trust/), [Errors + Graceful Failure](https://pair.withgoogle.com/guidebook-v2/chapter/errors-failing/).
-- **Annoncer les changements sans interrompre la lecture.** WCAG 4.1.3 prévoit des messages de statut accessibles sans déplacement du focus. Le minimum WCAG 2.5.8 est généralement de 24 × 24 pixels CSS, avec des exceptions ; viser des contrôles plus grands aide sur téléphone. [W3C — Status Messages](https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html) et [Target Size (Minimum)](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html).
+1. **Montrer des faits observables.** Une explication séduisante peut faire trop confiance à l’IA. Présenter fichiers effectivement lus, actions confirmées et limites connues est ici plus utile qu’un badge « confiance 95 % ». Le principe vient de [Microsoft HAX](https://www.microsoft.com/en-us/haxtoolkit/guideline/make-clear-why-the-system-did-what-it-did/) ; le choix de ces preuves est notre adaptation.
+2. **Garder une correction facile et un contrôle proportionné.** Les choix importants doivent être compréhensibles et réversibles. Pour Bionic Mobile : préparer une recette ou une mission sans l’envoyer automatiquement, puis vérifier son résultat. [Google PAIR — Feedback + Control](https://pair.withgoogle.com/guidebook-v2/chapter/feedback-controls/).
+3. **Séparer résultat, conversation et fichier.** Un livrable retrouvable peut avoir un lien vers son chat et sa version de fichier. Des ressources autonomes sont documentées chez [VS Code](https://code.visualstudio.com/docs/agents/run/artifacts) et [Claude](https://support.claude.com/en/articles/17153992-what-are-artifacts-and-how-do-i-use-them) ; notre étagère légère est une proposition pour le compagnon.
+4. **Transformer les répétitions en entrées explicites.** Des modèles de prompts avec champs évitent de réécrire une demande complexe. [Open WebUI](https://docs.openwebui.com/features/workspace/prompts/) fournit ce précédent ; une recette Bionic devrait garder un aperçu avant envoi et des fichiers choisis au lancement.
+5. **Annoncer les changements sans voler la lecture.** Signaler une fin de tâche sans ouvrir de force un autre chat et annoncer les phases utiles, pas chaque token. Le principe d’accessibilité vient du [W3C, statuts sans prise de focus](https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html).
+6. **Nommer précisément l’incertitude réseau.** Une absence de confirmation n’est pas une preuve de non-réception. Proposer une récupération concrète plutôt que conclure sans preuve que le PC dort. [Google PAIR — Errors + Graceful Failure](https://pair.withgoogle.com/guidebook-v2/chapter/errors-failing/).
 
-## Douze propositions, par priorité
+Ce sont des recommandations de recherche et des exemples de produits, pas une liste universelle de composants à recopier. Notre critère : l’utilisateur doit pouvoir retrouver, comprendre ou corriger son travail depuis son téléphone avec moins de manipulations.
 
-Priorités : **P0** répond au besoin immédiat ; **P1** renforce le travail quotidien ; **P2** mérite une expérimentation. La complexité est relative au compagnon actuel, sans estimation de délai. Les garde-fous ci-dessous sont des choix de conception proposés pour Bionic Mobile.
+## Les vingt pistes
 
-| Priorité | Proposition | Bénéfice concret | Complexité | Point d’attention |
-| --- | --- | --- | --- | --- |
-| P0 | **1. Une file visible dans chaque chat** : continuer à saisir, puis « Ajouter à la file ». Afficher le rang et permettre de retirer ou modifier les messages qui ne sont pas encore partis. | Préparer la suite sans attendre ni interrompre la réponse. | Moyenne à élevée | Distinguer un brouillon d’un message accepté par le serveur ; ne pas doubler l’envoi après reconnexion. |
-| P0 | **2. Un nouveau chat toujours accessible**, avec un compteur discret « 2 en cours » et l’état de chaque conversation dans la liste. | Poser une autre question pendant un travail long et retrouver chaque résultat. | Élevée | Historiques indépendants, ressources et fichiers partagés ; contrôler la concurrence côté serveur. |
-| P1 | **3. Des brouillons propres à chaque chat**, y compris au nouveau chat d’un projet, avec « Brouillon conservé sur cet appareil ». | Changer de conversation sans perdre sa saisie, son effort ou ses pièces jointes en préparation. | Moyenne | Ne jamais envoyer un brouillon automatiquement ; limiter les données conservées sur un téléphone partagé. |
-| P1 | **4. Un tiroir « Contexte utilisé »** : pièces jointes choisies, extraits réellement lus et éventuelle troncature, ouvrables dans le navigateur de fichiers. | Comprendre pourquoi un fichier intervient et corriger un contexte trop large. | Moyenne | Distinguer contenu annoncé, effectivement envoyé et lu par outil ; les tokens sont une estimation si l’API ne les mesure pas. |
-| P1 | **5. Un compte rendu des changements** en fin de réponse : fichiers créés ou modifiés, comparaison avant/après et restauration disponible. | Vérifier le travail du modèle en quelques gestes, même depuis le téléphone. | Moyenne à élevée | S’appuyer sur les opérations enregistrées, pas sur les déclarations du modèle ; une restauration doit détecter les changements ultérieurs. |
-| P1 | **6. Une activité lisible par étapes** : « En attente », « Chargement du modèle », « Lecture de notes.md », « Réponse », « Terminé » ou « Interrompu ». | Distinguer une réponse lente d’un serveur injoignable. | Moyenne | Montrer seulement les événements réellement observés ; éviter les pourcentages et temps restants inventés. |
-| P1 | **7. Une boîte des résultats non lus**, avec retour direct au chat et position de lecture conservée. | Retrouver ce qui s’est terminé pendant une autre conversation ou après verrouillage du téléphone. | Moyenne | Un indicateur dans l’application ne garantit pas une notification système lorsque le navigateur est fermé. |
-| P2 | **8. Un carnet de projet choisi par l’utilisateur** : consignes, vocabulaire, décisions et quelques références épinglées. Un extrait peut devenir une fiche après validation. | Éviter de répéter les règles du projet à chaque nouveau chat. | Moyenne | Aucun ajout silencieux ni chargement intégral des fichiers ; montrer ce qui sera réutilisé et permettre de le retirer. |
-| P2 | **9. « Explorer une autre approche »** depuis une réponse : créer une variante avec une copie de l’historique jusqu’à ce point. | Tester une idée sans encombrer le fil de travail principal. | Moyenne à élevée | Une variante de conversation ne clone pas les fichiers ; proposer la lecture seule pour une comparaison, puis choisir explicitement quelle approche appliquer. |
-| P2 | **10. Un banc d’essai personnel** : poser le même prompt à deux modèles, successivement, puis épingler la réponse préférée. | Choisir un modèle à partir de ses propres tâches plutôt qu’uniquement des tokens/s. | Élevée | Rejouer les entrées identiques ; désactiver les écritures de fichiers dans la comparaison ; compter le temps de chargement à part. |
-| P2 | **11. Des actions de départ liées à la sélection** : « Résumer ce passage », « Chercher les décisions », « Proposer une modification ». Elles préremplissent un message éditable. | Réduire la saisie sur mobile sans imposer une réponse ni une action automatique. | Faible à moyenne | Ne pas envoyer sur un simple tap ; ne joindre que la sélection annoncée. |
-| P1 | **12. Un mode lecture confortable** : ne plus défiler automatiquement quand on remonte, bouton « Revenir à la réponse », commandes tactiles larges et annonce vocale des phases importantes. | Lire une réponse ou une différence de fichier pendant que le modèle continue. | Moyenne | Garder le focus clavier et annoncer les étapes, pas chaque token ; fournir des libellés en plus des couleurs. |
+**P1** : valeur proche des besoins déjà exprimés. **P2** : à expérimenter ensuite. Effort relatif au compagnon actuel, sans estimation de délai ni promesse de performance. Tous les intitulés ci-dessous désignent des propositions.
 
-## Les quatre investissements recommandés
+### Retrouver et vérifier le travail
 
-### 1. File de messages et états explicites
+| Nº / priorité | Proposition et usage concret | Premier périmètre utile | Effort / limite importante |
+| --- | --- | --- | --- |
+| 1 · P1 | **Contexte utilisé** : comprendre ce que le modèle a reçu pour cette réponse. | Pièces jointes, extraits réellement lus, historique limité et origine de chaque entrée. | Moyen. Distinguer préparation provisoire et contenu final ; aucun compteur exact de tokens inventé. |
+| 2 · P1 | **Revue des changements** : voir ce qui a changé dans les fichiers. | Liste issue des actions confirmées, comparaison avant/après et restauration de la version disponible. | Moyen à fort. Une restauration refuse d’écraser une version plus récente ; création et remplacement restent distincts. |
+| 3 · P1 | **Depuis votre départ** : retrouver les réponses terminées pendant une absence. | États terminés/interrompus/non lus, accès au message exact, position de lecture conservée. | Moyen. Pas de résumé généré nécessaire ; « affiché » ne signifie pas « lu ». |
+| 4 · P1 | **Étagère de livrables** : retrouver une note ou un tableau sans relire tout le chat. | Épingler une réponse ou un fichier réel, le nommer, l’ouvrir et le télécharger. | Moyen. Distinguer copie figée et fichier vivant ; commencer par texte, Markdown et CSV. |
 
-Le bouton principal devrait dire **« Envoyer »** au repos et **« Ajouter à la file »** lorsqu’une réponse est en cours. « Arrêter la réponse » reste une action séparée. Pour une première version, ne pas ajouter de commande « Réorienter » : elle demande une véritable prise en charge des interruptions aux limites des outils.
+### Préparer des demandes plus précises
 
-Exemple : on demande une analyse, puis on ajoute « ensuite, rédige une synthèse courte ». La seconde demande attend la première réponse et utilise l’historique mis à jour. Le modèle et les options choisis doivent être attachés au message accepté, afin qu’un changement ultérieur de sélecteur ne modifie pas silencieusement la tâche.
+| Nº / priorité | Proposition et usage concret | Premier périmètre utile | Effort / limite importante |
+| --- | --- | --- | --- |
+| 5 · P1 | **Recettes à remplir** : « comparer ces deux documents », « extraire une liste », « préparer une note ». | Quelques champs, sources choisies, format de sortie et aperçu du prompt avant envoi. | Moyen. Ni pièce jointe d’une ancienne exécution ni permission d’écriture héritée en silence. |
+| 6 · P1 | **Mission bornée** : « lire ce dossier, modifier seulement ce fichier ». | Droits de lecture/écriture par mission, chemins choisis et récapitulatif près de l’envoi. | Moyen à fort. Les refus doivent être imposés par le serveur, pas seulement par une phrase du prompt. |
+| 7 · P1 | **Mes réglages favoris** : retrouver son modèle et son effort habituels. | Profils créés par l’utilisateur, valeurs visibles, modifiables et sans envoi automatique. | Faible. Signaler un modèle disparu ; un effort réduit ne garantit pas une réponse plus courte ou meilleure. |
+| 8 · P1 | **Compatibilité de la demande** : repérer image, outils ou effort inconnus pour le modèle choisi. | Trois états : annoncé, non pris en charge, inconnu ; conserver le brouillon lors du changement de modèle. | Moyen. Une capacité annoncée par l’API ne prouve pas sa fiabilité sur la tâche. |
+| 9 · P1 | **Sas d’import** : choisir ce qui entre dans le projet et ce qui sera joint au modèle. | Aperçu du lot, noms/destination, choix importer/joindre, confirmation puis reçu. | Moyen. Définir la durée d’une éventuelle zone temporaire ; ne pas laisser croire qu’un import est éphémère. |
+| 10 · P1 | **Diagnostic partageable** : aider un ami dont la page ne répond pas. | Tests à la demande des deux liaisons, rapport limité à des champs autorisés, aperçu avant copie. | Faible à moyen. Exclure conversations, codes, chemins et IP par défaut ; aucune transmission externe automatique. |
 
-Les attentes doivent avoir une identité stable côté serveur. La fermeture du navigateur ne les annule pas. Après erreur ou arrêt volontaire, la politique de reprise doit être affichée : suspendre les suites est plus compréhensible que lancer des modifications dépendant d’un résultat incomplet. Une attente remise en brouillon doit être présentée comme telle.
+### Produire, réviser et réutiliser
 
-La conservation des tâches n’impose pas une relance après redémarrage du PC : relire et reprendre explicitement peut être préférable pour des demandes qui modifient des fichiers.
+| Nº / priorité | Proposition et usage concret | Premier périmètre utile | Effort / limite importante |
+| --- | --- | --- | --- |
+| 11 · P2 | **Sources liées à leur version** : ouvrir le passage qui a servi à une affirmation. | Identifiants d’extraits effectivement lus, chemin, empreinte et indication de modification ultérieure. | Moyen à fort. Une citation valide ne garantit pas que l’affirmation est vraie ; aucun badge de vérité automatique. |
+| 12 · P2 | **Corriger un passage** : sélectionner une phrase du résultat et dicter sa modification. | Citation exacte ou sélection de fichier dans un brouillon, avec lien et version de la source. | Faible à moyen. Détecter une version périmée et les occurrences ambiguës ; ne pas envoyer au simple tap. |
+| 13 · P2 | **Structure du résultat contrôlée** : « CSV à six colonnes » ou « JSON lisible ». | Règles déterministes choisies avant envoi, appliquées au fichier effectivement enregistré. | Moyen. Contrôler la forme ne certifie pas le fond ; pas d’exécution de code arbitraire. |
+| 14 · P2 | **Mettre à jour un livrable** : reprendre une synthèse quand ses sources ont changé. | Liens explicites avec quelques sources, détection de leurs empreintes à l’ouverture, demande préremplie. | Fort. Pas de surveillance permanente ni de mise à jour automatique ; ne pas afficher « projet à jour ». |
+| 15 · P2 | **Carnet de projet choisi** : réutiliser quelques consignes et décisions validées. | Fiches que l’utilisateur épingle, inclusion visible et budget limité au prochain message. | Moyen. Aucune mémorisation silencieuse ni lecture intégrale du projet par défaut. |
 
-### 2. Navigation libre entre les chats, avec ressources partagées assumées
+### Mieux vivre le téléphone et le PC local
 
-Un changement de chat doit détacher seulement son affichage ; le travail serveur continue. Chaque conversation garde son brouillon, ses options et son indicateur. Le retour dans un chat retrouve le bon travail sans renvoyer le prompt.
+| Nº / priorité | Proposition et usage concret | Premier périmètre utile | Effort / limite importante |
+| --- | --- | --- | --- |
+| 16 · P1 | **Sommaire et recherche dans un long fil** : rejoindre une recommandation sans dix balayages. | Titres Markdown existants, ancres, recherche textuelle et retour à la position lue. | Faible à moyen. Ne pas inventer la structure des réponses ; garder une lecture calme pendant le streaming. |
+| 17 · P1 | **Brouillon sans connexion** : finir sa saisie après une coupure Wi-Fi. | Texte conservé sur l’appareil, copie/export possible, statut reçu/non confirmé explicite. | Moyen. Ne promet pas une ouverture à froid hors connexion ; rapprochement par identifiant avant un renvoi incertain. |
+| 18 · P2 | **Paquet à emporter** : consulter certains résultats quand on quitte la maison. | Téléchargement choisi d’une réponse et de fichiers ; copie datée clairement identifiée. | Faible à moyen. Aucune synchronisation hors connexion ; les téléchargements sortent du contrôle d’accès de l’application. |
+| 19 · P2 | **Mode PC partagé** : ne pas multiplier les nouvelles générations pendant un autre travail. | Limite globale volontaire du compagnon, attente équitable entre chats et pause des prochains départs. | Moyen à fort. Ne contrôle ni ComfyUI ni les autres clients Bionic et ne réserve pas de VRAM. |
+| 20 · P2 | **Photo ciblée pour le modèle** : cadrer le détail utile avant de joindre une grande image. | Recadrage/réduction avec aperçu de la copie et taille affichée ; original séparé. | Moyen. Vérifier orientation et lisibilité ; ne pas promettre gain de calcul ou retrait des métadonnées sans mesure. |
 
-La possibilité d’ouvrir plusieurs chats ne doit pas promettre que tous les modèles calculent en même temps. Prévoir une limite d’exécutions configurable et un état d’attente explicite. La valeur adaptée dépend du PC et des modèles. Pour les fichiers, préserver les vérifications de version et traiter les écritures concurrentes sans écrasement silencieux.
+Les idées 3/16/17/18 viennent surtout de l’exploration mobile, 4/5/6/9/11/12/13/14 de l’exploration fichiers et 7/8/10/19/20 de l’exploration modèles locaux. Le contexte, la revue des changements et le carnet prolongent les pistes antérieures. Les convergences, notamment les livrables, ont été fusionnées.
 
-### 3. « Contexte utilisé » plutôt qu’une impression de lecture totale
+## Six fiches concrètes pour choisir la suite
 
-Sous le message, une ligne compacte pourrait annoncer **« 2 pièces jointes · 3 extraits lus »**. Un détail affiche les sources et les passages avec leur rôle : joint par vous, lu par le modèle, tronqué. Les lectures futures d’outils ne peuvent pas être prédites avant l’envoi ; le détail s’enrichit pendant la tâche.
+### A. Depuis votre départ — retrouver les fins de tâches
 
-Ce panneau porte sur les entrées et actions observables. Il ne prétend pas révéler le raisonnement interne du modèle et ne transforme pas une explication générée en preuve technique. Il devrait aussi préciser quand l’historique ancien a été limité.
+**Scénario.** Une analyse se termine et un autre chat s’interrompt pendant que le téléphone est verrouillé. Au retour, « 1 réponse terminée · 1 demande interrompue » mène aux bons messages sans changer la conversation ouverte.
 
-### 4. Un résultat vérifiable pour les fichiers
+**Premier essai :** conserver un repère de consultation par appareil, présenter les transitions serveur et proposer « Reprendre ma lecture ». Aucun résumé du modèle n’est nécessaire.
 
-Présenter **« 2 fichiers modifiés · 1 création »**, puis des cartes ouvrables contenant les différences et les sauvegardes disponibles. Après une erreur, montrer les écritures déjà réalisées. **Arrêter** n’annule pas rétroactivement un enregistrement.
+**Test de réussite :** trois chats terminent dans un ordre différent ; seul le message explicitement consulté perd son indicateur. Le lecteur d’écran reçoit un statut bref sans déplacement du focus. Le périmètre « cet appareil » reste visible tant qu’aucune synchronisation n’est prévue.
 
-Le modèle actuel d’enregistrement immédiat peut rester une option. Un futur mode **« Proposer avant d’enregistrer »** demanderait un vrai stockage des modifications en attente et une vérification des versions au moment de l’application. Une simple consigne dans le prompt ne remplace pas cette fonction. La consultation des différences et les points de reprise ont un précédent documenté dans [VS Code — Review and revert agent changes](https://code.visualstudio.com/docs/agents/run/review-code-edits#review-agent-changes).
+**Origine :** notre proposition appliquant les recommandations W3C sur les statuts. C’est une évolution des non-lus, pas un système de notifications externes.
 
-## Deux limites à prévoir avant d’aller plus loin
+### B. Étagère de livrables — le résultat devient un objet
 
-**Notifications système et installation.** Commencer par les résultats non lus dans l’application. L’accès actuel en HTTP sur une adresse du réseau local ne permet pas de promettre les notifications système du navigateur ; les API concernées nécessitent un contexte sécurisé et leur disponibilité dépend du navigateur. Un mode HTTPS local et la compatibilité mobile demanderaient un chantier séparé. [MDN — Notifications API](https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API).
+**Scénario.** Après une longue conversation, on conserve « Note de synthèse » et « Tableau des options ». Demain, on les retrouve dans le projet avec leur origine et leur version, sans chercher le dernier message utile.
 
-**Pas de télémétrie externe par défaut.** Les essais peuvent être mesurés localement : temps avant la première réponse, perte de brouillon, messages envoyés deux fois, écritures refusées pour conflit. Un bouton d’avis n’entraîne pas le modèle local à lui seul. Toute collecte et son effet doivent être annoncés ; aucune nouvelle fonctionnalité ne devrait envoyer les conversations à un service externe par surprise.
+**Premier essai :** action manuelle « Conserver comme livrable », titre éditable, lien au chat et aux fichiers issus d’actions confirmées. Commencer par Markdown, texte et CSV ; la génération native de Word/PDF demanderait des outils supplémentaires.
 
-## Scénarios pour juger une future implémentation
+**Test de réussite :** une création échouée n’apparaît jamais comme fichier disponible. Si le fichier change sur le PC, la carte signale que sa version diffère de la copie conservée. Le téléchargement respecte les mêmes contrôles de chemin que l’explorateur actuel.
 
-1. Lancer une réponse A, écrire B, changer de chat, créer C, puis revenir : les brouillons et les réponses restent dans leur conversation.
-2. Mettre B en file, le retirer avant son départ, fermer puis rouvrir le navigateur : B ne part pas et A n’est pas envoyée deux fois.
-3. Couper le Wi-Fi après l’acceptation : au retour, l’interface distingue tâche poursuivie sur le PC, attente acceptée et brouillon resté sur l’appareil.
-4. Interrompre A après une écriture : le fichier modifié reste signalé et la suite ne s’exécute pas sans que sa politique soit claire.
-5. Deux chats tentent d’éditer le même fichier : le second ne remplace pas une version qu’il n’a pas lue.
-6. Lire un ancien message au clavier ou au lecteur d’écran : une arrivée de texte ne vole ni le focus ni la position de lecture.
+**Origine :** inspiration des artefacts documentés dans VS Code et Claude ; le classement léger par projet est notre adaptation. Ne pas exécuter du HTML généré dans l’origine authentifiée du compagnon.
 
-Ces scénarios sont des critères proposés, pas des comptes rendus de tests déjà réalisés.
+### C. Contexte utilisé — un reçu de ce qui a été transmis
+
+**Scénario.** Une réponse mentionne un document inattendu. Sous le message, « 2 pièces jointes · 3 extraits lus » permet d’ouvrir les entrées réelles et de voir qu’une partie de l’ancien historique a été écartée.
+
+**Premier essai :** enregistrer des références bornées aux entrées construites et aux lectures d’outils ; afficher leur provenance. La liste finale d’un message en attente n’est connue qu’à son démarrage.
+
+**Test de réussite :** une conversation générale sans fichier n’affiche aucun fichier « lu ». Un extrait tronqué est signalé et aucun pourcentage de contexte exact n’est déduit des caractères. Les informations servent à comprendre les entrées, pas à prétendre révéler le raisonnement interne.
+
+**Origine :** notre proposition appliquant PAIR et HAX ; les distinctions entre collection documentaire et contexte sélectionné ont un précédent dans Open WebUI.
+
+### D. Recettes à remplir — moins de saisie, des entrées choisies
+
+**Scénario.** « Comparer deux documents » demande deux fichiers et les points importants. L’utilisateur prévisualise ensuite une demande complète au lieu de recopier ses anciennes instructions.
+
+**Premier essai :** trois recettes locales : synthèse, comparaison, liste vers CSV. Champs requis, format voulu et sources visibles ; création d’un brouillon puis envoi explicite.
+
+**Test de réussite :** une entrée obligatoire absente bloque l’envoi. Une recette créée dans un autre projet ne joint aucun de ses anciens fichiers. Une modification du texte de la recette est visible et ne change pas une demande déjà acceptée.
+
+**Origine :** Open WebUI documente des prompts réutilisables avec formulaires. Le choix limité de recettes et leur aperçu sont notre proposition pour le téléphone.
+
+### E. Mission bornée — une autonomie qui a un périmètre
+
+**Scénario.** « Lis le dossier de référence, propose une note ; tu peux modifier seulement la note finale. » Une fiche rappelle les chemins et les droits avant le départ.
+
+**Premier essai :** modes lecture et modification, listes de fichiers autorisés et éventuel dossier de création. Les autorisations sont figées à l’envoi et contrôlées lors de chaque appel d’outil.
+
+**Test de réussite :** un outil demandant un chemin hors mission est refusé même si le modèle le réclame. Une instruction cachée dans un document n’élargit pas les droits ; changer les réglages du chat suivant ne change pas la mission acceptée.
+
+**Origine :** les permissions de Claude Code illustrent le contrôle par outil. Elles ne sont pas une API Bionic ; la restriction serait une fonction nouvelle du serveur compagnon. Un mode « proposer avant d’appliquer » demanderait en plus un stockage des propositions et des versions.
+
+### F. Favoris et compatibilité — des choix explicables
+
+**Scénario.** L’utilisateur rappelle ses réglages « Analyse documentaire », puis joint une photo. L’interface garde le brouillon et indique si Vision et outils sont annoncés ou inconnus pour ce modèle.
+
+**Premier essai :** favoris nommés par l’utilisateur et valeurs visibles, plus fiche des capacités brutes de l’API. Un favori dont le modèle manque devient indisponible, sans remplacement silencieux.
+
+**Test de réussite :** réponses API avec capacités absentes, fausses ou valides ; aucun « inconnu » ne devient « fiable ». L’effort sélectionné reste celui envoyé, sans promesse de gain de vitesse ou de qualité.
+
+**Origine :** métadonnées documentées chez LM Studio et principe PAIR de contrôle compréhensible ; la fiche et les favoris sont notre proposition.
+
+## Ordre recommandé
+
+**Premier petit lot : 3 + 4 + 1**, soit retour après absence, livrables retrouvables et contexte utilisé. Il prolonge les chats parallèles et l’usage des fichiers sans augmenter l’autonomie du modèle. Pour commencer encore plus petit : livrer seulement la liste des fins de tâches et l’épinglage manuel d’un résultat.
+
+**Lot suivant : 5 + 7 + 8**, recettes et choix de modèles compréhensibles. Ils réduisent les manipulations et les paramètres oubliés ; le diagnostic 10 peut s’y ajouter si le partage avec d’autres utilisateurs entraîne des demandes d’aide.
+
+**Travail plus structurant : 2 + 6**, revue des changements et missions bornées. À traiter ensemble avec les conflits entre chats et l’édition de fichiers, avant de proposer des traitements plus autonomes. Les autres fonctions restent des expériences à sélectionner selon les usages réellement observés.
+
+Ce classement est le jugement du coordinateur. Les agents privilégiaient respectivement la reprise mobile, les livrables/recettes et les favoris/diagnostic : le premier lot combine leurs résultats avec les besoins exprimés sur le contexte et les fichiers.
+
+## Idées à garder sous conditions, et celles à écarter
+
+- **Préparer un modèle avant de rédiger** : intéressant uniquement après vérification du chargement explicite dans l’API Bionic. Aucun faux prompt ni maintien en vie périodique. La documentation d’événements LM Studio est une inspiration, pas un test de l’installation.
+- **Comparer des modèles** : commencer par des demandes successives, identiques, sans écritures de fichiers ; les tokens/s ne sont pas une note de qualité.
+- **Comprendre la durée** : distinguer attente dans la file, premier fragment et réponse finale. Sans événement approprié, ne pas répartir arbitrairement le silence entre chargement et calcul.
+- **Écarter « Optimiser automatiquement mon PC »** : l’application n’observe pas toute l’activité ni la mémoire libre ; décharger d’autres instances pourrait interrompre un autre usage.
+- **Écarter « Lire, classer et indexer tout mon projet » par défaut** : cela reproduirait le contexte excessif déjà signalé. Préférer sources choisies et parcours ciblés.
+- **Ne pas promettre notifications et application totalement hors connexion sur le LAN HTTP actuel.** Les services workers et API de notification ont des exigences de contexte sécurisé et de compatibilité. Un téléchargement volontaire est un premier périmètre distinct et réalisable.
+
+## Sources et limites de l’enquête
+
+Sources primaires consultées par les agents ou le coordinateur le **20 octobre 2026**. Les pages de produits évoluent ; leur comportement ne démontre pas la compatibilité de Bionic. Les propositions et critères de tests ci-dessus sont les nôtres.
+
+| Source | Ce qu’elle étaye ici |
+| --- | --- |
+| [Microsoft HAX — Explications](https://www.microsoft.com/en-us/haxtoolkit/guideline/make-clear-why-the-system-did-what-it-did/) | Explications adaptées, avec attention au risque de confiance excessive. |
+| [Google PAIR — Feedback + Control](https://pair.withgoogle.com/guidebook-v2/chapter/feedback-controls/) | Équilibre entre contrôle et automatisation ; effets du feedback à expliquer. Un avis ne réentraîne pas à lui seul le modèle local. |
+| [Google PAIR — Errors + Graceful Failure](https://pair.withgoogle.com/guidebook-v2/chapter/errors-failing/) | Reprise compréhensible après erreur. |
+| [Google PAIR — Explainability + Trust](https://pair.withgoogle.com/guidebook-v2/chapter/explainability-trust/) | Capacités, limites et confiance ajustée à ce que le système peut faire. |
+| [W3C — Status Messages](https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html) | Statuts accessibles sans prise de focus. |
+| [W3C — Headings and Labels](https://www.w3.org/WAI/WCAG22/Understanding/headings-and-labels.html) | Titres descriptifs pour s’orienter ; ne prescrit pas notre sommaire. |
+| [W3C — Reflow](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html) | Lecture à 320 pixels CSS avec exceptions pour certains contenus. |
+| [W3C — Target Size](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html) | Minimum généralement de 24 × 24 pixels CSS avec exceptions ; viser 44 × 44 pour le confort est notre choix, pas ce minimum AA. |
+| [Open WebUI — Prompts](https://docs.openwebui.com/features/workspace/prompts/) | Prompts réutilisables, variables et formulaires. |
+| [Open WebUI — Knowledge](https://docs.openwebui.com/features/workspace/knowledge/) | Travail avec des collections et du contexte documentaire sélectionné. |
+| [VS Code — Artifacts](https://code.visualstudio.com/docs/agents/run/artifacts) | Ressources produites accessibles en dehors du flux de conversation. |
+| [Claude — Artifacts](https://support.claude.com/en/articles/17153992-what-are-artifacts-and-how-do-i-use-them) | Contenus autonomes retrouvables dans un espace dédié ; URL actuelle après redirection. |
+| [Claude Code — Permissions](https://code.claude.com/docs/en/permissions) | Autorisations effectives et modes par outil ; distincts d’une consigne de prompt. |
+| [LM Studio — Modèles](https://lmstudio.ai/docs/developer/rest/list) | Modèle, instances, capacités et configurations ; ne fournit pas à lui seul une mesure globale de mémoire libre. |
+| [LM Studio — Streaming events](https://lmstudio.ai/docs/developer/rest/streaming-events) | Exemple de phases observables ; l’adaptateur actuel n’exploite pas automatiquement ce flux. |
+| [MDN — Navigator.onLine](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/onLine) | Indice de connexion imparfait, pas preuve que le PC ou l’API est accessible. |
+| [MDN — Service Worker API](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API) | Exigence de contexte sécurisé pour le cache d’application par service worker. |
+| [MDN — Notifications API](https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API) | Contraintes des notifications navigateur, distinctes des non-lus internes. |
+| [MDN — createImageBitmap](https://developer.mozilla.org/en-US/docs/Web/API/Window/createImageBitmap) | Recadrage et redimensionnement côté navigateur ; compatibilité et résultat à tester. |
+
+Pas d’entretien utilisateur, de benchmark, de validation d’une nouvelle API Bionic ou de test de ces futurs parcours pendant cette exploration. Les contraintes de confidentialité, d’authentification et de version des fichiers restent à vérifier pour chaque implémentation. Aucun service de collecte externe, surveillance permanente ou indexation générale n’est proposé par défaut.
