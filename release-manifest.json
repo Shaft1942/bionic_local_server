@@ -29,6 +29,7 @@
     "docs/developpement.md",
     "docs/installation.md",
     "docs/metaprompts-exploration.md",
+    "docs/metaprompts-implementation-1.7.md",
     "docs/metaprompts.md",
     "docs/publication.md",
     "docs/sauvegarde-mise-a-jour.md",
@@ -36,12 +37,14 @@
     "docs/verification.md",
     "lib/bionic-store.mjs",
     "lib/config.mjs",
+    "lib/context-receipt.mjs",
     "lib/document-extract.py",
     "lib/file-agent.mjs",
     "lib/generation-metrics.mjs",
     "lib/model-service.mjs",
     "lib/project-files.mjs",
     "lib/reasoning.mjs",
+    "lib/workspace-features.mjs",
     "package.json",
     "public/app.js",
     "public/files.js",
@@ -49,6 +52,7 @@
     "public/index.html",
     "public/manifest.webmanifest",
     "public/style.css",
+    "public/workspace.js",
     "release-manifest.json",
     "requirements.txt",
     "scripts/build-release.mjs",
@@ -58,6 +62,7 @@
     "server.mjs",
     "test/bionic-store.test.mjs",
     "test/config.test.mjs",
+    "test/context-receipt.test.mjs",
     "test/file-agent.test.mjs",
     "test/generation-metrics.test.mjs",
     "test/launchers.test.mjs",
@@ -65,6 +70,7 @@
     "test/project-files.test.mjs",
     "test/reasoning.test.mjs",
     "test/release.test.mjs",
-    "test/server.test.mjs"
+    "test/server.test.mjs",
+    "test/workspace-features.test.mjs"
   ]
 }

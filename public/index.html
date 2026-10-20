@@ -9,6 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="/style.css">
   <script src="/files.js" defer></script>
+  <script src="/workspace.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -33,6 +34,7 @@
       <div class="project-field"><label for="project">Projet</label><select id="project"></select></div>
       <button id="new-chat" class="new-chat"></button>
       <button id="files-open-sidebar" class="files-open" type="button">Fichiers du projet</button>
+      <div class="workspace-shortcuts"><button id="activity-open-sidebar" class="workspace-shortcut" type="button">Depuis votre départ <span id="activity-count" class="activity-count" hidden></span></button><button id="deliverables-open-sidebar" class="workspace-shortcut" type="button">Livrables</button></div>
       <label class="search-field"><span id="search-icon" aria-hidden="true"></span><span class="sr-only">Rechercher une conversation</span><input id="search" type="search" placeholder="Rechercher une conversation" autocomplete="off"></label>
       <div class="list-heading"><h2>Conversations</h2><span id="session-count"></span></div>
       <nav id="sessions" class="sessions" aria-label="Conversations du projet"></nav>
@@ -40,7 +42,7 @@
       <div class="sidebar-bottom"><span id="status" class="status">Connexion…</span><button id="logout" class="icon-button" aria-label="Se déconnecter"></button></div>
     </aside>
     <main class="thread" id="thread">
-      <header class="thread-header"><button id="back" class="icon-button back" aria-label="Retour aux conversations"></button><div class="thread-titles"><h1 id="thread-title">Tes conversations, ici.</h1><p id="thread-subtitle">Choisis un projet et un fil pour commencer.</p></div><button id="models-open-thread" class="icon-button" aria-label="Voir et décharger les modèles chargés"></button><button id="info-button" class="icon-button" aria-label="Comment fonctionne ce compagnon ?" aria-expanded="false"></button></header>
+      <header class="thread-header"><button id="back" class="icon-button back" aria-label="Retour aux conversations"></button><div class="thread-titles"><h1 id="thread-title">Tes conversations, ici.</h1><p id="thread-subtitle">Choisis un projet et un fil pour commencer.</p></div><button id="activity-open-thread" class="icon-button activity-thread" aria-label="Depuis votre départ"></button><button id="models-open-thread" class="icon-button" aria-label="Voir et décharger les modèles chargés"></button><button id="info-button" class="icon-button" aria-label="Comment fonctionne ce compagnon ?" aria-expanded="false"></button></header>
       <div id="info" class="info-panel" hidden><h2>Comment fonctionne ce compagnon ?</h2><p>Les historiques natifs restent lus sans modification. Les réponses écrites ici forment des conversations web distinctes sur ce PC.</p><p>Lorsque l’option de modification est cochée, le modèle dispose d’outils pour lire, créer et modifier les textes du dossier de travail de ce projet. Les actions sont enregistrées dans le chat. Les remplacements conservent une copie précédente que tu peux rétablir.</p><p>« Importer un fichier » copie les fichiers de ton appareil dans « Imports telephone », au sein du projet. Les formats lisibles sont joints au prochain message, dans la limite de quatre pièces jointes. Pour analyser une image PNG, JPEG ou WebP, choisis un modèle marqué Vision.</p><p>« Fichiers du projet » reste disponible pour consulter et éditer les fichiers manuellement. Cette connexion HTTP est destinée au réseau domestique de confiance.</p></div>
       <div id="banner" class="banner" hidden></div>
       <div id="messages" class="messages" tabindex="0" aria-label="Messages de la conversation"><div class="welcome"><img src="/icon.svg" width="48" height="48" alt=""><h2>Le fil de tes idées.</h2><p>Ouvre une conversation Bionic ou commence un nouveau chat dans le projet de ton choix.</p><p class="welcome-detail">Les originaux restent dans Bionic.<br>Les suites web restent sur ce PC.</p></div></div>
@@ -80,6 +82,13 @@
         </section>
       </main>
     </div>
+  </section>
+  <section id="workspace-view" class="workspace-view" aria-labelledby="workspace-title" hidden>
+    <header class="workspace-header"><button id="workspace-close" class="icon-button" type="button" aria-label="Revenir aux conversations"></button><div><h1 id="workspace-title">Depuis votre départ</h1><p id="workspace-description"></p></div></header>
+    <div class="workspace-toolbar"><div class="workspace-tabs" role="group" aria-label="Espace du projet"><button id="workspace-activity" type="button" aria-pressed="true">Depuis votre départ</button><button id="workspace-deliverables" type="button" aria-pressed="false">Livrables</button></div><label class="workspace-filter" for="workspace-project"><span>Projet</span><select id="workspace-project"></select></label><button id="workspace-refresh" class="icon-button" type="button" aria-label="Actualiser cet espace"></button></div>
+    <p id="workspace-error" class="workspace-error error" role="alert" hidden></p>
+    <p id="workspace-status" class="workspace-status" role="status"></p>
+    <div class="workspace-layout"><div id="workspace-list" class="workspace-list"></div><section id="workspace-detail" class="workspace-detail" aria-label="Copie conservée du livrable" hidden></section></div>
   </section>
   <dialog id="models-dialog" class="models-dialog" aria-labelledby="models-title" aria-describedby="models-description">
     <div class="models-header"><h2 id="models-title">Modèles chargés</h2><button id="models-close" class="icon-button" aria-label="Fermer les modèles chargés" type="button"></button></div>

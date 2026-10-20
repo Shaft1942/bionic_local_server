@@ -14,6 +14,7 @@ Ce projet communautaire est indépendant de Bionic. Bionic et ses modèles ne so
 - Importer des fichiers du téléphone dans le projet et joindre des textes, des documents ou des images compatibles au chat.
 - Quitter le navigateur pendant une réponse et retrouver la génération en cours à la réouverture, tant que le PC et les serveurs restent actifs.
 - Rédiger le message suivant, l’ajouter à la file de la conversation et ouvrir un autre chat pendant les réponses en cours.
+- Retrouver les réponses terminées depuis une absence, conserver des livrables et consulter le contexte réellement utilisé pour une nouvelle réponse.
 
 **Les messages écrits ici ne sont pas ajoutés aux conversations natives de Bionic.** Les outils d’agent, MCP et compétences de Bionic ne sont pas hérités. Le compagnon possède ses propres outils limités aux fichiers du projet.
 

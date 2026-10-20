@@ -24,6 +24,43 @@ Si vous arrêtez la réponse ou si elle échoue, les messages suivants restent c
 
 Après un redémarrage du serveur, les générations et attentes abandonnées sont affichées comme interrompues. Elles ne sont pas exécutées automatiquement : relisez le fil et renvoyez la demande souhaitée.
 
+## Depuis votre départ
+
+Le bouton **Depuis votre départ**, dans la liste des conversations ou l’en-tête du chat sur téléphone, ouvre les réponses web terminées, arrêtées ou en erreur. Vous pouvez filtrer par projet ou voir tous les projets. Seuls les cent événements les plus récents sont présentés.
+
+Le compteur est propre à cet appareil et à cette installation du serveur. Au premier usage, le suivi commence à cet instant ; les événements antérieurs restent consultables sans être comptés comme nouveaux. Ouvrir le panneau ne marque aucune réponse comme consultée. **Consulter la réponse** rejoint le message exact et le marque après une ouverture réussie ; vous pouvez aussi choisir **Marquer comme consultée** sur un élément.
+
+Ce repère est conservé dans le stockage local du navigateur, sans texte de conversation. Il n’est pas synchronisé entre appareils. Effacer ce stockage réinitialise le suivi. Le compteur se met à jour périodiquement lorsque la page est ouverte ; il ne s’agit pas d’une notification système quand le navigateur est fermé.
+
+Les anciens messages sans date de fin enregistrée ne reçoivent pas de date inventée et n’apparaissent pas comme des nouveautés. Après un redémarrage du serveur, **Interruption constatée** indique la date à laquelle le compagnon a découvert la génération interrompue, qui peut être postérieure à l’arrêt réel du PC. L’activité des conversations natives de Bionic n’est pas suivie par cette vue.
+
+## Conserver et retrouver des livrables
+
+Sous une réponse enregistrée, ouvrez **Conserver comme livrable**, ajustez le titre puis choisissez **Conserver la copie figée**. Une création ou modification de fichier confirmée propose aussi **Conserver ce fichier**. Ce dernier choix vérifie que le fichier du PC correspond encore à la version produite par l’action ; un changement intervenu entre-temps provoque un refus explicite.
+
+Ouvrez **Livrables** dans la liste des conversations, ou l’onglet correspondant depuis **Depuis votre départ**. Les copies sont séparées par projet. Chaque élément garde son origine et sa date de conservation. **Ouvrir la copie** permet de consulter son aperçu et de la télécharger, de renommer son titre, de revenir au message d’origine ou de la retirer de l’étagère.
+
+La copie est indépendante de la source :
+
+- Le fichier actuel peut être identique, modifié, absent ou momentanément inaccessible ; cet état est indiqué dans le détail.
+- **Télécharger la copie** restitue les octets conservés, même si le fichier source a changé ou a disparu.
+- **Télécharger le fichier actuel du PC**, lorsqu’il est disponible, est une action distincte.
+- Renommer le titre ne renomme pas le fichier d’origine. Retirer un livrable supprime seulement sa fiche et sa copie privée, jamais le texte du chat ni le fichier du projet.
+
+L’aperçu est passif : un contenu HTML, SVG ou du code n’est pas exécuté. Les réponses sont téléchargées en texte ; les fichiers conservent leur nom et leurs octets. Un aperçu long est limité à 12 000 caractères, avec une indication permettant de télécharger la copie complète. Le compagnon ne transforme pas automatiquement une réponse en document Word ou PDF.
+
+Les limites de l’étagère, pour toute l’installation, sont de **1 000 livrables ou 128 000 000 octets**, de **256 000 octets par réponse** et de **2 000 000 octets par fichier**. Un dépassement est refusé sans tronquer silencieusement la copie. Les copies et leurs fiches sont enregistrées dans `data/workspace/` et font partie des données privées à sauvegarder. Une copie identique déjà épinglée depuis la même source est réutilisée.
+
+## Contexte utilisé pour une réponse
+
+Ouvrez **Contexte utilisé** sous une nouvelle réponse assistant. Le reçu indique l’historique retenu, les messages écartés, les pièces jointes sélectionnées et les lectures réussies par les outils. Les extraits d’outils conservent le texte observé, sa position et l’empreinte du fichier au moment de la lecture. Ce panneau ne relit pas les fichiers du projet pour reconstruire le passé.
+
+Pour un message en attente, le reçu est construit lorsque son tour commence : il peut alors inclure la réponse précédente. Il évolue avec les lectures d’outils et reste accessible après rechargement. Les pièces jointes appartiennent aux copies enregistrées lors de l’envoi, pas au fichier qui aurait été modifié ensuite sur le PC.
+
+**Transmission non confirmée** signifie que le compagnon n’a pas obtenu de confirmation de l’API ; ce n’est pas une preuve que la requête n’a jamais été reçue. Une transmission confirmée indique une requête acceptée, sans garantir que le modèle a correctement utilisé chaque élément. Une lecture d’outil peut avoir réussi sur le PC alors que son résultat n’a pas encore été confirmé dans une requête au modèle.
+
+Le reçu ne révèle pas le raisonnement interne. Il décrit l’historique, les pièces jointes et les extraits ; les consignes du compagnon et les définitions des outils autorisés s’ajoutent à ces éléments. Les aperçus de pièces jointes sont courts ; leur message d’origine permet de retrouver la copie jointe. Aucun nombre exact de tokens n’est déduit du nombre de caractères. Une ancienne réponse sans reçu affiche **Relevé indisponible**.
+
 ## Modèles, effort et vitesse
 
 Sélectionnez un modèle disponible dans la liste. Le chargement à la demande dépend du réglage Bionic. Pour une image PNG, JPEG ou WebP, choisissez un modèle portant la mention **Vision**.

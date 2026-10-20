@@ -24,6 +24,13 @@ globalThis.fetch=async(url,opt={})=>{
  if(String(url).endsWith('/api/v1/models/unload')){unloadCount++;fixtureLoaded=false;return {ok:true,json:async()=>({instance_id:'loaded-synthetic'})};}
  upstreamCount++;lastUpstreamBody=JSON.parse(opt.body);upstreamBodies.push(structuredClone(lastUpstreamBody));const lastContent=lastUpstreamBody.messages.at(-1).content;const text=typeof lastContent==='string'?lastContent:lastContent.filter(p=>p.type==='text').map(p=>p.text).join('\n');
  const original=lastUpstreamBody.messages.findLast(m=>m.role==='user')?.content;
+ if(typeof original==='string'&&original.startsWith('HTTP_FAIL_INITIAL'))return {ok:false,status:503,body:{cancel:async()=>{}}};
+ if(original==='AGENT_READ_FAIL'||original==='AGENT_READ_NO_RESUME'){
+  const count=lastUpstreamBody.messages.filter(m=>m.role==='tool').length;
+  if(count&&original==='AGENT_READ_NO_RESUME')return {ok:false,status:503,body:{cancel:async()=>{}}};
+  const event=count?{choices:[{delta:{content:'Lecture terminée.'},finish_reason:'stop'}]}:{choices:[{delta:{tool_calls:[{index:0,id:'targeted-read',function:{name:'read_project_file',arguments:JSON.stringify({path:original==='AGENT_READ_FAIL'?'missing.md':'agent.md'})}}]},finish_reason:'tool_calls'}]};
+  return {ok:true,status:200,body:new ReadableStream({start(c){c.enqueue(Buffer.from('data: '+JSON.stringify(event)+'\n\ndata: [DONE]\n\n'));c.close()}})};
+ }
  if(original==='AGENT_EDIT'||original==='UNSOLICITED_TOOL'||original==='AGENT_DETACHED'){
   const count=lastUpstreamBody.messages.filter(m=>m.role==='tool').length;
   if(original==='AGENT_DETACHED'&&count===0)await new Promise(resolve=>{releaseAgent=resolve});
@@ -48,6 +55,7 @@ try {
  let r=await request('/api/projects');findings.push({test:'unauthenticated API blocked',pass:r.statusCode===401,status:r.statusCode});
  r=await request('/api/file?projectId=p1&rootId=project&path=notes.md');findings.push({test:'file contents require login',pass:r.statusCode===401});
  r=await request('/api/file/upload?projectId=p1&name=no.txt',{method:'POST',raw:Buffer.from('x')});findings.push({test:'phone upload requires login',pass:r.statusCode===401});
+ for(const route of ['/api/activity','/api/deliverables?projectId=p1','/api/deliverable?projectId=p1&id=x','/api/deliverable/download?projectId=p1&id=x']){r=await request(route);findings.push({test:'workspace API requires login: '+route,pass:r.statusCode===401})}
  r=await request('/api/models/unload',{method:'POST',body:{instanceId:'loaded-synthetic'}});findings.push({test:'unauthenticated unload blocked',pass:r.statusCode===401&&unloadCount===0});
  const access=await fs.readFile(path.join(root,'ACCES-PRIVE.txt'),'utf8');const code=/Code d’accès : (.+)/.exec(access)[1].trim();
  r=await request('/api/login',{method:'POST',body:{code}});cookie=r.headers['set-cookie'].split(';')[0];findings.push({test:'access code login',pass:r.statusCode===200});
@@ -55,11 +63,21 @@ try {
  r=await request('/api/chat',{method:'POST',headers:{cookie,origin:'https://attacker.example'},body:data('NORMAL')});findings.push({test:'cross-origin mutation blocked',pass:r.statusCode===403,status:r.statusCode});
  r=await request('/api/file/save',{method:'POST',headers:{cookie,origin:'https://attacker.example'},body:{}});findings.push({test:'cross-origin file writes blocked',pass:r.statusCode===403});
  r=await request('/api/file/upload?projectId=p1&name=no.txt',{method:'POST',headers:{cookie,origin:'https://attacker.example'},raw:Buffer.from('x')});findings.push({test:'cross-origin phone upload blocked',pass:r.statusCode===403});
+ for(const route of ['/api/deliverables','/api/deliverable/rename','/api/deliverable/remove']){r=await request(route,{method:'POST',headers:{cookie,origin:'https://attacker.example'},body:{projectId:'p1'}});findings.push({test:'cross-origin workspace mutation blocked: '+route,pass:r.statusCode===403})}
  r=await request('/api/file/upload?projectId=p1&name=phone.txt',{method:'POST',headers:{cookie},raw:Buffer.from('Imported from phone.')});const imported=JSON.parse(r.text());findings.push({test:'raw phone bytes are stored inside the project',pass:r.statusCode===201&&await fs.readFile(path.join(fileRoot,imported.path),'utf8')==='Imported from phone.'});
  r=await request('/api/file/upload?projectId=p1&name=phone.txt',{method:'POST',headers:{cookie},raw:Buffer.from('second')});findings.push({test:'duplicate phone filename gets a distinct project path',pass:r.statusCode===201&&JSON.parse(r.text()).path!==imported.path});
+ r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('HTTP_FAIL_INITIAL'),attachments:[{rootId:'project',path:imported.path,hash:imported.hash}]}});const rejectedReceipt=r.records().at(-1).contextReceipt;
+ findings.push({test:'an initial upstream rejection never claims confirmed attachment transmission',pass:r.records().at(-1).type==='error'&&rejectedReceipt.initialTransmitted===false&&rejectedReceipt.attachments[0].eligible===true&&rejectedReceipt.attachments[0].transmitted===false&&rejectedReceipt.attachments[0].preview==='Imported from phone.'});
  await fs.writeFile(path.join(fileRoot,'agent.md'),'before');r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_EDIT'),fileAccess:true}});const agentRecords=r.records();
  findings.push({test:'streamed model tools read, save and resume generation with persisted action log',pass:agentRecords.at(-1).type==='done'&&agentRecords.filter(e=>e.type==='action').length===2&&agentRecords.some(e=>e.action?.backupId)&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='after'});
  const changedAction=agentRecords.find(e=>e.action?.backupId).action,agentChatId=agentRecords.find(e=>e.type==='start').id;
+ const agentReceipt=JSON.parse(await fs.readFile(path.join(root,'data/chats',agentChatId+'.json'),'utf8')).messages.at(-1).contextReceipt;
+ findings.push({test:'tool context persists exact successful excerpt and hash after project modification',pass:agentReceipt.toolReads.length===1&&agentReceipt.toolReads[0].text==='before'&&agentReceipt.toolReads[0].start===0&&agentReceipt.toolReads[0].length===6&&agentReceipt.toolReads[0].transmitted===true&&/^[a-f0-9]{64}$/.test(agentReceipt.toolReads[0].hash)&&agentReceipt.toolsEnabled});
+ findings.push({test:'start, action and context events expose the same auditable receipt without changing model tool output',pass:agentRecords.find(e=>e.type==='start').replyId&&agentRecords.find(e=>e.type==='start').contextReceipt.toolReads.length===0&&agentRecords.find(e=>e.type==='action').contextReceipt.toolReads[0].transmitted===false&&agentRecords.some(e=>e.type==='context'&&e.contextReceipt.toolReads[0]?.transmitted===true)&&!upstreamBodies.find(body=>body.messages.some(m=>m.role==='tool'))?.messages.find(m=>m.role==='tool').content.includes('totalReadReceipt')});
+ r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_READ_FAIL'),fileAccess:true}});
+ findings.push({test:'failed file reads remain visible as errors without pretending that content was used',pass:r.records().at(-1).type==='done'&&r.records().find(event=>event.type==='action').action.ok===false&&r.records().at(-1).contextReceipt.toolReads.length===0});
+ r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_READ_NO_RESUME'),fileAccess:true}});
+ findings.push({test:'a successful read followed by an upstream error preserves its excerpt without claiming confirmed retransmission',pass:r.records().at(-1).type==='error'&&r.records().at(-1).contextReceipt.initialTransmitted&&r.records().at(-1).contextReceipt.toolReads[0].text==='after'&&r.records().at(-1).contextReceipt.toolReads[0].transmitted===false});
  r=await request('/api/file/restore',{method:'POST',headers:{cookie},body:{projectId:'p1',rootId:'project',path:changedAction.path,hash:changedAction.hash,backupId:changedAction.backupId,chatId:agentChatId,actionId:changedAction.id}});const restoredChat=JSON.parse(await fs.readFile(path.join(root,'data/chats',agentChatId+'.json'),'utf8'));
  findings.push({test:'chat restore persists its completed state and restores the earlier bytes',pass:r.statusCode===200&&restoredChat.messages.at(-1).actions.some(a=>a.id===changedAction.id&&a.restored)&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='before'});
  await fs.writeFile(path.join(fileRoot,'agent.md'),'before');r=await send('UNSOLICITED_TOOL');findings.push({test:'file tools disabled means no tool execution despite unsolicited calls',pass:r.records().some(e=>e.type==='error')&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='before'});
@@ -76,12 +94,15 @@ try {
  findings.push({test:'model receives only verified file content and chat persists a snapshot',pass:r.records().at(-1).type==='done'&&lastUpstreamBody.messages.at(-1).content.includes('Saved synthetic file.')&&attachedChat.messages[0].attachments[0].text==='Saved synthetic file.'});
  await fs.writeFile(path.join(fileRoot,'notes.md'),'Changed later on PC.');r=await send('NORMAL',attachedChatId);
  findings.push({test:'follow-up uses saved file snapshot rather than silently rereading the disk',pass:lastUpstreamBody.messages.some(m=>m.content.includes('Saved synthetic file.'))&&!lastUpstreamBody.messages.some(m=>m.content.includes('Changed later on PC.'))});
+ const followupReceipt=r.records().at(-1).contextReceipt;
+ findings.push({test:'receipt attachment references use selected historical snapshots rather than current PC bytes',pass:followupReceipt.attachments[0].source==='history'&&followupReceipt.attachments[0].hash===savedFile.hash&&followupReceipt.attachments[0].preview==='Saved synthetic file.'&&followupReceipt.history.messages.length===2&&followupReceipt.initialTransmitted===true&&followupReceipt.toolReads.length===0});
  await fs.writeFile(path.join(fileRoot,'large.txt'),'x'.repeat(6000));r=await request('/api/file?projectId=p1&rootId=project&path=large.txt',{headers:{cookie}});const largeFile=JSON.parse(r.text()),beforeLargeAttach=upstreamCount;
  r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL'),attachments:[{rootId:'project',path:'large.txt',hash:largeFile.hash}]}});findings.push({test:'attachments exceeding model context are rejected without silent truncation',pass:r.statusCode===400&&upstreamCount===beforeLargeAttach});
  const beforeStaleAttach=upstreamCount;r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL'),attachments:[{rootId:'project',path:'notes.md',hash:beforeFile.hash}]}});findings.push({test:'changed attachment refused before inference',pass:r.statusCode===409&&upstreamCount===beforeStaleAttach});
  r=await send('NORMAL','native-1');findings.push({test:'normal stream done',pass:r.records().at(-1)?.type==='done'});
  r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL targeted context'),fileAccess:true}});
  findings.push({test:'enabling file tools does not preload project text, and the model is directed to read selectively',pass:r.records().at(-1)?.type==='done'&&!JSON.stringify(lastUpstreamBody.messages).includes('Changed later on PC.')&&lastUpstreamBody.messages[0].content.includes('Lecture ciblée')&&!r.records().some(e=>e.type==='action')});
+ findings.push({test:'tools enabled without tool calls has an empty accurate read receipt',pass:r.records().at(-1).contextReceipt.toolsEnabled&&r.records().at(-1).contextReceipt.toolReads.length===0&&r.records().at(-1).contextReceipt.attachments.length===0});
  findings.push({test:'default effort leaves native default untouched',pass:!('reasoning_effort' in lastUpstreamBody)});
  r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL'),reasoning:'off'}});const effortChatId=r.records().find(e=>e.type==='start')?.id;
  const savedEffort=JSON.parse(await fs.readFile(path.join(root,'data/chats',effortChatId+'.json'),'utf8'));
@@ -130,6 +151,7 @@ try {
  findings.push({test:'a queued file action does not edit the project before its turn starts',pass:r.records().at(-1).type==='queued'&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='before'});
  const onDiskQueue=JSON.parse(await fs.readFile(path.join(root,'data/chats',id+'.json'),'utf8'));
  findings.push({test:'queued requests and frozen file bytes persist separately from current turn history',pass:onDiskQueue.queue.length===4&&onDiskQueue.queue[2].attachments[0].text==='Changed'&&!onDiskQueue.messages.some(message=>message.text.includes('queued first'))&&!JSON.stringify(upstreamBodies[n-1]).includes('queued first')});
+ findings.push({test:'queued turns have no invented context receipt before actual execution',pass:onDiskQueue.queue.every(item=>!item.contextReceipt)&&!onDiskQueue.messages.some(message=>message.requestId===queuedSnapshot)});
  findings.push({test:'queued excerpt recovery retains only validated canonical file references and selection bounds',pass:JSON.stringify(onDiskQueue.queue[2].attachmentReferences)===JSON.stringify([{rootId:'project',path:'notes.md',hash:queuedFile.hash,selection:{start:0,end:7}}])});
  const duplicateCount=upstreamCount;r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL duplicate',id),requestId:queuedOne}});
  findings.push({test:'retrying a queued request cannot duplicate its later model call or tools',pass:r.statusCode===409&&upstreamCount===duplicateCount});
@@ -154,6 +176,8 @@ try {
  r=await request('/api/chat-request?projectId=p1&requestId='+queuedOne,{headers:{cookie}});const firstCompleted=JSON.parse(r.text());
  r=await request('/api/conversation?projectId=p1&id='+id,{headers:{cookie}});const drained=JSON.parse(r.text());
  findings.push({test:'finished queued requests remain discoverable and only the canceled entry remains unexecuted',pass:firstCompleted.status==='completed'&&drained.generation.status==='completed'&&drained.queue.every(item=>item.status==='stopped')&&drained.messages.filter(message=>message.requestId===queuedOne&&message.role==='user').length===1});
+ const snapshotReply=drained.messages.find(message=>message.requestId===queuedSnapshot&&message.role==='assistant'),priorReply=drained.messages.find(message=>message.requestId===queuedOne&&message.role==='assistant');
+ findings.push({test:'queued receipt is built at execution and includes the previous completed response',pass:snapshotReply.contextReceipt.history.messages.some(message=>message.id===priorReply.id)&&snapshotReply.contextReceipt.attachments.some(file=>file.source==='current'&&file.hash===queuedFile.hash&&file.preview==='Changed'&&file.excerpt)&&snapshotReply.finishedAt>=priorReply.finishedAt&&snapshotReply.outcome==='completed'&&drained.generation.finishedAt>=snapshotReply.finishedAt});
  // A slow cold read must not replace a chat already started by another request.
  const coldId='web-22222222-2222-4222-8222-222222222222',coldPath=path.join(root,'data/chats',coldId+'.json');
  await fs.writeFile(coldPath,JSON.stringify({id:coldId,projectId:'p1',name:'Cold concurrent',messages:[],queue:[],updatedAt:1}));
@@ -179,6 +203,26 @@ try {
  r=await request('/api/chat-request?projectId=p1&requestId='+errorQueued,{headers:{cookie}});
  const errorDisk=JSON.parse(await fs.readFile(path.join(root,'data/chats',errorId+'.json'),'utf8'));
  findings.push({test:'an upstream response error persists its dependent queue as interrupted without executing later tools',pass:JSON.parse(r.text()).status==='interrupted'&&errorDisk.queue[0].status==='interrupted'&&!upstreamBodies.some(body=>body.messages.at(-1).content==='NORMAL must not run after error')});
+ findings.push({test:'failed and stopped responses preserve terminal outcome and a real completion time',pass:errorDisk.messages.at(-1).outcome==='error'&&Number.isSafeInteger(errorDisk.messages.at(-1).finishedAt)&&errorDisk.generation.finishedAt===errorDisk.messages.at(-1).finishedAt&&JSON.parse(await fs.readFile(coldPath,'utf8')).messages.find(message=>message.requestId===coldRequest&&message.role==='assistant').outcome==='stopped'});
+ const orphanRecovered=JSON.parse(await fs.readFile(path.join(root,'data/chats',orphanId+'.json'),'utf8'));
+ findings.push({test:'restart recovery dates the interruption and preserves its context if available',pass:orphanRecovered.messages.at(-1).outcome==='interrupted'&&Number.isSafeInteger(orphanRecovered.messages.at(-1).finishedAt)&&orphanRecovered.generation.finishedAt===orphanRecovered.messages.at(-1).finishedAt});
+ const legacyId='web-33333333-3333-4333-8333-333333333333';
+ await fs.writeFile(path.join(root,'data/chats',legacyId+'.json'),JSON.stringify({id:legacyId,projectId:'p1',name:'Legacy',messages:[{id:'legacy-user',role:'user',text:'Old question'},{id:'legacy-answer',role:'assistant',text:'Old answer',complete:true}],updatedAt:1,generation:{status:'completed'}}));
+ r=await request('/api/conversation?projectId=p1&id='+legacyId,{headers:{cookie}});const legacy=JSON.parse(r.text());
+ findings.push({test:'reading an old completed answer invents neither receipt nor activity timestamp',pass:!legacy.messages.at(-1).contextReceipt&&!legacy.messages.at(-1).finishedAt&&!legacy.messages.at(-1).outcome});
+ const budgetId='web-44444444-4444-4444-8444-444444444444',budgetMessages=Array.from({length:12},(_,index)=>({id:'budget-'+index,role:index%2?'assistant':'user',text:'Message '+index+' '+String(index).repeat(800)}));
+ await fs.writeFile(path.join(root,'data/chats',budgetId+'.json'),JSON.stringify({id:budgetId,projectId:'p1',name:'Limited history',messages:budgetMessages,updatedAt:1,importedTruncated:true}));
+ r=await send('NORMAL budget receipt',budgetId);const budgetReceipt=r.records().at(-1).contextReceipt;
+ findings.push({test:'receipt omissions and selected history exactly match the actual bounded model payload',pass:budgetReceipt.history.availableCount===12&&budgetReceipt.history.omittedCount===12-budgetReceipt.history.selectedCount&&budgetReceipt.history.omittedCount>0&&budgetReceipt.history.importedTruncated&&JSON.stringify(budgetReceipt.history.messages.map(message=>budgetMessages[message.index].text))===JSON.stringify(lastUpstreamBody.messages.slice(1,-1).map(message=>message.content))});
+ r=await request('/api/activity?projectId=p1',{headers:{cookie}});const activity=JSON.parse(r.text());
+ findings.push({test:'activity route returns actual terminal outcomes and excludes undated legacy answers',pass:r.statusCode===200&&activity.events.some(event=>event.chatId===errorId&&event.outcome==='error')&&activity.events.some(event=>event.chatId===orphanId&&event.outcome==='interrupted')&&!activity.events.some(event=>event.chatId===legacyId)});
+ r=await request('/api/deliverables',{method:'POST',headers:{cookie},body:{projectId:'p1',chatId:agentChatId,messageId:restoredChat.messages.at(-1).id,kind:'message',title:'Saved answer'}});const pinned=JSON.parse(r.text());
+ findings.push({test:'authenticated deliverable pin route saves a completed answer snapshot',pass:r.statusCode===201&&pinned.origin?.chatId===agentChatId&&pinned.title==='Saved answer'});
+ r=await request('/api/deliverable/download?projectId=p1&id='+pinned.id,{headers:{cookie}});
+ findings.push({test:'deliverable downloads are passive attachments with the original saved answer',pass:r.statusCode===200&&r.headers['content-disposition'].startsWith('attachment;')&&r.text()==='Fichier modifié.'&&r.headers['x-content-type-options']==='nosniff'});
+ r=await request('/api/deliverable?projectId=another-project&id='+pinned.id,{headers:{cookie}});findings.push({test:'deliverable route denies access through a different project',pass:r.statusCode===404});
+ r=await request('/api/deliverable/rename',{method:'POST',headers:{cookie},body:{projectId:'p1',id:pinned.id,title:'Renamed answer'}});findings.push({test:'deliverable rename route changes its local title',pass:r.statusCode===200&&JSON.parse(r.text()).title==='Renamed answer'});
+ r=await request('/api/deliverable/remove',{method:'POST',headers:{cookie},body:{projectId:'p1',id:pinned.id}});findings.push({test:'deliverable remove route removes only its saved entry',pass:r.statusCode===200&&JSON.parse(r.text()).removed===true&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='after'});
  // The queue limit counts only waiting entries, and canceling one frees a slot.
  const limitChatId=secondHoldRes.records().find(e=>e.type==='start').id,limitIds=[];
  for(let i=0;i<10;i++){const requestId=runId+'-limit-'+i;limitIds.push(requestId);r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL limit '+i,limitChatId),requestId}});assert.equal(r.records().at(-1).type,'queued')}

@@ -72,6 +72,16 @@ test('targeted reads find a passage without returning the whole file or repeated
  assert(!(await a.execute(call('read_project_file',{path:'target.txt',query:'absent'}))).action.ok);
 });
 
+test('successful reads return exact receipt metadata without adding fields to the model result',async()=>{
+ const a=agent(),before=await files.read('p1','project','target.txt');
+ const r=await a.execute(call('read_project_file',{path:'target.txt',start:12,length:20}));
+ assert.deepEqual(r.read,{path:'target.txt',hash:before.hash,start:12,text:r.result.text,totalCharacters:before.text.length,truncated:!!before.truncated});
+ assert.equal(r.read.text,before.text.slice(12,32));
+ assert(!('hash' in r.result));
+ const failed=await a.execute(call('read_project_file',{path:'missing.md'}));assert.equal(failed.action.ok,false);assert(!failed.read);
+ const listing=await a.execute(call('list_project_files',{path:''}));assert(!listing.read);
+});
+
 test('new file text has a total per-turn budget, and listings never contain file contents',async()=>{
  const a=createFileAgent({files,projectId:'p1',readBudget:80,readLimit:50});
  const listing=await a.execute(call('list_project_files',{path:''}));assert(listing.action.ok);assert(!JSON.stringify(listing.result).includes('Hello world'));

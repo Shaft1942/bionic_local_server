@@ -29,6 +29,8 @@ Copiez `config.example.json` en `config.local.json`, choisissez un port de test 
 | `lib/model-service.mjs` | Liste des modèles, capacités et déchargement |
 | `lib/reasoning.mjs` | Choix d’effort selon le modèle |
 | `lib/generation-metrics.mjs` | Mesures de génération disponibles |
+| `lib/context-receipt.mjs` | Reçu borné du contexte sélectionné et des extraits effectivement lus |
+| `lib/workspace-features.mjs` | Activité des réponses web et copies figées de livrables, isolées par projet |
 | `public/` | Interface navigateur sans framework de compilation |
 | `lib/document-extract.py` | Extraction de texte PDF, DOCX et XLSX |
 | `test/` | Fixtures fictives et tests automatisés |
@@ -68,6 +70,7 @@ Selon la modification, vérifiez aussi :
 - La navigation entre deux générations, les brouillons et pièces jointes propres à chaque fil, et l’ordre des messages en attente.
 - L’annulation d’une seule demande, l’isolation de ses réglages et l’absence de relance automatique après un redémarrage.
 - Le téléphone en largeur étroite, les contrôles accessibles et l’affichage des erreurs.
+- La consultation ciblée d’un événement sans marquage global, la conservation d’une copie malgré un changement de source et les reçus après erreur de transmission.
 
 ## Adaptateur Bionic
 

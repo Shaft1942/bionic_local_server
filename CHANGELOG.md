@@ -1,5 +1,12 @@
 # Journal des versions
 
+## 1.7.0 — en préparation
+
+- **Depuis votre départ** : retrouvez les nouvelles réponses terminées ou interrompues du compagnon et consultez leur message d’origine. Le suivi des éléments consultés est propre à chaque appareil.
+- **Livrables** : conservez volontairement une réponse ou un fichier produit, sous forme de copie figée, avec titre, origine et téléchargement.
+- **Contexte utilisé** : consultez pour chaque nouvelle réponse les messages sélectionnés, les pièces jointes transmises et les extraits effectivement lus par les outils.
+- Documentation des méta-prompts exécutés et vérifications sur des données synthétiques.
+
 ## 1.6.0 — en préparation
 
 - Rédaction du message suivant pendant la réponse du modèle, avec mise en attente dans la même conversation.

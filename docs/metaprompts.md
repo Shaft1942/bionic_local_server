@@ -39,3 +39,7 @@ Le coordinateur vérifie l’intégration dans un navigateur avec une API simul�
 ## Exploration créative des fonctionnalités
 
 Une nouvelle exploration du 20 octobre 2026 utilise trois angles indépendants : usage mobile, travail sur les fichiers et modèles locaux. Les [méta-prompts réutilisables et le bilan d’exécution](metaprompts-exploration.md) décrivent les consignes du coordinateur et des trois agents. Les propositions recoupées et leurs sources figurent dans [Pistes UX](PISTES-UX.md).
+
+## Implémentation du premier lot — version 1.7.0
+
+Trois agents ont implémenté le reçu de contexte et son intégration serveur, le module d’activité et de livrables, puis leur interface mobile et bureau. Leurs [méta-prompts exécutés](metaprompts-implementation-1.7.md) précisent les contrats, les tests et la revue croisée. Les résultats effectivement contrôlés figurent dans [Vérification](verification.md).

@@ -4,6 +4,8 @@
 
 **Statut : propositions, pas fonctions ajoutées.** Cette exploration ne modifie pas l’application. Elle se fonde sur les sources de la branche locale `feat/conversations-paralleles`, version 1.6.0 en préparation, et sur des documents Web primaires consultés à cette date. Elle ne permet pas de déduire quelle version tourne dans un navigateur ouvert.
 
+**Mise à jour d’implémentation :** la branche `feat/retour-livrables-contexte`, version 1.7.0 en préparation, réalise désormais les premiers périmètres des pistes **1, 3 et 4** ci-dessous. Leur comportement livré est décrit dans [Utilisation](utilisation.md) et leurs contrôles dans [Vérification](verification.md). Le reste de ce document conserve le statut exploratoire ; il ne signifie pas que toutes les variantes proposées sont disponibles.
+
 Les [méta-prompts réutilisables et le bilan d’exécution](metaprompts-exploration.md) décrivent la méthode. Aucun entretien utilisateur ni essai des fonctions proposées avec un modèle réel n’a été réalisé. Les priorités et efforts sont nos appréciations, à valider par des essais concrets.
 
 ## Le point de départ réel

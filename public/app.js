@@ -12,7 +12,8 @@ const icons = {
   file: '<path d="M6 3h8l4 4v14H6Z"/><path d="M14 3v5h4M9 12h6m-6 4h6"/>',
   up: '<path d="m5 15 7-7 7 7"/>',
   attach: '<path d="m8 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l8-8"/>',
-  upload: '<path d="M12 16V3m-5 5 5-5 5 5M4 15v6h16v-6"/>'
+  upload: '<path d="M12 16V3m-5 5 5-5 5 5M4 15v6h16v-6"/>',
+  activity: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7M12 7v5l3 2"/>'
 };
 function icon(name) { const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); el.setAttribute('viewBox', '0 0 24 24'); el.setAttribute('aria-hidden', 'true'); el.innerHTML = icons[name]; return el; }
 for (const [id, name] of [['refresh', 'refresh'], ['search-icon', 'search'], ['back', 'back'], ['send', 'send'], ['info-button', 'info'], ['logout', 'logout'], ['reveal', 'eye']]) $(id).append(icon(name));
@@ -62,6 +63,17 @@ function rememberChat() { if (state.chat?.id) { try { localStorage.setItem('bm_c
 const EFFORT_LABELS = { off: 'Désactivé', on: 'Activé', low: 'Faible', medium: 'Moyen', high: 'Élevé', xhigh: 'Très élevé' };
 const modelPanel = { models: [], loading: false, unloading: null, generationActive: false };
 const fileBrowser = createProjectFileBrowser({ api, node, icon, toast, getProject: () => state.projects.find(project => project.id === state.projectId), isBusy: () => state.loading || state.uploading, onChange: saveDraft, onAttach: () => { $('app').classList.add('thread-open'); renderChat(); $('prompt').focus(); } });
+const workspace = createWorkspace({ api, node, icon, toast, getState: () => state, openTarget: async (projectId, chatId, messageId) => {
+  if (state.uploading) throw new Error('Attends la fin de l’import avant d’ouvrir cette conversation.');
+  if (!state.projects.some(project => project.id === projectId)) throw new Error('Le projet de cette réponse n’est plus disponible. Actualise les projets.');
+  saveDraft();
+  if (state.projectId !== projectId) {
+    ++state.viewSeq; state.projectId = projectId; $('project').value = projectId; state.chat = null; state.loading = false;
+    restoreDraft(chatKey(projectId)); await loadSessions();
+  }
+  await openChat(chatId);
+  return state.projectId === projectId && state.chat?.id === chatId && !![...$('messages').querySelectorAll('.message')].find(el => el.dataset.messageId === messageId);
+} });
 $('upload-file').prepend(icon('upload'));
 let toastTimeout;
 function toast(message) { $('toast').textContent = message; $('toast').hidden = false; clearTimeout(toastTimeout); toastTimeout = setTimeout(() => $('toast').hidden = true, 4500); }
@@ -232,13 +244,16 @@ function renderText(container, text) {
     }
   }
 }
-function addFileAction(article, action) {
+function addFileAction(article, action, message) {
   let log = article.querySelector('.actions-log');
   if (!log) { log = node('details', 'actions-log'); log.append(node('summary', '', 'Actions sur les fichiers'), node('div', 'action-rows')); article.append(log); }
   const row = node('div', 'action-row' + (action.ok ? '' : ' action-failed'));
   row.append(node('strong', '', action.ok ? action.message : 'Action non réalisée'), node('span', '', action.path));
   if (!action.ok) row.append(node('p', '', action.message));
   if (action.ok && /^(?:replace_project_text|write_project_file)$/.test(action.name)) log.open = true;
+  if (action.ok && /^(?:replace_project_text|write_project_file)$/.test(action.name) && message) {
+    const pin = workspace.pinControl(message, state.chat, action); if (pin) row.append(pin);
+  }
   if (action.backupId && action.hash) {
     const restore = node('button', 'file-action restore-action', action.restored ? 'Version précédente rétablie' : 'Rétablir la version précédente'); restore.type = 'button';
     if (action.restored) restore.dataset.restored = 'true';
@@ -257,6 +272,7 @@ function addFileAction(article, action) {
 }
 function addMessage(message) {
   const article = node('article', 'message ' + message.role);
+  if (message.id) { article.dataset.messageId = message.id; article.tabIndex = -1; }
   if (message.requestId || message.localRequestId) article.dataset.requestId = message.requestId || message.localRequestId;
   article.dataset.messageKey = (message.requestId || message.localRequestId) ? (message.requestId || message.localRequestId) + '-' + message.role : message.id || '';
   const role = node('div', 'message-role', message.role === 'user' ? 'Toi' : 'Assistant');
@@ -273,7 +289,7 @@ function addMessage(message) {
     }
     article.append(files);
   }
-  for (const action of message.actions || []) addFileAction(article, action);
+  for (const action of message.actions || []) addFileAction(article, action, message);
   const footer = [];
   if (message.reasoning && EFFORT_LABELS[message.reasoning]) footer.push('Effort : ' + EFFORT_LABELS[message.reasoning].toLocaleLowerCase('fr'));
   if (message.interrupted || message.limited) footer.push(message.interrupted ? 'Réponse interrompue.' : 'Limite de réponse atteinte. Tu peux demander de continuer.');
@@ -298,6 +314,11 @@ function addMessage(message) {
       if (!rate) explanations.push('Débit indisponible pour cette réponse.');
       details.append(node('p', '', explanations.join(' '))); article.append(details);
     }
+  }
+  if (message.role === 'assistant') {
+    article.append(workspace.contextControl(message));
+    const running = state.chat?.generation?.status === 'running' && (state.chat.generation.replyId === message.id || (message.requestId || message.localRequestId) === state.chat.generation.requestId);
+    if (!running && message.text) { const pin = workspace.pinControl(message, state.chat); if (pin) article.append(pin); }
   }
   $('messages').append(article); return content;
 }
@@ -340,7 +361,9 @@ function renderQueue(chat) {
 function renderChat() {
   const chat = state.chat, project = state.projects.find(p => p.id === state.projectId);
   const expanded = new Set();
-  for (const article of $('messages').querySelectorAll('.message[data-message-key]')) article.querySelectorAll('details').forEach((detail, index) => { if (detail.open) expanded.add(article.dataset.messageKey + ':' + index); });
+  for (const article of $('messages').querySelectorAll('.message[data-message-key]')) article.querySelectorAll('details').forEach((detail, index) => { if (detail.open) expanded.add(article.dataset.messageKey + ':' + (detail.dataset.disclosureKey || index)); });
+  const focus = document.activeElement?.dataset.workspaceFocus;
+  const selection = focus && typeof document.activeElement.selectionStart === 'number' ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
   $('agent-files').checked = state.draftFileAccess ?? chat?.fileAccess ?? true;
   $('thread-title').textContent = chat?.name || 'Nouveau chat web';
   $('thread-subtitle').textContent = (project?.name || 'Projet') + (chat?.source === 'bionic' ? ' · historique Bionic' : ' · conversation web');
@@ -357,7 +380,8 @@ function renderChat() {
   }
   else { const empty = node('div', 'welcome'); empty.append(node('h2', '', 'Commence une nouvelle idée.'), node('p', '', 'Le modèle local répondra à partir de tes messages et des fichiers que tu choisis de joindre.')); $('messages').append(empty); }
   renderQueue(chat);
-  for (const article of $('messages').querySelectorAll('.message[data-message-key]')) article.querySelectorAll('details').forEach((detail, index) => { if (expanded.has(article.dataset.messageKey + ':' + index)) detail.open = true; });
+  for (const article of $('messages').querySelectorAll('.message[data-message-key]')) article.querySelectorAll('details').forEach((detail, index) => { if (expanded.has(article.dataset.messageKey + ':' + (detail.dataset.disclosureKey || index))) detail.open = true; });
+  if (focus) { const input = [...$('messages').querySelectorAll('[data-workspace-focus]')].find(el => el.dataset.workspaceFocus === focus); if (input) { input.focus({ preventScroll: true }); if (selection) input.setSelectionRange(...selection); } }
   const selectedModel = draftForView().model;
   $('model').value = (state.status?.models || []).some(model => model.id === selectedModel) ? selectedModel : modelForChat();
   setEffort(); scrollBottom(); renderSessions();
@@ -478,7 +502,7 @@ async function recoverReplies() {
     rememberJobs();
   } catch (e) { if (e.status !== 401 && state.authenticated) $('status').textContent = 'Reconnexion au PC…';
   } finally {
-    recoveryBusy = false; if (state.authenticated) { setSending(); renderSessions(); scheduleRecovery(); }
+    recoveryBusy = false; if (state.authenticated) { setSending(); renderSessions(); workspace.refreshActivity(); scheduleRecovery(); }
   }
 }
 function resumeReply() {
@@ -551,6 +575,7 @@ async function send(event) {
         if (!line.trim()) continue;
         const e = JSON.parse(line);
         if (job.epoch !== state.authEpoch || !state.authenticated) return;
+        if (e.contextReceipt) { const reply = replyForJob(localChatForJob(job), requestId); if (reply) reply.contextReceipt = e.contextReceipt; }
         if (e.type === 'start' || e.type === 'queued') {
           bindJob(job, e.id, e.name); job.status = e.type === 'queued' ? 'queued' : 'running';
           const current = localChatForJob(job);
@@ -558,9 +583,11 @@ async function send(event) {
           current.reasoningByModel = { ...current.reasoningByModel, [data.model]: e.reasoning || data.reasoning }; current.fileAccess = e.fileAccess ?? data.fileAccess;
           if (e.type === 'start') {
             current.messages ||= [];
-            if (!current.messages.some(message => message.requestId === requestId)) current.messages.push({ role: 'user', text, requestId });
-            current.messages.push({ role: 'assistant', text: '', localRequestId: requestId });
-            current.generation = { status: 'running', requestId };
+            if (!current.messages.some(message => message.requestId === requestId)) current.messages.push({ role: 'user', id: e.contextReceipt?.current?.messageId, text, requestId });
+            const existingReply = replyForJob(current, requestId);
+            if (existingReply) { existingReply.id ||= e.replyId; existingReply.contextReceipt = e.contextReceipt || existingReply.contextReceipt; }
+            else current.messages.push({ role: 'assistant', id: e.replyId, text: '', localRequestId: requestId, contextReceipt: e.contextReceipt });
+            current.generation = { status: 'running', requestId, replyId: e.replyId };
           }
           cacheChat(current, job.projectId); redrawJob(job, true); rememberJobs(); setSending();
         } else if (e.type === 'delta') {
@@ -570,7 +597,10 @@ async function send(event) {
           redrawJob(job);
         } else if (e.type === 'action') {
           const reply = replyForJob(localChatForJob(job), requestId);
-          if (reply) { reply.actions ||= []; if (!reply.actions.some(action => action.id === e.action.id)) reply.actions.push(e.action); }
+          if (reply) { reply.actions ||= []; if (!reply.actions.some(action => action.id === e.action.id)) reply.actions.push(e.action); if (e.contextReceipt) reply.contextReceipt = e.contextReceipt; }
+          redrawJob(job, true);
+        } else if (e.type === 'context') {
+          const reply = replyForJob(localChatForJob(job), requestId); if (reply && e.contextReceipt) reply.contextReceipt = e.contextReceipt;
           redrawJob(job, true);
         } else if (e.type === 'error') { if (jobIsVisible(job)) error(e.message); }
         else if (e.type === 'done' && e.limited && jobIsVisible(job)) toast('Limite de réponse atteinte. Tu peux demander de continuer.');
@@ -604,6 +634,7 @@ function newChat(focus = true) {
 }
 async function start() {
   await checkStatus(); state.authenticated = true; ++state.authEpoch; $('login').hidden = true; $('app').hidden = false;
+  workspace.activate();
   await loadProjects();
   let view;
   try { view = JSON.parse(sessionStorage.getItem('bm_view') || 'null'); } catch {}
@@ -621,6 +652,7 @@ function hidePrivateViews() {
   state.authenticated = false; ++state.authEpoch; ++state.viewSeq; ++state.projectSeq; clearTimeout(recoveryTimer); clearTimeout(renderTimer);
   for (const job of jobs.values()) job.controller?.abort();
   $('models-dialog').close(); $('files-view').hidden = true; $('app').hidden = true; $('login').hidden = false;
+  workspace.reset();
   $('messages').replaceChildren(); $('sessions').replaceChildren(); $('prompt').value = ''; $('attachments').replaceChildren(); $('upload-status').textContent = '';
   $('file-editor').value = ''; $('file-image').removeAttribute('src'); $('file-list').replaceChildren();
   state.chat = null; state.viewKey = null; state.sessions = []; chats.clear(); drafts.clear(); rememberDrafts();

@@ -8,7 +8,7 @@ Le dépôt GitHub et les archives publiques contiennent le programme. Vos conver
 
 | Emplacement | Contenu à protéger |
 | --- | --- |
-| `data/` | Conversations web, copies de pièces jointes, sauvegardes de fichiers et authentification |
+| `data/` | Conversations web et reçus de contexte, copies de pièces jointes, livrables dans `data/workspace/`, sauvegardes de fichiers et authentification |
 | `config.local.json` | Vos ports, chemins et réglages privés |
 | `ACCES-PRIVE.txt` | Code d’accès en clair et adresses de connexion |
 | Dossiers de travail de vos projets | Fichiers modifiés et dossier `Imports telephone/` |
@@ -16,6 +16,8 @@ Le dépôt GitHub et les archives publiques contiennent le programme. Vos conver
 | `runtime/` et journaux | Informations d’exécution et chemins locaux ; ce ne sont pas des archives publiques |
 
 Une sauvegarde du seul dossier du compagnon ne protège pas les fichiers des projets situés ailleurs. Les copies de `data/file-backups/` aident à annuler des remplacements ; elles ne remplacent pas une sauvegarde indépendante de vos projets.
+
+Le suivi des réponses consultées est conservé dans le navigateur de chaque appareil, pas dans `data/`. Une sauvegarde du serveur conserve l’étagère de livrables et ses copies, mais ne transporte pas ces repères de lecture sur un autre navigateur.
 
 ## Faire une sauvegarde cohérente
 
