@@ -5,14 +5,26 @@
   "type": "module",
   "description": "Compagnon local pour consulter les projets et chats Bionic et continuer par API",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/Shaft1942/bionic_local_server.git" },
-  "bugs": { "url": "https://github.com/Shaft1942/bionic_local_server/issues" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Shaft1942/bionic_local_server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Shaft1942/bionic_local_server/issues"
+  },
   "scripts": {
     "start": "node server.mjs",
     "check": "node scripts/check.mjs",
     "test": "node --test test/*.test.mjs",
     "check:export": "node scripts/check-export.mjs",
-    "release": "node scripts/build-release.mjs"
+    "release": "node scripts/build-release.mjs",
+    "test:browser": "node scripts/browser-smoke.mjs",
+    "benchmark:chats": "node scripts/benchmark-chats.mjs"
   },
-  "engines": { "node": ">=24" }
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
 }

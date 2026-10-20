@@ -1,6 +1,37 @@
 # Vérification des distributions
 
-La distribution a été préparée le 20 octobre 2026 dans une copie distincte de l’installation d’origine. Les tests utilisent des projets, conversations et modèles synthétiques ; ils n’appellent pas les modèles réels, n’écrivent pas dans les projets de l’utilisateur et ne changent aucune règle du pare-feu.
+## Lot d’audit local du 21 octobre 2026 — non publié
+
+La branche `feat/choix-audit-bionic` part de `main` au commit `5e92da3fae6dccdb36738eb42ab4a0b1b2b00bf1`. La version du paquet reste 1.8.0. La dernière Release GitHub vérifiée au début du travail reste [v1.5.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.5.0). Aucun push, merge, tag ou publication n’est inclus dans cette validation ; un commit local ne constitue pas une livraison GitHub. Les bilans plus bas sont **historiques** et leurs nombres ne décrivent pas ce nouveau diff.
+
+Les contrôles locaux Windows/Node utilisent des dossiers temporaires synthétiques et des dépendances injectées : chats JSON/schémas invalides préservés, erreurs globales distinctes, profils de fichiers, accord web exact et refus de redirections, corbeille indépendante, intentions sans rejeu, réception HTTP, admission FIFO, révocation, diagnostic filtré et import sans effets de la fabrique. Les tests de chemins utilisent des fixtures canoniques et absolues sur la plateforme.
+
+| Contrôle exécuté sur le lot | Résultat et portée |
+| --- | --- |
+| Syntaxe | 54 fichiers JavaScript ; 7 lanceurs PowerShell analysés sans les exécuter. |
+| Suite Node.js 24.19.0 / Windows | **328 tests : 326 réussis, aucun échec, 2 ignorés**, la création de liens de dossiers étant indisponible. Les assertions de confinement et de concurrence restent actives. |
+| Navigateur Chrome / Playwright 1.62.1 | Deux parcours à 320 et 1280 px, quatre passages réussis. Effacement des brouillons entre deux onglets, nouvelle saisie éphémère et absence de mutations répétées de la région d’annonce pendant une attente contrôlés. Neutraliser volontairement le bouton d’envoi fait échouer le parcours. |
+| Export et archive locale | **103 fichiers** autorisés ; inventaire exact, CRC, répertoire central, octets comparés aux sources et SHA-256 contrôlés. L’empreinte propre à chaque construction figure dans `dist/SHA256SUMS.txt`. |
+| Extraction vierge | Syntaxe, 328 tests Node, contrôle d’export et quatre passages navigateur rejoués depuis les seuls fichiers extraits. Runtime Node et Playwright fournis extérieurement ; aucun téléchargement d’installateur n’est testé. |
+| Mise à jour fictive | Huit fichiers privés synthétiques conservés octet pour octet : authentification, accès, configuration, chat, classement, pièce jointe, livrable et copie précédente. Deux initialisations vierges génèrent des identités et codes distincts ; la copie de mise à jour retrouve ceux de l’ancienne fixture. |
+
+L’initialisation de la fabrique et les routes d’accueil, connexion, projets et identité ont été exercées en mémoire après extraction, avec un adaptateur natif synthétique. Une tentative HTTP sur boucle locale a été refusée par l’environnement protégé (`connect EACCES`) : **le démarrage HTTP réel depuis cette archive n’est pas validé ici**. Aucun contournement ni redémarrage de l’installation active n’a été effectué.
+
+La réception de 20 Mo est aussi testée avec une horloge virtuelle : 125 000 octets/s donnent 160 secondes sous la limite par défaut de 180 secondes ; 100 000 octets/s dépassent cette limite et produisent 408. C’est un contrôle de politique de délai, pas une mesure du Wi-Fi. Le délai global de génération reste de trente minutes, admission et accords humains inclus ; une attente humaine libère le créneau d’inférence.
+
+Une relecture indépendante ciblée a produit **huit constats corrigés et recontrôlés** : nom de chat invalide, aperçu web, reçu de droits, révocation inter-onglets, reprise de saisie après révocation, distinction entre recherche locale dans une page et texte envoyé, effacement des textes en échec et annonces répétées. Elle ne certifie ni tout le produit ni les 23 critères dans tous leurs environnements.
+
+Le script versionné `scripts/browser-smoke.mjs` utilise l’interface réelle et les API interceptées. Il couvre file/navigation/brouillon et badge/carte/refus d’un script, sans débordement horizontal ni erreur JavaScript. Quatre captures synthétiques finales ont été inspectées, après une première série de quatre ; aucune nouvelle série de mise en forme n’a été nécessaire. Un contrôle mécanique distinct relève l’aperçu d’image existant, masqué et sans source avant sélection ; ce signal ne constitue pas une preuve générale d’accessibilité. Les autres fonctions d’interface ne sont pas toutes couvertes par ces deux parcours. Voir [les commandes reproductibles](developpement.md#deux-parcours-navigateur-de-développement).
+
+Le benchmark synthétique sur 10/100/1 000 chats, froid puis chaud, compare un contrôle de parcours par projet au partage de cycle avec le même lecteur actuel : deux parcours deviennent un, les JSON du cache chaud ne sont pas relus. La requête d’activité partage aussi un parcours. Ces observations ne comparent pas deux serveurs complets et n’établissent aucun gain utilisateur de latence ou de mémoire. Aucun index, pagination ou cache LRU n’est ajouté.
+
+La [dernière CI publique examinée, run 39498935835](https://github.com/Shaft1942/bionic_local_server/actions/runs/39498935835), sur la référence auditée est **en échec**. Les corrections locales de fixtures ne constituent pas une CI réparée. WSL n’a pas pu être lancé dans l’environnement de validation (`E_ACCESSDENIED`) : Ubuntu et une nouvelle CI distante ne sont pas exécutés sur ce diff. Aucune CI navigateur automatique n’est ajoutée.
+
+Aucun modèle Bionic réel, GPU, téléphone physique, lecteur d’écran réel ou réseau Wi-Fi physique n’est validé par ce lot. Aucune installation quotidienne n’est redémarrée ou mise à jour, aucun projet personnel n’est utilisé. Les essais de protocole et de contextes simulés ne prouvent pas les capacités des modèles installés. Les critères, dépendances, retours arrière et méta-prompts restitués sont dans [Choix d’audit](choix-audit.md).
+
+## Bilans historiques antérieurs au lot d’audit
+
+La distribution initiale a été préparée le 20 octobre 2026 dans une copie distincte de l’installation d’origine. Les tests utilisent des projets, conversations et modèles synthétiques ; ils n’appellent pas les modèles réels, n’écrivent pas dans les projets de l’utilisateur et ne changent aucune règle du pare-feu.
 
 ## Contrôles couverts
 

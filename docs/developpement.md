@@ -22,7 +22,7 @@ Copiez `config.example.json` en `config.local.json`, choisissez un port de test 
 
 | Emplacement | Rôle |
 | --- | --- |
-| `server.mjs` | Serveur HTTP, authentification, routes, conversations web et cycle de génération |
+| `server.mjs` | Fabrique `createCompanion`, serveur HTTP, authentification, routes, conversations web et cycle de génération ; écoute seulement lors du lancement direct |
 | `lib/bionic-store.mjs` | Projection en lecture seule des projets et conversations natifs |
 | `lib/conversation-organizer.mjs` | Classement, noms et masquage locaux des conversations natives, groupe Sans projet, sans écriture dans Bionic |
 | `lib/project-files.mjs` | Périmètres de dossiers, lecture, imports, sauvegardes et écritures contrôlées |
@@ -37,12 +37,18 @@ Copiez `config.example.json` en `config.local.json`, choisissez un port de test 
 | `lib/generation-metrics.mjs` | Mesures de génération disponibles |
 | `lib/context-receipt.mjs` | Reçu borné du contexte sélectionné et des extraits effectivement lus |
 | `lib/workspace-features.mjs` | Activité des réponses web et copies figées de livrables, isolées par projet |
+| `lib/inference-gate.mjs` | Admission FIFO optionnelle de chaque inférence ; les accords humains ne gardent pas de créneau |
+| `lib/request-body.mjs` | Réception bornée en taille et durée, distincte du streaming après acceptation |
+| `lib/diagnostics.mjs` | Cinq contrôles à la demande et rapport construit par liste blanche |
+| `public/message-drafts.js` | Conservation volontaire des textes non envoyés, durée et retrait local |
 | `public/` | Interface navigateur sans framework de compilation |
 | `lib/document-extract.py` | Extraction de texte PDF, DOCX et XLSX |
 | `test/` | Fixtures fictives et tests automatisés |
 | `scripts/` | Aides de distribution et de vérification |
 
 Le navigateur utilise une session authentifiée pour joindre le serveur. Le serveur relaie les générations vers l’API locale Bionic, puis conserve les réponses web dans son propre `data/`. La génération et l’attente d’une validation ne dépendent pas de la présence continue du navigateur. Les outils sont exécutés par le compagnon : ils ne réutilisent pas l’agent, les MCP ni les compétences natifs Bionic.
+
+Importer `server.mjs` ne crée ni fichier ni port. `createCompanion(options)` initialise volontairement une instance avec dépendances injectables et retourne notamment `handle`, `server` et `close`. Les tests de routes importent cette fabrique sans remplacer ni tronquer son code source. Le cycle de génération et le stockage ne font pas l’objet d’une extraction générale supplémentaire.
 
 Les trois permissions sont capturées à l’acceptation du message et conservées dans la file. Le contexte se construit au démarrage de son tour. Les propositions et décisions de script sont enregistrées avant la reprise ; l’API authentifiée de validation vérifie le projet, le chat et l’identifiant de la proposition. Le code affiché ne peut pas être remplacé par le corps de la requête d’approbation. Le redémarrage n’hydrate pas d’anciennes validations exécutables.
 
@@ -59,6 +65,36 @@ npm run check:export
 ```
 
 Les tests doivent rester isolés : registres synthétiques, bases SQLite fabriquées, dossiers temporaires possédés par le test et réponses d’API simulées. Aucun test ne doit modifier des données Bionic ou des projets personnels par défaut. Les formats documentaires optionnels peuvent nécessiter Python et les dépendances correspondantes.
+
+### Deux parcours navigateur de développement
+
+Le serveur utilisateur démarre sans installation npm. Pour développer et rejouer le smoke uniquement, installez la dépendance de développement **Playwright 1.62.1**, puis son navigateur :
+
+```sh
+npm install --include=dev
+npx playwright install chromium
+npm run test:browser
+```
+
+La commande appelle `node scripts/browser-smoke.mjs`. Elle utilise deux parcours, chacun à 320 et 1280 px : file de messages, navigation, brouillon séparé et effacement entre deux onglets ; badge d’accord, carte de script, déduplication des annonces et refus. Elle intercepte tous les accès avec une API synthétique et charge les fichiers de l’interface, sans démarrer Bionic ni un modèle. Elle contrôle les actions observables, erreurs JavaScript et débordements ; il ne s’agit pas d’une couverture de toute l’interface.
+
+Une installation de développement existante peut être réutilisée avec `PLAYWRIGHT_MODULE_PATH` pointant vers le dossier du paquet Playwright et `BIONIC_BROWSER_CHANNEL=chrome` pour un Chrome installé. Aucun chemin propre au poste n’est requis dans le code. `BIONIC_SMOKE_SCREENSHOTS` permet de choisir un dossier local pour les captures synthétiques ; ces sorties restent hors manifeste. `BIONIC_SMOKE_BREAK_SEND=1` neutralise volontairement l’envoi dans la fixture pour vérifier que le parcours détecte cette régression, puis doit être retiré.
+
+Le smoke n’est **pas activé automatiquement en CI**. Playwright n’est pas une dépendance d’exécution et aucun navigateur n’est nécessaire au lancement du serveur. Un viewport de 320 px n’est pas un téléphone physique, un clavier natif, un lecteur d’écran ni un test Wi-Fi.
+
+### Mesurer les parcours des chats
+
+```sh
+npm run benchmark:chats
+```
+
+`scripts/benchmark-chats.mjs` fabrique 10, 100 puis 1 000 chats temporaires et mesure froid/chaud : durée, parcours de répertoire, lectures JSON, désérialisations et mémoire du processus. Il compare un contrôle parcourant les chats pour chacun de deux projets au partage du même cycle, avec le **même lecteur actuel**. Ce contrôle reproduit le motif de parcours de `5e92da3`, pas toute l’ancienne application. L’API interne `withScanCycle` de la fabrique sert à cette mesure.
+
+Les observations locales passent de deux parcours à un pour ce cycle et ne relisent pas les JSON du cache chaud. Une seule mesure par taille, sans isolation mémoire ni GC forcé, ne démontre aucun gain de latence utilisateur ou de mémoire. L’application conserve son cache existant ; aucun index persistant, cache LRU, pagination ou migration de stockage n’est ajouté. L’activité partage également un seul parcours pendant sa requête.
+
+### Diagnostic et révocation locale
+
+`node scripts/diagnostic.mjs` écrit `diagnostic-bionic.json` avec les seuls champs autorisés et sans lancer de modèle. `node scripts/revoke-sessions.mjs` invalide les sessions de l’instance locale reconnue sans afficher son secret ; le code existant permet toujours une reconnexion. Les lanceurs Windows `Diagnostic.cmd` / `.ps1` et `Deconnecter-appareils.cmd` / `.ps1` appellent ces commandes. Voir [Dépannage](depannage.md) et [Sauvegarde](sauvegarde-mise-a-jour.md) pour leurs limites.
 
 `check:export` vérifie la préparation de la distribution. `npm run release` construit une archive dans `dist/` à partir de la liste fermée de `release-manifest.json`, puis les contrôles d’export doivent être pris en compte avant toute publication. Ne remplacez pas ce parcours par une copie complète d’un dossier actif. Le champ `private: true` de `package.json` évite une publication npm accidentelle ; il n’empêche pas un dépôt GitHub public.
 

@@ -112,6 +112,7 @@ function createWorkspace({ api, node, icon, toast, getState, openTarget }) {
       if (mode === 'activity') {
         const result = await api('/api/activity'); if (sequence !== data.sequence || epoch !== data.epoch) return;
         data.events = result.events || []; updateBadge(); renderActivity();
+        if(result.partial)fail((result.warnings||[]).map(x=>x.message).join(' ')||'Activité partielle.');
         $('workspace-status').textContent = result.truncated ? 'Les 100 événements les plus récents sont affichés. Ouvrir cet espace ne marque aucune réponse comme consultée.' : 'Ouvrir cet espace ne marque aucune réponse comme consultée.';
       } else {
         if (!projectId) { $('workspace-list').append(empty('Aucun projet disponible.', 'Crée un projet dans Bionic puis actualise les projets.')); $('workspace-status').textContent = ''; return; }
@@ -228,6 +229,7 @@ function createWorkspace({ api, node, icon, toast, getState, openTarget }) {
       if (read.truncated) entry.append(node('p', '', 'Lecture partielle. Le modèle n’a pas reçu tout le fichier lors de cet appel.'));
       if (read.hash) entry.append(node('p', 'context-hash', 'Empreinte du fichier au moment de la lecture : ' + read.hash)); details.append(entry);
     }
+    if(receipt.permissions){const permissions=receipt.permissions;const profile=permissions.fileProfile|| (permissions.fileAccess?'write':'none');details.append(node('h3','','Droits figés de cette demande'),node('p','', 'Outils fichiers : '+({none:'aucun',read:'lecture seule',write:'modification'}[profile]||'inconnu')+' · Web : '+(permissions.webAccess?(permissions.webApproval?'validation de chaque envoi':'mode rapide'):'désactivé')+' · Scripts : '+(permissions.scriptAccess?'code exact avec validation, droits du compte PC':'désactivés')+'. Les réglages du brouillon actuel ne modifient pas ces droits.'));}
     if(receipt.external?.length){details.append(node('h3','','Web et sorties de scripts'));for(const output of receipt.external){const entry=node('details','context-file');entry.dataset.disclosureKey='external:'+output.actionId;entry.append(node('summary','',(output.kind==='search'?'Recherche web':output.kind==='web'?'Page web':'Sortie de script')+' · '+(output.transmitted?'résultat transmis':'transmission non confirmée')),node('p','',output.url||output.query||output.title||''),node('pre','',output.text||''));if(output.truncated)entry.append(node('p','','L’aperçu du reçu est borné ; le résultat transmis peut être plus long.'));details.append(entry);}}
     details.querySelectorAll('button,.context-file>summary').forEach((el, index) => el.dataset.workspaceFocus = 'context:' + (message.id || message.localRequestId) + ':' + index);
     return details;
@@ -236,7 +238,7 @@ function createWorkspace({ api, node, icon, toast, getState, openTarget }) {
   async function refreshActivity() {
     if (!data.active || data.polling || Date.now() - (data.lastPoll || 0) < 4000) return;
     data.polling = true; data.lastPoll = Date.now(); const epoch = data.epoch;
-    try { const result = await api('/api/activity'); if (epoch !== data.epoch || !data.active) return; const before = JSON.stringify(data.events); data.events = result.events || []; updateBadge(); if (visible() && data.mode === 'activity' && before !== JSON.stringify(data.events)) renderActivity(); }
+    try { const result = await api('/api/activity'); if (epoch !== data.epoch || !data.active) return; const before = JSON.stringify(data.events);if(visible()&&data.mode==='activity')fail(result.partial?(result.warnings||[]).map(x=>x.message).join(' ')||'Activité partielle.':''); data.events = result.events || []; updateBadge(); if (visible() && data.mode === 'activity' && before !== JSON.stringify(data.events)) renderActivity(); }
     catch {} finally { data.polling = false; }
   }
   async function activate() {

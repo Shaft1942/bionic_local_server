@@ -8,6 +8,7 @@ import { EventEmitter } from 'node:events';
 import { Readable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { createCompanion } from '../server.mjs';
 
 const sourceRoot = fileURLToPath(new URL('../', import.meta.url));
 const workspace = os.tmpdir();
@@ -38,7 +39,7 @@ async function until(read, message) {
 
 test('script approval routes integrate with persisted conversation jobs without opening an HTTP port', async t => {
   await fs.mkdir(workspace, { recursive: true });
-  const root = await fs.mkdtemp(path.join(workspace, 'script-integration-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(workspace, 'script-integration-')));
   const project = path.join(root, 'project'), secondProject = path.join(root, 'other-project');
   const trackedEnv = ['TEMP', 'TMP', 'BIONIC_MOBILE_PROJECT_REGISTRY', 'BIONIC_MOBILE_EXTRA_ROOTS', 'BIONIC_MOBILE_PORT', 'BIONIC_API_URL'];
   const previousEnv = Object.fromEntries(trackedEnv.map(key => [key, process.env[key]]));
@@ -52,12 +53,7 @@ test('script approval routes integrate with persisted conversation jobs without 
     process.env.TEMP = root; process.env.TMP = root;
     process.env.BIONIC_MOBILE_PROJECT_REGISTRY = path.join(root, 'registry.json');
     process.env.BIONIC_MOBILE_EXTRA_ROOTS = '[]'; process.env.BIONIC_MOBILE_PORT = '8769'; process.env.BIONIC_API_URL = 'http://127.0.0.1:1235';
-    await fs.cp(path.join(sourceRoot, 'lib'), path.join(root, 'lib'), { recursive: true });
-    await fs.writeFile(path.join(root, 'fixture-store.mjs'), `export function createBionicStore(){return {listProjects:async()=>[{id:'p1',name:'Synthetic project',sessionsCount:0},{id:'p2',name:'Other synthetic project',sessionsCount:0}],listSessions:async()=>[],getConversation:async()=>{throw Object.assign(new Error('Missing synthetic conversation'),{status:404})}}}`);
-    const source = (await fs.readFile(path.join(sourceRoot, 'server.mjs'), 'utf8')).replace("from './lib/bionic-store.mjs'", "from './fixture-store.mjs'");
-    const marker = source.indexOf("server.listen(PORT, '0.0.0.0'");
-    assert(marker > 0, 'The copied server fixture must suppress its actual listener.');
-    await fs.writeFile(path.join(root, 'server.mjs'), source.slice(0, marker) + '\nexport {handle,server,active,chatStates};\n');
+    const nativeStore = { listProjects: async () => [{ id: 'p1', name: 'Synthetic project', sessionsCount: 0 }, { id: 'p2', name: 'Other synthetic project', sessionsCount: 0 }], listSessions: async () => [], getConversation: async () => { throw Object.assign(new Error('Missing synthetic conversation'), { status: 404 }); } };
 
     globalThis.fetch = async (url, options = {}) => {
       if (String(url).endsWith('/api/v1/models')) return { ok: true, status: 200, json: async () => ({ models: [{ type: 'llm', key: 'synthetic', loaded_instances: [{ id: 'loaded-synthetic', config: { context_length: 16384 } }], capabilities: { trained_for_tool_use: true } }] }) };
@@ -71,8 +67,8 @@ test('script approval routes integrate with persisted conversation jobs without 
       return { ok: true, status: 200, body: new ReadableStream({ start(controller) { controller.enqueue(Buffer.from('data: ' + JSON.stringify(event) + '\n\ndata: [DONE]\n\n')); controller.close(); } }) };
     };
 
-    const load = async suffix => {
-      const module = await import(pathToFileURL(path.join(root, 'server.mjs')).href + '?' + suffix);
+    const load = async () => {
+      const module = await createCompanion({ root, nativeStore, fetchImpl: globalThis.fetch });
       modules.push(module); assert.equal(module.server.listening, false); return module;
     };
     const first = await load('first');
@@ -233,9 +229,8 @@ test('script approval routes integrate with persisted conversation jobs without 
       await assert.rejects(fs.stat(path.join(project, 'restart.txt')), { code: 'ENOENT' });
     });
   } finally {
-    for (const module of modules) for (const item of module.active.values()) item.controller.abort();
+    for (const module of modules) await module.close();
     await Promise.allSettled([...jobs]);
-    for (const module of modules) { await Promise.allSettled([...module.chatStates.values()].map(state => state.writes)); module.server.close(); }
     globalThis.fetch = previousFetch;
     for (const [key, value] of Object.entries(previousEnv)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
     const resolved = await fs.realpath(root);

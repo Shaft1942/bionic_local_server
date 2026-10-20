@@ -6,13 +6,26 @@ Ce guide concerne la **copie de distribution propre** du programme. Il ne faut p
 
 Le dépôt prévu est [Shaft1942/bionic_local_server](https://github.com/Shaft1942/bionic_local_server). La licence du compagnon est [MIT](../LICENSE). Elle n’inclut pas Bionic, les modèles ou les documents des utilisateurs.
 
+## Statut de distribution vérifié
+
+Vérification GitHub au début du travail du **21 octobre 2026** :
+
+| Source | État observé |
+| --- | --- |
+| Dernière Release publiée | [v1.5.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.5.0) |
+| `main` examiné | [`5e92da3`](https://github.com/Shaft1942/bionic_local_server/commit/5e92da3fae6dccdb36738eb42ab4a0b1b2b00bf1), paquet 1.8.0 |
+| Lot `feat/choix-audit-bionic` | Modifications locales, numéro 1.8.0 conservé, non publiées |
+| Dernière CI publique examinée | [Run 39498935835](https://github.com/Shaft1942/bionic_local_server/actions/runs/39498935835) sur la référence auditée, en échec |
+
+Ces observations sont datées. Aucun push, tag, merge, publication ni CI distante sur le nouveau diff n’est compris dans ce lot. Une archive construite localement est un artefact de vérification, pas une Release. Les critères A05 de CI Windows/Ubuntu sur le futur commit restent à satisfaire avant une promotion.
+
 ## Vérifier la copie avant l’envoi
 
 Les sources, les tests fictifs, les lanceurs, la configuration d’exemple et la documentation peuvent être distribués. La copie ne doit contenir ni historique personnel, ni trace d’exécution réelle.
 
 À contrôler avant tout commit et dans l’archive finale :
 
-- Absence de `data/`, `runtime/`, `ACCES-PRIVE.txt`, `config.local.json`, fichiers `.env`, journaux et sauvegardes.
+- Absence de `data/`, `runtime/`, `node_modules/`, `ACCES-PRIVE.txt`, `config.local.json`, `diagnostic-bionic.json`, fichiers `.env`, journaux, captures privées et sauvegardes. `dist/` n’entre pas dans sa propre archive.
 - Absence de bases ou registres personnels Bionic, projets réels, imports du téléphone et captures montrant des conversations réelles.
 - Absence de jetons, codes, noms de compte Windows, chemins privés et adresses propres à la machine d’origine dans les sources ou l’historique.
 - Configuration d’exemple neutre : aucun dossier supplémentaire ouvert par défaut, aucun chemin vers un runtime privé, aucun code prérempli.
@@ -58,7 +71,7 @@ Le projet fournit une construction depuis une **liste fermée de fichiers autori
 npm run release
 ```
 
-L’archive est écrite dans `dist/`. Vérifiez le résultat des contrôles et son contenu avant tout envoi. N’archivez pas à la place un dossier lancé puis rempli de données privées. Si vous ajoutez un fichier nécessaire au lancement ou à la documentation, vérifiez qu’il est inclus dans la liste de distribution.
+L’archive est écrite dans `dist/`. Vérifiez le résultat des contrôles et son contenu avant tout envoi. N’archivez pas à la place un dossier lancé puis rempli de données privées. Si vous ajoutez un fichier nécessaire au lancement ou à la documentation, vérifiez qu’il est inclus dans la liste de distribution. Les outils de développement, y compris le smoke navigateur, peuvent être distribués comme sources ; leurs dépendances et résultats locaux ne le sont pas.
 
 Extrayez l’archive obtenue dans un dossier vierge et vérifiez au minimum :
 
@@ -67,11 +80,13 @@ Extrayez l’archive obtenue dans un dossier vierge et vérifiez au minimum :
 3. Le démarrage crée une authentification propre à cette extraction, et non un code livré dans l’archive.
 4. L’utilisateur peut configurer son propre port Bionic et ses chemins sans modifier le code.
 
+Comparez aussi l’inventaire exact du ZIP au manifeste, les octets aux sources, son CRC et son SHA-256. Pour un essai de mise à jour, fabriquez une ancienne installation synthétique avec authentification, chats, classement, livrables et sauvegardes ; copiez uniquement ses données dans l’extraction neuve et comparez leurs empreintes avant le lancement. Vérifiez ensuite l’accès et les données préservées. Un résultat sur fixtures ne vaut pas migration d’une installation personnelle.
+
 Les fichiers générés pendant cette validation restent dans le dossier de test ; ne les réintégrez pas dans la release.
 
 ## Publier une version
 
-Après validation du commit et de l’archive, créez une version GitHub avec un tag correspondant à `package.json`, par exemple **`v1.5.0`**, une note de version et l’archive propre en pièce jointe. Ajoutez une empreinte SHA-256 de l’archive si elle est produite par votre procédure de distribution.
+Une publication future nécessite une instruction distincte, un numéro de version décidé, une CI verte sur le commit exact et une archive contrôlée. Créez alors un tag correspondant à `package.json`, une note de version et l’archive propre en pièce jointe, avec son empreinte SHA-256. Ne réutilisez pas un ancien tag pour distribuer un nouveau diff.
 
 La note doit dire ce qui est nouveau, comment installer et mettre à jour, ce qui a été testé et les limitations connues. Les versions de Bionic et les systèmes non vérifiés ne doivent pas être présentés comme compatibles par défaut.
 

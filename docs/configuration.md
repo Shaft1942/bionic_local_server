@@ -14,7 +14,9 @@ Le fichier `data/config.json` est différent : il est généré pour l’authent
   "apiUrl": "http://127.0.0.1:1235",
   "bionicRoot": "",
   "python": "",
-  "extraRoots": []
+  "extraRoots": [],
+  "maxConcurrentInferences": 0,
+  "requestTimeoutMs": 180000
 }
 ```
 
@@ -25,6 +27,8 @@ Le fichier `data/config.json` est différent : il est généré pour l’authent
 | `bionicRoot` | Dossier de données Bionic. Vide : détection dans `.lmstudio/apps/bionic` du compte utilisateur. Ce n’est pas le dossier de `Bionic.exe`. |
 | `python` | Exécutable Python destiné à l’extraction de documents et aux scripts Python validés. Vide : `python` sous Windows, `python3` ailleurs. Sans Python, ces deux usages sont indisponibles ; les autres fonctions restent disponibles. |
 | `extraRoots` | Dossiers supplémentaires visibles manuellement dans l’explorateur de fichiers. Tableau vide par défaut. |
+| `maxConcurrentInferences` | Plafond des appels modèle simultanés du compagnon, entier de `0` à `32`. `0` par défaut : régulation désactivée. Un plafond positif admet les appels en FIFO et libère le créneau pendant un accord humain ; il ne pilote ni le GPU ni les autres clients Bionic. |
+| `requestTimeoutMs` | Durée maximale de réception d’un corps HTTP, de `30000` à `1800000` ms ; défaut `180000` ms. Elle borne notamment connexion, messages et imports, sans couper une génération déjà acceptée. Aucun essai Wi-Fi physique n’est déduit de cette valeur. |
 
 N’utilisez pas l’adresse IP du téléphone ni une IP publique pour `apiUrl`. Le téléphone appelle le compagnon ; seul le compagnon contacte l’API Bionic locale. CORS n’est pas nécessaire pour ce trajet.
 
@@ -63,10 +67,14 @@ Les variables prennent le pas sur le fichier local. Elles sont utiles pour un la
 | `BIONIC_MOBILE_EXTRA_ROOTS` | Tableau JSON de dossiers supplémentaires |
 | `BIONIC_MOBILE_PYTHON` | Exécutable Python pour l’extraction et les scripts validés ; utilisez un chemin absolu pour imposer un interpréteur précis |
 | `BIONIC_MOBILE_NODE` | Exécutable Node.js utilisé par les lanceurs Windows |
+| `BIONIC_MOBILE_MAX_INFERENCES` | Prioritaire sur `maxConcurrentInferences`, mêmes valeurs de `0` à `32` |
+| `BIONIC_MOBILE_REQUEST_TIMEOUT_MS` | Prioritaire sur `requestTimeoutMs`, mêmes bornes en millisecondes |
 | `BIONIC_SEARCH_URL` | Endpoint HTTP(S) complet de recherche SearXNG, par exemple `http://127.0.0.1:8080/search`, sans identifiant, paramètres ni fragment |
 | `BIONIC_BRAVE_SEARCH_KEY` | Clé privée facultative pour Brave Search, utilisée seulement si aucun endpoint SearXNG n’est configuré |
 
 Le registre de projets interne est normalement `.internal/projects-registry.json` sous le dossier Bionic. Il est préférable de laisser sa détection automatique ; un registre de fichiers différent ne transforme pas une collection quelconque en projets natifs Bionic.
+
+Le plafond d’inférences compte chaque appel à l’API du modèle, y compris les appels suivants après un outil. La rédaction, la navigation et les messages acceptés restent disponibles. Le délai global d’un tour reste de **trente minutes, attente d’admission et accord humain compris** : libérer un créneau pendant l’accord ne suspend pas ce délai. Remettez le plafond à `0` et redémarrez votre copie pour retrouver l’admission sans plafond. La capacité réelle de Bionic et du modèle doit être vérifiée séparément.
 
 Exemple PowerShell pour tester un port différent pendant la session :
 

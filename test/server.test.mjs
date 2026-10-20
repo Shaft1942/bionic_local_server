@@ -8,17 +8,14 @@ import { EventEmitter } from 'node:events';
 import { Readable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
-const root=await fs.mkdtemp(path.join(os.tmpdir(),'bionic-mobile-server-test-'));
+import { createCompanion } from '../server.mjs';
+const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'bionic-mobile-server-test-')));
 const sourceRoot=fileURLToPath(new URL('../',import.meta.url));
 const fileRoot=path.join(root,'project-files');await fs.mkdir(fileRoot,{recursive:true});await fs.writeFile(path.join(fileRoot,'notes.md'),'Synthetic project file.');
 const otherFileRoot=path.join(root,'other-project-files');await fs.mkdir(otherFileRoot);
 await fs.writeFile(path.join(root,'files-registry.json'),JSON.stringify({projects:[['p1',{projectWorkingDirectoryPath:fileRoot}],['p2',{projectWorkingDirectoryPath:otherFileRoot}]]}));
 process.env.BIONIC_MOBILE_PROJECT_REGISTRY=path.join(root,'files-registry.json');process.env.BIONIC_MOBILE_EXTRA_ROOTS='[]';
-await fs.cp(path.join(sourceRoot,'lib'),path.join(root,'lib'),{recursive:true});
 await fs.writeFile(path.join(root,'fixture-store.mjs'),`export function createBionicStore(){return {listProjects:async()=>[{id:'p1',name:'Synthetic',sessionsCount:1},{id:'p2',name:'Other synthetic',sessionsCount:0}],listSessions:async id=>{if(id==='p2')return [];if(id!=='p1')throw Object.assign(new Error('Invalid'),{status:400});return [{id:'native-1',projectId:'p1',name:'Synthetic native',updatedAt:1}]},getConversation:async(projectId,id)=>{if(projectId!=='p1'||id!=='native-1')throw Object.assign(new Error('Missing'),{status:404});return {id,projectId,name:'Synthetic native',source:'bionic',messages:[{id:'m0',role:'user',text:'Synthetic historical text'}]}}}};`);
-const source=(await fs.readFile(path.join(sourceRoot,'server.mjs'),'utf8')).replace("from './lib/bionic-store.mjs'","from './fixture-store.mjs'");
-const marker=source.indexOf("server.listen(PORT, '0.0.0.0'");if(marker<0)throw new Error('Source shape changed');
-await fs.writeFile(path.join(root,'server.mjs'),source.slice(0,marker)+'\nexport {handle,server};\n');
 const upstream=[], upstreamBodies=[];let upstreamCount=0;let preStarted=false,preAborted=false,releasePre,releaseAgent;let fixtureLoaded=true,unloadCount=0,lastUpstreamBody;
 globalThis.fetch=async(url,opt={})=>{
  if(String(url).endsWith('/api/v1/models'))return {ok:true,json:async()=>({models:[{type:'llm',key:'synthetic',loaded_instances:fixtureLoaded?[{id:'loaded-synthetic',config:{context_length:4096}}]:[],capabilities:{vision:true,reasoning:{allowed_options:['off','on'],default:'on'}}}]})};
@@ -49,7 +46,9 @@ globalThis.fetch=async(url,opt={})=>{
  const body=new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{delta:{content:'Synthetic reply'}}]})+'\n\n'));if(text.startsWith('HOLD')){upstream.push(c);opt.signal.addEventListener('abort',()=>{try{c.error(Object.assign(new Error('Abort'),{name:'AbortError'}))}catch{}},{once:true});}else{if(text.startsWith('NORMAL')||text==='PREHEADER'){c.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{finish_reason:'stop'}]})+'\n\n'));c.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[],usage:{prompt_tokens:123,completion_tokens:45}})+'\n\ndata: [DONE]\n\n'));}c.close();}}});
  return {ok:true,status:200,body};
 };
-const {handle,server}=await import(pathToFileURL(path.join(root,'server.mjs')));
+const {createBionicStore:createFixtureStore}=await import(pathToFileURL(path.join(root,'fixture-store.mjs')));
+const app=await createCompanion({root,nativeStore:createFixtureStore(),fetchImpl:globalThis.fetch});
+const {handle,server}=app;
 class Res extends EventEmitter {constructor(){super();this.headers={};this.parts=[];this.destroyed=false;this.writableEnded=false;this.headersSent=false;this.statusCode=200}setHeader(k,v){this.headers[k.toLowerCase()]=v}writeHead(s,h={}){this.statusCode=s;this.headersSent=true;for(const[k,v]of Object.entries(h))this.setHeader(k,v)}write(s){this.parts.push(String(s));return true}end(s){if(s)this.parts.push(String(s));this.writableEnded=true;this.emit('finish')}text(){return this.parts.join('')}records(){return this.text().trim().split('\n').filter(Boolean).map(JSON.parse)}}
 let cookie;function req(route,{method='GET',body,raw,headers={}}={}){const r=Readable.from(raw?[raw]:body?[Buffer.from(JSON.stringify(body))]:[]);r.method=method;r.url=route;r.headers={host:'127.0.0.1:8769',...headers};r.socket={remoteAddress:'127.0.0.1'};return r}
 async function request(route,opt){const res=new Res();await handle(req(route,opt),res);return res}
@@ -143,7 +142,7 @@ try {
  r=await request('/api/cancel',{method:'POST',headers:{cookie},body:{requestId:backgroundRequestId}});await backgroundJob;
  r=await request('/api/conversation?projectId=p1&id='+backgroundId,{headers:{cookie}});const stopped=JSON.parse(r.text());
  findings.push({test:'explicit Stop still cancels a detached job and preserves partial text',pass:stopped.generation.status==='stopped'&&stopped.messages.at(-1).interrupted&&stopped.messages.at(-1).text==='Synthetic reply'});upstream.splice(0);
- const orphanId='web-11111111-1111-4111-8111-111111111111';await fs.writeFile(path.join(root,'data/chats',orphanId+'.json'),JSON.stringify({id:orphanId,projectId:'p1',generation:{status:'running',requestId:runId+'-orphan-active'},queue:[{requestId:runId+'-orphan-queued',text:'Never auto replay',status:'queued'}],messages:[{role:'user',text:'Previous request',requestId:runId+'-orphan-active',requestStatus:'running'},{role:'assistant',text:'saved fragment'}]}));r=await request('/api/conversation?projectId=p1&id='+orphanId,{headers:{cookie}});
+ const orphanId='web-11111111-1111-4111-8111-111111111111';await fs.writeFile(path.join(root,'data/chats',orphanId+'.json'),JSON.stringify({id:orphanId,projectId:'p1',name:'Interrupted synthetic chat',generation:{status:'running',requestId:runId+'-orphan-active'},queue:[{requestId:runId+'-orphan-queued',text:'Never auto replay',status:'queued'}],messages:[{role:'user',text:'Previous request',requestId:runId+'-orphan-active',requestStatus:'running'},{role:'assistant',text:'saved fragment'}]}));r=await request('/api/conversation?projectId=p1&id='+orphanId,{headers:{cookie}});
  findings.push({test:'server restart does not leave an orphaned job presented as running forever',pass:JSON.parse(r.text()).generation.status==='interrupted'&&JSON.parse(r.text()).messages.at(-1).interrupted&&JSON.parse(r.text()).queue[0].status==='interrupted'});
  r=await request('/api/chat-request?projectId=p1&requestId='+runId+'-orphan-queued',{headers:{cookie}});
  findings.push({test:'a queued request recovered after server restart remains interrupted and is never replayed',pass:JSON.parse(r.text()).status==='interrupted'&&!upstreamBodies.some(body=>body.messages.at(-1).content==='Never auto replay')});
@@ -371,4 +370,4 @@ try {
  r=await request('/api/file/restore-trash',{method:'POST',headers:{cookie},body:{projectId:'p1',chatId:trashChatId,actionId:trashAction.id}});findings.push({test:'an old trash restore request cannot recreate a deleted conversation',pass:r.statusCode===404});
  for(const finding of findings)test(finding.test,()=>assert.equal(finding.pass,true,JSON.stringify(finding)));
  if(findings.some(f=>!f.pass))throw new Error('Server regression detected');
-}finally{for(const c of upstream)try{c.close()}catch{}server.close();const resolved=path.resolve(root);assert(resolved.startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(resolved).startsWith('bionic-mobile-server-test-'));await fs.rm(resolved,{recursive:true,force:true});}
+}finally{for(const c of upstream)try{c.close()}catch{}await app.close();const resolved=await fs.realpath(root);assert(path.dirname(resolved)===await fs.realpath(os.tmpdir())&&path.basename(resolved).startsWith('bionic-mobile-server-test-'));await fs.rm(resolved,{recursive:true,force:true});}

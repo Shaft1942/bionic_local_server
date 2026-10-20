@@ -15,10 +15,11 @@ Le dépôt GitHub et les archives publiques contiennent le programme. Vos conver
 | Dossiers de données Bionic | Projets et historiques natifs, gérés séparément par Bionic |
 | `runtime/` et journaux | Informations d’exécution et chemins locaux ; ce ne sont pas des archives publiques |
 | Environnement privé du serveur | Jeton Bionic, éventuelle clé Brave et endpoint SearXNG ; ces réglages ne sont pas automatiquement copiés avec `config.local.json` |
+| Stockage du navigateur | Textes de messages non envoyés si leur conservation durable a été choisie ; ils ne sont pas inclus dans la sauvegarde du serveur |
 
 Une sauvegarde du seul dossier du compagnon ne protège pas les fichiers des projets situés ailleurs. Les copies de `data/file-backups/` aident à annuler des remplacements ; elles ne remplacent pas une sauvegarde indépendante de vos projets.
 
-La corbeille conserve les octets des fichiers retirés par l’outil dédié, dans `data/file-backups/`. Gardez aussi les chats qui contiennent leurs actions d’origine pour retrouver les boutons de restauration. Une branche copie le journal sous forme historique et ne transfère pas ces droits. La restauration refuse d’écraser un fichier qui occupe déjà le chemin d’origine.
+La corbeille conserve les octets des fichiers retirés par l’outil dédié, dans `data/file-backups/`. **Fichiers du projet → Corbeille du projet** permet de les retrouver même après suppression du chat source ; les boutons des actions historiques restent aussi disponibles. L’inventaire est limité au projet et signale les copies endommagées. Une branche copie le journal sous forme historique et ne transfère pas ses droits. La restauration refuse d’écraser un fichier qui occupe déjà le chemin d’origine ; aucune purge automatique n’est ajoutée.
 
 Les scripts approuvés peuvent modifier des fichiers en dehors du projet et ne produisent pas automatiquement de sauvegarde pour chaque changement. Leur code et leurs sorties peuvent contenir des informations privées ; ils sont conservés dans les conversations. `data/tool-runs/` sert aux fichiers temporaires d’exécution, normalement nettoyés après la fin : ce dossier n’est pas une bibliothèque de scripts à restaurer ou à publier.
 
@@ -39,7 +40,11 @@ La suppression d’une conversation web n’a pas de fonction d’annulation dan
 
 Une approbation en attente n’est pas un travail à relancer après restauration : au redémarrage du serveur elle expire, un script précédemment en cours est marqué interrompu et les messages en attente ne sont pas rejoués. Vérifiez les fichiers avant de proposer une nouvelle exécution ; une interruption du processus ne prouve pas qu’il n’a rien modifié.
 
+Une intention de mutation directe restée sans reçu est marquée **Opération à vérifier** après redémarrage. Les copies proposées sont des pistes à examiner, pas la preuve d’un succès ni une transaction à reprendre. Leur téléchargement préserve la version disponible ; vérifiez aussi le fichier actuel avant toute restauration manuelle.
+
 ## Installer une nouvelle version
+
+Au contrôle GitHub du **21 octobre 2026**, la dernière Release reste **v1.5.0** ; `main` au commit `5e92da3` indique 1.8.0 et le lot local d’audit n’est pas publié. Choisissez l’archive et ses notes correspondantes. Le numéro 1.8.0 dans les sources ne transforme pas cette branche en Release. Voir [le statut de distribution](publication.md#statut-de-distribution-vérifié).
 
 1. Faites la sauvegarde précédente.
 2. Téléchargez la nouvelle archive depuis les [Releases](https://github.com/Shaft1942/bionic_local_server/releases) et extrayez-la dans un nouveau dossier.
@@ -53,6 +58,10 @@ Avant de déplacer l’installation, utilisez `Retirer-autorisation-reseau.cmd` 
 **Ne récupérez jamais de code d’accès ou de dossier `data/` depuis GitHub.** Une archive publique doit démarrer sans ces fichiers et générer un code propre à chaque installation.
 
 ## Renouveler un code perdu ou divulgué
+
+Pour simplement déconnecter les appareils, exécutez **Deconnecter-appareils.cmd** depuis le dossier du serveur actif, ou `node scripts/revoke-sessions.mjs` depuis ce dossier. Le lanceur `.ps1` correspondant est également fourni. L’utilitaire vérifie l’identité de l’instance sur la boucle locale, utilise son secret local sans l’afficher et invalide **toutes les sessions en mémoire**, sans interrompre générations, files ou accords. Un cookie partagé entre navigateurs ne représente pas une identité d’appareil. Il n’existe ni liste fiable ni révocation ciblée d’appareil dans ce lot.
+
+**Un appareil connaissant encore le code peut se reconnecter.** Cette révocation ne change pas le code. Pour un code divulgué, suivez la rotation ci-dessous. La déconnexion de l’interface efface les brouillons durables du navigateur concerné ; l’utilitaire local ne garantit pas l’effacement instantané du stockage des appareils distants.
 
 Cette procédure renouvelle aussi le secret d’administration local et déconnecte les sessions.
 

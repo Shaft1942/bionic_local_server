@@ -3,5 +3,7 @@
   "apiUrl": "http://127.0.0.1:1235",
   "bionicRoot": "",
   "python": "",
-  "extraRoots": []
+  "extraRoots": [],
+  "maxConcurrentInferences": 0,
+  "requestTimeoutMs": 180000
 }

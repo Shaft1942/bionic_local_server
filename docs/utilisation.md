@@ -6,6 +6,8 @@
 
 Choisissez un projet dans la liste. Les conversations natives de Bionic sont consultées en lecture seule. Le bouton d’actualisation permet de retrouver les changements faits dans Bionic.
 
+Les actualisations identiques ne reconstruisent plus les boutons de conversations ; lors d’un changement réel, le focus reste sur le même chat si possible, sinon sur une entrée voisine ou la recherche. Un chat web illisible est laissé intact et un avertissement **Inventaire partiel** accompagne les listes et l’activité accessibles. Une erreur globale du dossier reste une erreur explicite. Voir [la récupération manuelle](depannage.md#une-conversation-web-est-illisible).
+
 Si vous répondez à une conversation native, le compagnon crée une **suite web**. Cette suite est enregistrée sur le PC dans `data/chats/`, puis reste accessible depuis ce compagnon. Elle n’est pas réécrite dans l’historique natif Bionic. Les pièces jointes, raisonnements et actions internes d’une ancienne conversation ne sont pas reproduits intégralement : le compagnon importe une projection textuelle des messages visibles, soumise à des limites de taille.
 
 Vous pouvez aussi commencer un nouveau chat dans le projet sélectionné. Le modèle reçoit un historique limité pour respecter son contexte ; l’affichage du fil complet ne garantit pas que chaque ancien message soit transmis au modèle à chaque demande.
@@ -16,7 +18,7 @@ Choisissez **Créer une branche du chat** dans le menu **Outils**, ou **Créer u
 
 Les suites sont indépendantes : les nouveaux messages ne se synchronisent ni avec la source ni vers Bionic. Les journaux d’outils et les reçus éventuellement copiés sont des traces historiques passives : aucun script, fichier ou restauration n’est rejoué et aucune validation en attente n’est transférée. Le web et les scripts sont désactivés dans la branche ; vérifiez aussi le droit de fichiers avant votre prochain message.
 
-Vous pouvez créer une branche à partir d’un message précédent pendant qu’une réponse continue dans la source. Une réponse assistant en cours ne peut pas servir de point de départ : attendez sa fin ou choisissez un message antérieur. Une branche reste dans le même projet ; **elle partage donc les fichiers du PC**, même si son historique est séparé. Voir [les règles des branches](outils-agents.md#branches-de-conversations).
+Vous pouvez créer une branche à partir d’un message précédent pendant qu’une réponse continue dans la source. Une réponse assistant en cours ne peut pas servir de point de départ : attendez sa fin ou choisissez un message antérieur. Une branche reste dans le même projet ; **elle partage donc les fichiers du PC**, même si son historique est séparé. **Voir la conversation source** retrouve l’origine disponible sans créer de graphe ; une source indisponible est signalée sans perdre la branche. Voir [les règles des branches](outils-agents.md#branches-de-conversations).
 
 ## Déplacer une conversation
 
@@ -34,7 +36,7 @@ L’aide **Comment fonctionne ce compagnon ?** se ferme directement avec la croi
 
 Ouvrez **Options de la conversation** (les trois points), puis **Renommer**. Saisissez un nom de 1 à 120 caractères et enregistrez. Le nom est conservé sur le PC et apparaît après actualisation sur les autres appareils. Renommer conserve les messages, le brouillon et ses pièces jointes. Pour une conversation native, seul le nom affiché dans le compagnon change : son nom et son contenu restent intacts dans Bionic.
 
-Dans le même menu, **Supprimer** demande une confirmation. Une conversation web est supprimée du compagnon, avec ses messages et son brouillon sur l’appareil utilisé. Il n’y a pas de corbeille dans l’interface. Une conversation native est seulement masquée dans le compagnon ; elle reste disponible dans Bionic. Le masquage persiste après actualisation et redémarrage du serveur. Une suite web déjà créée reste une conversation distincte et n’est pas supprimée avec son fil natif.
+Dans le même menu, **Supprimer** demande une confirmation. Une conversation web est supprimée du compagnon, avec ses messages et son brouillon sur l’appareil utilisé. Il n’y a pas de corbeille de conversations dans l’interface. La corbeille des fichiers du projet reste indépendante. Une conversation native est seulement masquée dans le compagnon ; elle reste disponible dans Bionic. Le masquage persiste après actualisation et redémarrage du serveur. Une suite web déjà créée reste une conversation distincte et n’est pas supprimée avec son fil natif.
 
 La suppression ne touche ni les fichiers du projet, ni les imports, ni les copies de livrables déjà conservées. Ces copies restent téléchargeables, mais leur lien vers le message d’origine peut ne plus aboutir. Les brouillons encore présents dans un autre navigateur ne sont pas effacés à distance.
 
@@ -44,15 +46,19 @@ Le renommage et la suppression sont indisponibles pendant une réponse ou tant q
 
 Sur téléphone, le modèle et l’effort se choisissent côte à côte sous le texte. L’envoi se trouve à droite du message ; pendant une réponse, la flèche ajoute le message à la file et le bouton carré arrête la réponse de ce chat. L’aide détaillée de l’effort apparaît quand ce sélecteur est actif et reste associée au champ pour les lecteurs d’écran.
 
-Le menu **Outils**, juste au-dessus de la saisie, regroupe **Fichier du projet**, **Importer un fichier**, la création d’une branche et les permissions de fichiers, de web et de scripts. Son libellé indique les droits actifs même quand il est fermé. Le panneau s’ouvre au-dessus du bouton et se ferme avec un nouvel appui, un appui ailleurs ou la touche Échap. Les pièces jointes et le suivi d’import restent visibles hors du menu.
+Le menu **Outils**, juste au-dessus de la saisie, regroupe **Fichier du projet**, **Importer dans le projet**, **Importer puis joindre**, la création d’une branche et les permissions de fichiers, de web et de scripts. **Outils fichiers** propose Aucun, Lecture et Modification. L’accord de chaque recherche et URL est une option distincte. Le résumé et le pied de saisie décrivent les droits sélectionnés, y compris les scripts séparés. Le panneau s’ouvre au-dessus du bouton et se ferme avec un nouvel appui, un appui ailleurs ou la touche Échap. Les pièces jointes et le suivi d’import restent visibles hors du menu.
 
 La zone de saisie reste disponible pendant la génération. Vous pouvez préparer le message suivant sans interrompre le modèle. **Ajouter à la file** transmet ce message au serveur du PC : il attend la fin du tour précédent dans la même conversation. Un message en attente peut être retiré avant son démarrage. La file accepte au maximum dix messages en attente par conversation.
 
 Le modèle, l’effort, les permissions de fichiers, de web et de scripts et les pièces jointes sont ceux choisis au moment de l’envoi. Modifier un réglage ensuite ne change pas une demande déjà reçue. Les pièces jointes sont copiées à cet instant ; les modifier ensuite sur le PC ne change pas silencieusement la demande déjà acceptée. L’historique transmis au modèle est construit lorsque le tour commence, pour inclure la réponse précédente.
 
-**Nouveau chat web**, les projets et les conversations restent accessibles pendant les réponses. Chaque fil conserve son brouillon et ses pièces jointes en préparation. Les brouillons sont stockés dans la session de cet onglet du navigateur : ils survivent à un rechargement, mais leur conservation après fermeture de l’onglet dépend du navigateur. Ils ne sont pas synchronisés entre appareils et ne sont jamais envoyés automatiquement.
+**Nouveau chat web**, les projets et les conversations restent accessibles pendant les réponses. Chaque fil conserve son brouillon et ses pièces jointes en préparation dans la session de l’onglet. Dans les options du chat, **Brouillons sur cet appareil** propose volontairement **1 heure**, **24 heures** ou **7 jours** de conservation locale du seul texte non envoyé. Par défaut, **Cet onglet uniquement** conserve le comportement de session. La durée part de la dernière modification du texte ; les copies expirées sont retirées lors de leur lecture. Les pièces jointes, réglages et textes de l’éditeur de fichiers n’entrent pas dans la conservation durable.
+
+Les textes durables sont propres à cet appareil et à cette installation, sans synchronisation ni envoi automatique. **Effacer mes brouillons** et la déconnexion les retirent sur ce navigateur. **Télécharger ce brouillon** exporte le texte courant. Si le stockage local échoue, le texte visible reste disponible avec une alerte pour le télécharger ; cette conservation n’est pas une sauvegarde garantie.
 
 Les demandes reçues continuent sur le PC lorsque vous consultez un autre fil ou fermez le navigateur. Les conversations ont des historiques distincts, mais partagent la puissance de calcul et, selon le projet, les fichiers. Plusieurs chats peuvent soumettre des demandes ; le parallélisme réel dépend de Bionic et du modèle. Les protections contre les écritures concurrentes restent actives.
+
+Une conversation attendant un accord porte le badge **À valider**. Ouvrez-la pour rejoindre la carte concernée ; le titre de l’onglet indique aussi le nombre d’attentes du projet affiché. Les annonces de recherche, d’accord attendu et de fin de réponse évitent les répétitions identiques. Aucun centre supplémentaire ni notification système n’est ajouté ; aucun essai avec lecteur d’écran réel n’est déduit de ces attributs d’accessibilité.
 
 Si vous arrêtez la réponse ou si elle échoue, les messages suivants restent conservés mais sont interrompus : ils ne partent pas automatiquement après un tour incomplet. Les autres chats continuent.
 
@@ -95,6 +101,8 @@ Pour un message en attente, le reçu est construit lorsque son tour commence : i
 
 Le reçu ne révèle pas le raisonnement interne. Il décrit l’historique, les pièces jointes et les extraits ; les consignes du compagnon et les définitions des outils autorisés s’ajoutent à ces éléments. Les aperçus de pièces jointes sont courts ; leur message d’origine permet de retrouver la copie jointe. Aucun nombre exact de tokens n’est déduit du nombre de caractères. Une ancienne réponse sans reçu affiche **Relevé indisponible**.
 
+Les images anciennes sont résolues seulement après sélection de l’historique : une image écartée n’est pas ouverte. L’estimation en caractères et coût d’image reste approximative ; elle n’est pas un comptage exact des tokens du modèle.
+
 Les résultats web et les sorties de scripts apparaissent aussi dans le reçu. Un résultat peut avoir été reçu par le compagnon sans avoir encore été transmis au modèle ; le statut reste alors **Transmission non confirmée**. Leur aperçu partagé est limité à 12 000 caractères et peut être plus court que le résultat envoyé. Dans une branche, le reçu copié porte la mention historique et ne décrit pas une nouvelle exécution.
 
 ## Modèles, effort et vitesse
@@ -129,7 +137,7 @@ Les formats texte et de code reconnus sont éditables dans la limite de **1 Mo**
 
 ## Donner des fichiers au modèle
 
-**Fichier du projet** permet de joindre un fichier déjà présent. Pour un texte, vous pouvez sélectionner seulement le passage utile dans l’éditeur avant de le joindre. **Importer un fichier** ouvre le sélecteur de votre téléphone ou ordinateur.
+**Fichier du projet** permet de joindre un fichier déjà présent. Pour un texte, vous pouvez sélectionner seulement le passage utile dans l’éditeur avant de le joindre. **Importer dans le projet** ouvre le sélecteur de votre téléphone ou ordinateur et conserve les fichiers sur le PC sans les joindre. **Importer puis joindre** ajoute aussi les formats compatibles au prochain message, dans les places disponibles, sans envoyer ce message. Le suivi indique les imports et pièces jointes effectivement ajoutées.
 
 L’import copie les fichiers dans **`Imports telephone/`**, à l’intérieur du dossier de travail du projet sélectionné. Un nom déjà utilisé reçoit un suffixe : l’import n’écrase pas le fichier existant. Le fichier importé reste dans le projet même si vous retirez sa pièce jointe du message ou n’envoyez pas le message.
 
@@ -141,22 +149,24 @@ L’import copie les fichiers dans **`Imports telephone/`**, à l’intérieur d
 | Téléchargement d’un fichier du PC | 64 Mo maximum |
 | Modification d’un texte | 1 Mo maximum |
 
-Les formats exploitables sont joints automatiquement dans la limite disponible. Un format non pris en charge peut être importé et conservé sans devenir une pièce jointe utilisable par le modèle. Un texte joint peut être tronqué ou refusé s’il dépasse les budgets du message ou du modèle.
+Avec **Importer puis joindre**, les formats exploitables sont joints dans la limite disponible. Un format non pris en charge peut être importé et conservé sans devenir une pièce jointe utilisable par le modèle. Un texte joint peut être tronqué ou refusé s’il dépasse les budgets du message ou du modèle.
 
 Les images et les textes joints sont conservés avec la conversation pour que leur contenu ne change pas silencieusement si le fichier du projet évolue ensuite. Cela représente une copie supplémentaire de données privées dans `data/`.
 
 ## Gérer les fichiers avec le modèle
 
-L’option **« Gérer et modifier les fichiers du projet »** est cochée par défaut dans un nouveau chat ordinaire et mémorisée dans la conversation. Lorsqu’elle est cochée, le modèle peut :
+Le profil **Outils fichiers → Modification** est choisi par défaut dans un nouveau chat ordinaire et mémorisé dans la conversation. Avec ce profil, le modèle peut :
 
 - Lister un dossier et lire des extraits de textes pertinents.
 - Chercher des noms ou des passages, inspecter la version d’un fichier et créer un dossier.
 - Créer un fichier texte ou de code dans le dossier de travail du projet.
 - Remplacer un passage exact et unique déjà lu ou explicitement donné dans votre message.
 - Réécrire entièrement un fichier seulement après l’avoir lu en totalité dans la demande.
-- Copier, déplacer ou renommer un fichier inspecté, sans écraser de destination existante ; le retirer vers la corbeille privée, avec restauration depuis le chat.
+- Copier, déplacer ou renommer un fichier inspecté, sans écraser de destination existante ; le retirer vers la corbeille privée, avec restauration depuis le chat ou **Fichiers du projet → Corbeille du projet**.
 
 **L’enregistrement est immédiat : il n’y a pas de demande d’approbation pour chaque modification.** Les actions apparaissent sous la réponse avec leur résultat. Une modification réussie offre une restauration de la copie précédente lorsque la version du fichier le permet. Une création ne supprime pas automatiquement le nouveau fichier lors d’une restauration.
+
+**Comparer la modification** montre les versions texte disponibles jusqu’à 200 Ko par version, uniquement si le fichier actuel a encore l’empreinte de l’action. Une version ultérieure est annoncée sans être présentée comme le diff historique de cette action. L’aperçu est passif et ne fusionne ni n’enregistre rien. Une opération interrompue sans reçu reste **à vérifier** ; les éventuelles copies candidates ne prouvent pas un succès et aucune action n’est rejouée.
 
 Exemple de demande ciblée : « Dans `notes.md`, trouve le paragraphe sur les délais et remplace la date du 12 par le 15. Ne modifie rien d’autre. »
 
@@ -164,11 +174,13 @@ Ces outils de fichiers sont limités au **dossier de travail du projet**. Ils ne
 
 Le modèle ne reçoit pas d’emblée le contenu de tous les fichiers. La lecture directe est limitée à **3 000 caractères par extrait**, **6 fichiers distincts** et un budget total dépendant du contexte du modèle, plafonné à **12 000 caractères par demande**. La recherche de passages peut inspecter davantage de fichiers, mais seuls les extraits trouvés et bornés sont transmis dans ce même budget. Les extraits lus par outil ne sont pas automatiquement réinjectés au prochain tour. Les pièces jointes explicites ont leur propre budget de contexte.
 
-Si vous souhaitez seulement discuter, décochez l’option. Si le modèle ne sait pas utiliser les outils ou choisit de ne pas les appeler, aucune modification ne peut être déduite de sa seule réponse : vérifiez le journal des actions et le fichier.
+Pour une analyse avec ces outils sans mutation directe, choisissez **Lecture** ; pour discuter sans outils directs de fichiers, choisissez **Aucun**. Ces profils ne limitent pas les droits séparés d’un script que vous approuvez. Si le modèle ne sait pas utiliser les outils ou choisit de ne pas les appeler, aucune modification ne peut être déduite de sa seule réponse : vérifiez le journal des actions et le fichier.
 
 ## Rechercher et lire Internet
 
 Activez **Rechercher et lire Internet** dans **Outils**, puis envoyez une demande précise. Le modèle peut chercher des sources et lire des extraits de pages publiques. Il ne reçoit pas automatiquement vos fichiers pour les envoyer au moteur de recherche ; évitez néanmoins toute recherche contenant un secret ou du texte privé inutile.
+
+Vous pouvez aussi activer **Valider chaque recherche et URL avant envoi**. Chaque query ou URL exacte attend alors votre accord ; refus et expiration n’envoient rien par cet outil. Les redirections sont refusées dans ce mode et une autre requête attend son propre accord. Sans cette option volontaire, le mode rapide reste disponible. Cela ne contrôle pas les requêtes réseau d’un script approuvé.
 
 Les résultats affichent leurs URL. Une page ne donne aucune autorisation d’agir sur le PC : ses instructions restent des données externes non fiables. Le compagnon ne se connecte pas à vos comptes, n’exécute pas le JavaScript des sites et ne parcourt pas le réseau local par cet outil. Un moteur bloqué ou un CAPTCHA produit une erreur explicite. Une URL directe peut rester lisible si la recherche échoue. Voir [moteurs, limites et configuration](outils-agents.md#internet-public).
 

@@ -8,7 +8,7 @@ Le PC héberge Bionic, ses modèles et ce compagnon. Le téléphone n’installe
 
 1. Vérifiez qu’une conversation fonctionne directement dans Bionic.
 2. Installez [Node.js](https://nodejs.org/en/download), version **24 minimum**. Sous Windows, laissez l’installateur ajouter Node.js au `PATH`, puis rouvrez les fenêtres de terminal déjà ouvertes.
-3. Téléchargez l’archive du compagnon depuis les [Releases GitHub](https://github.com/Shaft1942/bionic_local_server/releases). Si aucune version n’est encore publiée, utilisez **Code → Download ZIP** sur [le dépôt](https://github.com/Shaft1942/bionic_local_server).
+3. Téléchargez l’archive du compagnon depuis les [Releases GitHub](https://github.com/Shaft1942/bionic_local_server/releases). Au contrôle du 21 octobre 2026, la dernière Release est v1.5.0 : les fonctions de `main` 1.8.0 et du lot d’audit local ne sont pas toutes publiées. **Code → Download ZIP** sur [le dépôt](https://github.com/Shaft1942/bionic_local_server) fournit la branche sélectionnée ; consultez [le statut de distribution daté](publication.md#statut-de-distribution-vérifié).
 4. Extrayez tous les fichiers dans un dossier utilisateur accessible en écriture. Ne lancez pas l’application depuis l’intérieur de l’archive ou depuis `Program Files`.
 5. Dans les paramètres de **Bionic → API des modèles locaux**, activez le serveur. Relevez l’URL affichée. Il n’est pas nécessaire d’activer CORS ni d’exposer cette API au réseau : le compagnon l’appelle depuis le PC.
 6. Copiez `config.example.json` en `config.local.json`. Si Bionic affiche par exemple `http://localhost:1234/v1`, utilisez `"apiUrl": "http://127.0.0.1:1234"`. Il faut l’adresse du serveur, **sans `/v1` final**. Le réglage doit correspondre à votre propre port Bionic.
@@ -20,6 +20,8 @@ Le dossier Bionic est détecté par défaut dans `.lmstudio/apps/bionic` de votr
 - **Demarrer.cmd** : démarrer le serveur en arrière-plan ou retrouver un serveur déjà actif.
 - **Relancer.cmd** : arrêter puis redémarrer, notamment après une modification de configuration ou une mise à jour.
 - **Arreter.cmd** : arrêter le serveur du compagnon.
+- **Deconnecter-appareils.cmd** : révoquer globalement les sessions du serveur actif sans arrêter ses travaux ; un appareil connaissant le code peut se reconnecter.
+- **Diagnostic.cmd** : produire les cinq contrôles bornés de compatibilité, sans message ni génération, dans `diagnostic-bionic.json`.
 
 Les lanceurs utilisent Node.js présent dans le `PATH`, ou le chemin explicitement indiqué par `BIONIC_MOBILE_NODE`. Ils ne requièrent pas Codex.
 

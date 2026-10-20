@@ -24,3 +24,6 @@ __pycache__/
 /store-verification.json
 /.DS_Store
 /Thumbs.db
+
+/diagnostic-bionic.json
+/browser-test-results/

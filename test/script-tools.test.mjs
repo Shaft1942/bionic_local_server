@@ -11,7 +11,9 @@ import { createToolApprovals } from '../lib/tool-approvals.mjs';
 
 const workspace = os.tmpdir();
 await fs.mkdir(workspace, { recursive: true });
-const base = await fs.mkdtemp(path.join(workspace, 'script-tools-test-'));
+// Windows runners can expose TEMP through an 8.3 alias. Production tools return
+// real paths, so construct fixture expectations from that same canonical root.
+const base = await fs.realpath(await fs.mkdtemp(path.join(workspace, 'script-tools-test-')));
 let sequence = 0;
 async function fixture(extra = {}) {
   const directory = path.join(base, String(++sequence)), project = path.join(directory, 'project'), privateDirectory = path.join(directory, 'private');
@@ -146,10 +148,21 @@ test('missing interpreter lookup or asynchronous spawn failure never claims exec
 });
 
 test('Python and PowerShell use separate arguments and never an interpolated command shell', async () => {
+  const runtimeDirectory = path.join(base, 'synthetic runtimes');
+  await fs.mkdir(runtimeDirectory);
+  const python = path.join(runtimeDirectory, process.platform === 'win32' ? 'python.exe' : 'python');
+  const priorPath = process.env.PATH;
+  if (process.platform !== 'win32') {
+    // Interpreter discovery is part of the contract; a harmless file suffices
+    // because spawnImpl below never starts this interpreter.
+    await fs.writeFile(path.join(runtimeDirectory, 'pwsh'), 'synthetic interpreter, never executed');
+    process.env.PATH = runtimeDirectory;
+  }
+  try {
   for (const runtime of ['python', 'powershell']) {
     let call, reviewedCode;
     const code = '# script synthétique : été';
-    const f = await fixture({ python: 'C:/synthetic folder/python.exe', onState: approval => { if (approval.executionStatus === 'running') reviewedCode = approval.code; }, spawnImpl: (command, args, options) => {
+    const f = await fixture({ python, onState: approval => { if (approval.executionStatus === 'running') reviewedCode = approval.code; }, spawnImpl: (command, args, options) => {
       call = { command, args, options };
       const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
       fs.readFile(args.at(-1)).then(bytes => { call.bytes = bytes; child.emit('close', 0); }, error => child.emit('error', error));
@@ -162,7 +175,7 @@ test('Python and PowerShell use separate arguments and never an interpolated com
     assert.equal(call.bytes.subarray(bom ? 3 : 0).toString('utf8'), code);
     assert.equal(result.exitCode, 0); assert.equal(call.options.shell, false); assert.equal(call.options.windowsHide, true);
     if (runtime === 'python') {
-      assert.equal(call.command, 'C:/synthetic folder/python.exe');
+      assert.equal(call.command, python);
       assert.equal(call.args[0], '-u'); assert(call.args[1].endsWith('script.py'));
     } else {
       assert(path.isAbsolute(call.command)); assert(call.command.endsWith(process.platform === 'win32' ? 'powershell.exe' : 'pwsh'));
@@ -170,6 +183,7 @@ test('Python and PowerShell use separate arguments and never an interpolated com
       assert(call.args[5].endsWith('script.ps1'));
     }
   }
+  } finally { if (priorPath === undefined) delete process.env.PATH; else process.env.PATH = priorPath; }
 });
 
 test('Python lookup uses an absolute PATH interpreter and excludes the project current directory', async () => {

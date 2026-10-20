@@ -48,6 +48,29 @@ Le compagnon utilise des données internes Bionic. Une mise à jour de Bionic pe
 
 Certaines conversations temporaires, archivées ou sous-conversations ne sont pas présentées. Les historiques affichés sont une projection textuelle : les anciennes pièces jointes et les outils natifs ne sont pas importés intégralement.
 
+## Une conversation web est illisible
+
+Un JSON tronqué ou une structure de chat web invalide est isolé : les autres chats restent accessibles et la liste ainsi que l’activité annoncent un **inventaire partiel**. L’ouverture directe du chat concerné rend une erreur claire. Le compagnon ne répare, déplace, exporte ou réécrit pas automatiquement ses octets. Une panne générale de droits d’accès ou du registre reste une erreur, sans être présentée comme une liste vide complète.
+
+Pour intervenir manuellement sur le PC :
+
+1. Arrêtez votre copie du serveur après la fin des travaux et sauvegardez privément tout `data/`.
+2. Conservez une copie exacte du fichier suspect dans `data/chats/` avant de l’ouvrir dans un éditeur. Les noms `web-….json` sont des identifiants, pas une preuve du contenu.
+3. Comparez avec une sauvegarde connue et restaurez seulement une copie dont vous avez vérifié l’origine. À défaut, gardez les octets pour une analyse locale ; ne devinez pas les messages manquants et ne publiez pas ce JSON.
+4. Redémarrez votre copie et vérifiez l’avertissement et les chats sains. Ne tentez aucune réparation de l’historique natif Bionic avec cette procédure.
+
+Ce traitement a été éprouvé sur des fixtures synthétiques ; il ne signifie pas qu’une conversation personnelle endommagée a été trouvée ou récupérée.
+
+## Faire un diagnostic borné
+
+Sous Windows, exécutez **Diagnostic.cmd** dans le dossier du compagnon ; ailleurs, utilisez `node scripts/diagnostic.mjs`. `Diagnostic.ps1` est aussi fourni. Le diagnostic vérifie à la demande Node, l’accès HTTP/authentification à l’API locale, la forme de sa réponse modèles, le schéma natif et Python facultatif. Il ne lit pas les messages et ne lance aucun modèle, prompt ou script de projet.
+
+Le fichier local `diagnostic-bionic.json` est construit par liste blanche : versions du compagnon et de Node, nom fixe, état et code du contrôle, durée et identifiant de corrélation. Il ne reprend ni erreur brute, ni chemin, nom de projet, modèle, jeton ou message, et n’est envoyé à aucun service distant. Relisez-le avant de le partager ; ne joignez pas à sa place vos journaux bruts. Un état inconnu signale un contrôle non conclusif, pas un succès.
+
+## Un import lent expire
+
+Le corps d’une requête dispose par défaut de **180 000 ms** pour arriver au serveur. L’expiration est explicite et ne doit pas être confondue avec un arrêt du calcul après acceptation. Les limites de taille restent appliquées. Le réglage `requestTimeoutMs` est décrit dans [Configuration](configuration.md) ; son choix n’a pas été validé sur un téléphone ou un Wi-Fi physique.
+
 ## Un document n’a pas d’aperçu ou ne se joint pas
 
 - DOCX/XLSX : vérifiez Python 3.10+ et le réglage `python`.
@@ -61,7 +84,7 @@ Pour une image, choisissez un modèle **Vision**, utilisez PNG/JPEG/WebP et resp
 
 ## Le modèle ne modifie pas un fichier
 
-Vérifiez que l’option d’accès aux textes est cochée et que le projet Bionic a un dossier de travail enregistré. Le modèle doit savoir appeler des outils ; sa réponse seule n’atteste pas un enregistrement. Le journal des actions montre le résultat réel.
+Vérifiez que **Outils fichiers → Modification** est sélectionné et que le projet Bionic a un dossier de travail enregistré. Le profil **Lecture** refuse volontairement les mutations directes, et **Aucun** désactive ces outils. Le modèle doit savoir appeler des outils ; sa réponse seule n’atteste pas un enregistrement. Le journal des actions montre le résultat réel.
 
 Les outils ne modifient que des textes compatibles dans le dossier de travail du projet. Ils n’exécutent pas de commandes et ne parcourent pas les liens de dossiers. Une lecture ciblée doit précéder un remplacement, sauf si vous donnez vous-même le passage exact. Un remplacement complet exige une lecture complète préalable. Les JSON proposés doivent être valides.
 

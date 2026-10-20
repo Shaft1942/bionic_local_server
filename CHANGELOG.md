@@ -1,5 +1,21 @@
 # Journal des versions
 
+## Lot d’audit — changements locaux non publiés, 21 octobre 2026
+
+La branche `feat/choix-audit-bionic` part du commit `5e92da3` de `main` et conserve `package.json` en **1.8.0**. La dernière Release GitHub vérifiée le 21 octobre reste **v1.5.0**. Ce lot n’ajoute ni tag ni publication ; les sections ci-dessous décrivent des étapes historiques de préparation.
+
+- Chats web JSON ou schéma illisibles isolés dans les listes et l’activité, avertissement d’inventaire partiel, source préservée et récupération manuelle.
+- Profils de fichiers Aucun/Lecture/Modification, compatibilité des anciens booléens et permissions figées par message. Accord volontaire pour chaque recherche et URL exacte des outils web ; redirections refusées en mode renforcé. Les scripts approuvés gardent leurs droits propres.
+- Corbeille accessible par projet sans dépendre du chat supprimé, contrôle des copies et restauration sans écrasement ni purge. Intentions avant mutations directes, résultat incertain après interruption et copies à examiner sans rejeu automatique ni promesse de transaction.
+- Révocation globale des sessions avec `Deconnecter-appareils.cmd`, sans arrêt des travaux ; le code partagé permet toujours de se reconnecter. Réception HTTP bornée à 180 000 ms par défaut, distincte de la génération.
+- Liste des conversations moins souvent reconstruite et focus préservé ; textes des droits précisés, badge « À valider », accès à la source d’une branche et rappel des fichiers partagés. Brouillons de messages conservés durablement seulement sur choix de l’utilisateur, avec durée et effacement à la déconnexion ; l’éditeur de fichiers reste hors périmètre.
+- Comparaison passive des textes jusqu’à 200 Ko par version, seulement si le fichier actuel porte encore l’empreinte de l’action ; aucun rapprochement ou enregistrement automatique. Deux commandes d’import distinguent conserver dans le projet et joindre au prochain message. Annonces de recherche et d’événements dédupliquées.
+- Parcours de chats partagés pendant un cycle et benchmark synthétique froid/chaud 10/100/1 000 chats ; aucun index persistant, cache LRU ou pagination. Les images historiques sont résolues après sélection, avec estimation de contexte toujours approximative.
+- Plafond d’inférences optionnel, désactivé par défaut (`maxConcurrentInferences: 0`), FIFO par appel modèle et créneau libéré pendant les accords humains. Le délai global existant de trente minutes inclut admission et attente d’accord.
+- Diagnostic à cinq contrôles avec export par liste blanche, sans prompt ni lancement de modèle. Fabrique importable `createCompanion`, fixtures de chemins canoniques/POSIX corrigées et deux parcours navigateur de développement versionnés ; Playwright reste une dépendance de développement.
+
+La portée des vérifications, la CI publique encore en échec et les essais non réalisés sont dans [Vérification](docs/verification.md). Les critères et retours arrière sont dans [Choix d’audit](docs/choix-audit.md).
+
 ## 1.8.0 — en préparation
 
 - Outils du compagnon activables séparément pour les fichiers, le web public et les scripts ; autorisations figées dans chaque message envoyé, y compris en file d’attente.

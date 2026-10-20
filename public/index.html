@@ -8,6 +8,7 @@
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="/style.css">
+  <script src="/message-drafts.js" defer></script>
   <script src="/files.js" defer></script>
   <script src="/workspace.js" defer></script>
   <script src="/app.js" defer></script>
@@ -37,6 +38,7 @@
       <div class="workspace-shortcuts"><button id="activity-open-sidebar" class="workspace-shortcut" type="button">Depuis votre départ <span id="activity-count" class="activity-count" hidden></span></button><button id="deliverables-open-sidebar" class="workspace-shortcut" type="button">Livrables</button></div>
       <label class="search-field"><span id="search-icon" aria-hidden="true"></span><span class="sr-only">Rechercher une conversation</span><input id="search" type="search" placeholder="Rechercher une conversation" autocomplete="off"></label>
       <div class="list-heading"><h2>Conversations</h2><span id="session-count"></span></div>
+      <p id="sessions-warning" class="listing-warning" hidden></p>
       <nav id="sessions" class="sessions" aria-label="Conversations du projet"></nav>
       <button id="models-open-sidebar" class="models-open" type="button">Modèles chargés</button>
       <div class="sidebar-bottom"><span id="status" class="status">Connexion…</span><button id="logout" class="icon-button" aria-label="Se déconnecter"></button></div>
@@ -48,6 +50,9 @@
         <form id="move-conversation-form"><label for="move-project">Déplacer la conversation vers</label><div class="conversation-move-row"><select id="move-project" aria-describedby="move-help"></select><button id="move-conversation" class="file-action" type="submit">Déplacer</button></div><p id="move-help">Le classement concerne le compagnon. Les fichiers et les livrables restent dans leur projet ; les fichiers du brouillon seront à joindre à nouveau.</p><p id="move-error" class="error" role="alert" hidden></p></form>
         <div class="conversation-delete-row"><button id="delete-conversation" class="file-action conversation-delete" type="button">Supprimer la conversation</button><p id="delete-error" class="error" role="alert" hidden></p></div>
         <button id="info-button" class="conversation-help" type="button" aria-expanded="false" aria-controls="info">Comment fonctionne ce compagnon ?</button>
+        <details class="draft-settings"><summary>Brouillons sur cet appareil</summary><label for="draft-duration">Conserver les messages non envoyés</label><select id="draft-duration"><option value="0">Cet onglet uniquement</option><option value="3600000">1 heure</option><option value="86400000">24 heures</option><option value="604800000">7 jours</option></select><p>La durée part de la dernière modification du texte. Aucun fichier joint ni contenu de l’éditeur n’est conservé durablement. Déconnexion et « Effacer » retirent les copies locales. Ce stockage n’est pas une sauvegarde garantie.</p><div class="workspace-actions"><button id="draft-download" class="file-action" type="button">Télécharger ce brouillon</button><button id="draft-clear" class="file-action" type="button">Effacer mes brouillons</button></div><p id="draft-status" role="status"></p></details>
+        <button id="diagnostics-open" class="conversation-help" type="button">Diagnostic de connexion</button>
+        <div id="diagnostics-result" class="diagnostics-result" hidden></div>
       </section>
       <section id="info" class="info-panel" aria-labelledby="info-title" hidden><header class="info-panel-header"><h2 id="info-title">Comment fonctionne ce compagnon ?</h2><button id="info-close" class="icon-button" type="button" aria-label="Fermer l’aide" title="Fermer l’aide"></button></header><div id="info-body" class="info-panel-body"><p>Les historiques natifs restent lus sans modification. Les réponses écrites ici forment des conversations web distinctes sur ce PC.</p><p>Lorsque l’option de modification est cochée, le modèle dispose d’outils pour lire, créer et modifier les textes du dossier de travail de ce projet. Les actions sont enregistrées dans le chat. Les remplacements conservent une copie précédente que tu peux rétablir.</p><p>« Importer un fichier » copie les fichiers de ton appareil dans « Imports telephone », au sein du projet. Les formats lisibles sont joints au prochain message, dans la limite de quatre pièces jointes. Pour analyser une image PNG, JPEG ou WebP, choisis un modèle marqué Vision.</p><p>« Fichiers du projet » reste disponible pour consulter et éditer les fichiers manuellement. Cette connexion HTTP est destinée au réseau domestique de confiance.</p></div></section>
       <div id="banner" class="banner" hidden></div>
@@ -58,10 +63,12 @@
         <details id="composer-files" class="composer-files">
           <summary id="files-menu-toggle" aria-controls="composer-files-options"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l8-8"></path></svg><span>Outils</span><span id="files-permission-state" class="files-permission-state">Fichiers modifiables</span><svg class="files-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"></path></svg></summary>
           <div id="composer-files-options" class="composer-files-menu">
-            <div class="attachment-tools"><button id="attach-file" class="attach-file" type="button">Fichier du projet</button><button id="upload-file" class="attach-file" type="button">Importer un fichier</button><input id="phone-files" class="sr-only" type="file" multiple tabindex="-1" aria-label="Fichiers de cet appareil à importer dans le projet"></div>
+            <div class="attachment-tools"><button id="attach-file" class="attach-file" type="button">Fichier du projet</button><button id="upload-file" class="attach-file" type="button">Importer dans le projet</button><button id="upload-attach-file" class="attach-file" type="button">Importer puis joindre</button><input id="phone-files" class="sr-only" type="file" multiple tabindex="-1" aria-label="Fichiers de cet appareil à importer dans le projet"></div>
+            <p id="import-help" class="tools-help">Importer conserve les fichiers sur le PC ; joindre les ajoute au prochain message, sans l’envoyer.</p>
             <button id="fork-chat" class="attach-file" type="button">Créer une branche du chat</button>
-            <label class="agent-files-option"><input id="agent-files" type="checkbox" checked><span>Gérer et modifier les fichiers du projet</span></label>
+            <label class="agent-files-option file-profile-option" for="agent-files"><span>Outils fichiers</span><select id="agent-files"><option value="none">Aucun</option><option value="read">Lecture</option><option value="write" selected>Modification</option></select></label>
             <label class="agent-files-option"><input id="agent-web" type="checkbox"><span>Rechercher et lire Internet</span></label>
+            <label class="agent-files-option"><input id="agent-web-approval" type="checkbox"><span>Valider chaque recherche et URL avant envoi</span></label>
             <label class="agent-files-option"><input id="agent-scripts" type="checkbox"><span>Scripts sur le PC, avec validation</span></label>
             <p class="tools-help">Chaque script attend ton accord dans le chat avant de s’exécuter.</p>
           </div>
@@ -85,6 +92,7 @@
     <div class="files-layout">
       <aside class="file-browser" aria-label="Dossiers et fichiers">
         <label for="file-root">Dossier</label><select id="file-root"></select>
+        <button id="files-trash-open" class="file-action" type="button">Corbeille du projet</button>
         <p id="file-root-description" class="file-root-description"></p>
         <div class="file-navigation"><button id="file-up" class="icon-button" aria-label="Dossier parent" type="button"></button><p id="file-location">/</p><button id="files-refresh" class="icon-button" aria-label="Actualiser les fichiers" type="button"></button></div>
         <nav id="file-list" class="file-list" aria-label="Fichiers du dossier"></nav>
@@ -102,6 +110,7 @@
         </section>
       </main>
     </div>
+    <section id="files-trash" class="files-trash" aria-labelledby="files-trash-title" hidden><header class="models-header"><h2 id="files-trash-title">Corbeille du projet</h2><button id="files-trash-close" class="file-action" type="button">Revenir aux fichiers</button></header><p>Copies retirées par les outils directs. Restaurer ne remplace jamais un fichier existant. Les scripts ne sont pas tous récupérables ici.</p><p id="files-trash-status" role="status"></p><div id="files-trash-list"></div></section>
   </section>
   <section id="workspace-view" class="workspace-view" aria-labelledby="workspace-title" hidden>
     <header class="workspace-header"><button id="workspace-close" class="icon-button" type="button" aria-label="Revenir aux conversations"></button><div><h1 id="workspace-title">Depuis votre départ</h1><p id="workspace-description"></p></div></header>
@@ -119,5 +128,6 @@
     <p class="models-note">Cette action concerne les sessions Bionic qui utilisent cette instance. Un prochain message peut recharger le modèle à la demande.</p>
   </dialog>
   <div id="toast" class="toast" role="status" hidden></div>
+  <div id="event-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>
