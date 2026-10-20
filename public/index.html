@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1265e8">
+  <title>Bionic · compagnon local</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/files.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main id="login" class="login">
+    <section class="login-content" aria-labelledby="login-title">
+      <img src="/icon.svg" width="54" height="54" alt="">
+      <h1 id="login-title">Bionic, à portée de main.</h1>
+      <p>Retrouve tes projets et conversations sur ce PC, depuis ton téléphone.</p>
+      <form id="login-form">
+        <label for="code">Code d’accès du PC</label>
+        <div class="code-field"><input id="code" name="password" type="password" autocomplete="current-password" required maxlength="256" spellcheck="false"><button id="reveal" type="button" aria-label="Afficher le code" aria-pressed="false"></button></div>
+        <p class="hint">Le code se trouve dans <strong>ACCES-PRIVE.txt</strong>, dans le dossier du serveur.</p>
+        <p id="login-error" class="error" role="alert"></p>
+        <button id="login-button" class="primary" type="submit">Ouvrir mes conversations</button>
+      </form>
+      <p class="privacy">Accès personnel sur ton réseau local.</p>
+    </section>
+  </main>
+  <div id="app" class="app" hidden>
+    <aside id="sidebar" class="sidebar" aria-label="Projets et conversations">
+      <div class="brand-row"><div class="brand"><img src="/icon.svg" width="28" height="28" alt=""><span>Bionic <small>compagnon local</small></span></div><button id="refresh" class="icon-button" aria-label="Actualiser les projets et conversations"></button></div>
+      <div class="project-field"><label for="project">Projet</label><select id="project"></select></div>
+      <button id="new-chat" class="new-chat"></button>
+      <button id="files-open-sidebar" class="files-open" type="button">Fichiers du projet</button>
+      <label class="search-field"><span id="search-icon" aria-hidden="true"></span><span class="sr-only">Rechercher une conversation</span><input id="search" type="search" placeholder="Rechercher une conversation" autocomplete="off"></label>
+      <div class="list-heading"><h2>Conversations</h2><span id="session-count"></span></div>
+      <nav id="sessions" class="sessions" aria-label="Conversations du projet"></nav>
+      <button id="models-open-sidebar" class="models-open" type="button">Modèles chargés</button>
+      <div class="sidebar-bottom"><span id="status" class="status">Connexion…</span><button id="logout" class="icon-button" aria-label="Se déconnecter"></button></div>
+    </aside>
+    <main class="thread" id="thread">
+      <header class="thread-header"><button id="back" class="icon-button back" aria-label="Retour aux conversations"></button><div class="thread-titles"><h1 id="thread-title">Tes conversations, ici.</h1><p id="thread-subtitle">Choisis un projet et un fil pour commencer.</p></div><button id="models-open-thread" class="icon-button" aria-label="Voir et décharger les modèles chargés"></button><button id="info-button" class="icon-button" aria-label="Comment fonctionne ce compagnon ?" aria-expanded="false"></button></header>
+      <div id="info" class="info-panel" hidden><h2>Comment fonctionne ce compagnon ?</h2><p>Les historiques natifs restent lus sans modification. Les réponses écrites ici forment des conversations web distinctes sur ce PC.</p><p>Lorsque l’option de modification est cochée, le modèle dispose d’outils pour lire, créer et modifier les textes du dossier de travail de ce projet. Les actions sont enregistrées dans le chat. Les remplacements conservent une copie précédente que tu peux rétablir.</p><p>« Importer un fichier » copie les fichiers de ton appareil dans « Imports telephone », au sein du projet. Les formats lisibles sont joints au prochain message, dans la limite de quatre pièces jointes. Pour analyser une image PNG, JPEG ou WebP, choisis un modèle marqué Vision.</p><p>« Fichiers du projet » reste disponible pour consulter et éditer les fichiers manuellement. Cette connexion HTTP est destinée au réseau domestique de confiance.</p></div>
+      <div id="banner" class="banner" hidden></div>
+      <div id="messages" class="messages" tabindex="0" aria-label="Messages de la conversation"><div class="welcome"><img src="/icon.svg" width="48" height="48" alt=""><h2>Le fil de tes idées.</h2><p>Ouvre une conversation Bionic ou commence un nouveau chat dans le projet de ton choix.</p><p class="welcome-detail">Les originaux restent dans Bionic.<br>Les suites web restent sur ce PC.</p></div></div>
+      <div id="message-error" class="message-error" role="alert" hidden></div>
+      <form id="composer" class="composer">
+        <div id="attachments" class="attachments" aria-label="Fichiers joints au prochain message" hidden></div>
+        <div class="attachment-tools"><button id="attach-file" class="attach-file" type="button">Fichier du projet</button><button id="upload-file" class="attach-file" type="button">Importer un fichier</button><input id="phone-files" class="sr-only" type="file" multiple tabindex="-1" aria-label="Fichiers de cet appareil à importer dans le projet"></div>
+        <p id="upload-status" class="upload-status" role="status" hidden></p>
+        <label class="agent-files-option"><input id="agent-files" type="checkbox" checked><span>Le modèle peut modifier les textes du projet</span></label>
+        <div class="composer-box"><label class="sr-only" for="prompt">Ton message</label><textarea id="prompt" rows="2" placeholder="Écrire un message…" maxlength="16000"></textarea><div class="composer-bottom"><label class="model-field"><span class="sr-only">Modèle local</span><select id="model" aria-label="Modèle local"></select></label><label class="effort-field" for="effort"><span>Effort</span><select id="effort" aria-describedby="effort-help"><option value="default">Par défaut</option></select></label><button id="send" class="send-button" type="submit" aria-label="Envoyer le message"></button><button id="stop" class="stop-button" type="button" hidden>Arrêter</button></div><p id="effort-help" class="effort-help" aria-live="polite"></p></div>
+        <p id="composer-note">Le modèle reçoit les messages et les fichiers que tu joins.</p>
+      </form>
+    </main>
+  </div>
+  <section id="files-view" class="files-view" aria-label="Fichiers du projet" hidden>
+    <header class="files-header"><button id="files-close" class="icon-button" aria-label="Revenir au chat" type="button"></button><div><h1 id="files-title">Fichiers du projet</h1><p>Les fichiers restent sur ce PC.</p></div></header>
+    <p id="files-error" class="files-error error" role="alert" hidden></p>
+    <p id="file-operation" class="file-operation" role="status" hidden>Opération en cours…</p>
+    <div class="files-layout">
+      <aside class="file-browser" aria-label="Dossiers et fichiers">
+        <label for="file-root">Dossier</label><select id="file-root"></select>
+        <p id="file-root-description" class="file-root-description"></p>
+        <div class="file-navigation"><button id="file-up" class="icon-button" aria-label="Dossier parent" type="button"></button><p id="file-location">/</p><button id="files-refresh" class="icon-button" aria-label="Actualiser les fichiers" type="button"></button></div>
+        <nav id="file-list" class="file-list" aria-label="Fichiers du dossier"></nav>
+      </aside>
+      <main class="file-detail" id="file-detail">
+        <button id="file-back-list" class="file-back-list" type="button">Retour aux fichiers</button>
+        <div id="file-empty" class="file-empty"><h2>Ouvre un fichier du projet.</h2><p>Consulte son contenu, modifie un texte ou joins-le à ton prochain message.</p></div>
+        <section id="file-opened" class="file-opened" hidden>
+          <header class="file-heading"><h2 id="file-name"></h2><p id="file-description"></p></header>
+          <div class="file-actions"><button id="file-save" class="file-save" type="button">Enregistrer sur le PC</button><button id="file-undo" class="file-action" type="button" hidden>Annuler le dernier enregistrement</button><button id="file-attach" class="file-action" type="button">Joindre au message</button><a id="file-download" class="file-action" download>Télécharger le fichier du PC</a><button id="file-download-draft" class="file-action" type="button" hidden>Télécharger mes changements</button></div>
+          <p id="file-status" class="file-status" role="status"></p>
+          <p id="file-selection-help" class="file-selection-help">Tu peux sélectionner un passage du texte pour joindre seulement cet extrait.</p>
+          <label for="file-editor" class="sr-only">Contenu du fichier</label><textarea id="file-editor" class="file-editor" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+          <img id="file-image" class="file-image" alt="Aperçu du fichier" hidden>
+        </section>
+      </main>
+    </div>
+  </section>
+  <dialog id="models-dialog" class="models-dialog" aria-labelledby="models-title" aria-describedby="models-description">
+    <div class="models-header"><h2 id="models-title">Modèles chargés</h2><button id="models-close" class="icon-button" aria-label="Fermer les modèles chargés" type="button"></button></div>
+    <p id="models-description">Décharge une instance pour libérer la mémoire du PC. Le fichier du modèle est conservé.</p>
+    <div class="models-toolbar"><p id="models-summary" role="status">Chargement…</p><button id="models-refresh" class="icon-button" aria-label="Actualiser les modèles chargés" type="button"></button></div>
+    <p id="models-error" class="error" role="alert" hidden></p>
+    <div id="models-list" class="models-list"></div>
+    <p class="models-note">Cette action concerne les sessions Bionic qui utilisent cette instance. Un prochain message peut recharger le modèle à la demande.</p>
+  </dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

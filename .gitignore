@@ -1,0 +1,26 @@
+# Local installation state: never commit or share it.
+/data/
+/runtime/
+/config.local.json
+/ACCES-PRIVE.txt
+*.log
+/reseau-verification.txt
+/.env
+/.env.*
+!.env.example
+/dist/
+/node_modules/
+/.venv/
+__pycache__/
+*.pyc
+*.sqlite*
+*.db
+*.pem
+*.key
+*.pfx
+*.p12
+/apercu-*
+/verification*.json
+/store-verification.json
+/.DS_Store
+/Thumbs.db

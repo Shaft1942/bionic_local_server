@@ -1,0 +1,2 @@
+# Optional: PDF text extraction only. DOCX/XLSX use the Python standard library.
+pypdf>=6.21.1,<7
