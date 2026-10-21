@@ -71,6 +71,7 @@ Les variables prennent le pas sur le fichier local. Elles sont utiles pour un la
 | `BIONIC_MOBILE_REQUEST_TIMEOUT_MS` | Prioritaire sur `requestTimeoutMs`, mêmes bornes en millisecondes |
 | `BIONIC_SEARCH_URL` | Endpoint HTTP(S) complet de recherche SearXNG, par exemple `http://127.0.0.1:8080/search`, sans identifiant, paramètres ni fragment |
 | `BIONIC_BRAVE_SEARCH_KEY` | Clé privée facultative pour Brave Search, utilisée seulement si aucun endpoint SearXNG n’est configuré |
+| `BIONIC_SEARCH_FALLBACK` | `brave` pour essayer DuckDuckGo Lite d’abord puis Brave en secours si une clé est définie ; vide par défaut |
 
 Le registre de projets interne est normalement `.internal/projects-registry.json` sous le dossier Bionic. Il est préférable de laisser sa détection automatique ; un registre de fichiers différent ne transforme pas une collection quelconque en projets natifs Bionic.
 
@@ -91,9 +92,13 @@ Le web est désactivé par défaut dans le chat. Lorsqu’il est autorisé pour 
 
 1. `BIONIC_SEARCH_URL` défini : SearXNG à l’adresse configurée.
 2. Sinon, `BIONIC_BRAVE_SEARCH_KEY` défini : Brave Search.
-3. Sinon : page HTML publique de DuckDuckGo, sans clé.
+3. Sinon : interface publique DuckDuckGo Lite, sans clé, [documentée pour les clients sans JavaScript](https://duckduckgo.com/duckduckgo-help-pages/features/non-javascript).
 
-Un échec du moteur choisi n’entraîne pas de bascule silencieuse vers un autre fournisseur. DuckDuckGo peut refuser les robots ou demander une vérification humaine ; le compagnon affiche alors une erreur, sans inventer de résultats.
+Sans configuration de secours, un échec ne change pas de fournisseur. DuckDuckGo peut refuser les robots ou demander une vérification humaine, y compris sur Lite. Les HTTP 202/403/429 sont signalés comme des blocages : les recherches suivantes du même tour ne sont pas renvoyées au moteur ; la lecture d’une URL publique reste disponible. Un nouveau message peut réessayer. Les résultats vides ou illisibles restent des erreurs, jamais un succès inventé.
+
+Pour garder DuckDuckGo en premier et utiliser Brave seulement en secours, définissez **les deux variables serveur** `BIONIC_SEARCH_FALLBACK=brave` et `BIONIC_BRAVE_SEARCH_KEY`. Sans clé, le secours reste inactif. Sans la première variable, la clé continue de sélectionner Brave comme moteur principal. SearXNG conserve la priorité et ne bascule pas vers Brave.
+
+Le secours est tenté une seule fois après une erreur de recherche (réseau, délai, refus distant ou résultats inexploitables), jamais après une annulation ou un refus de sécurité. Avec la validation de chaque envoi, une **seconde demande d’accord** indique l’URL exacte de Brave avant toute transmission ; refuser cet accord n’envoie rien à Brave. Sans cette validation, l’autorisation web et la configuration du serveur autorisent le secours. Les actions réussies indiquent « secours Brave » et le fournisseur réel. La clé est envoyée uniquement à l’API Brave, sans suivre ses redirections. Consultez les [instructions officielles pour créer et conserver la clé](https://api-dashboard.search.brave.com/documentation/guides/authentication) ; les limites de votre abonnement restent applicables.
 
 Pour votre propre instance SearXNG, indiquez **l’endpoint complet**, normalement terminé par `/search`. Le compagnon ajoute lui-même `q` et `format=json`. Le format JSON doit être activé dans le `settings.yml` de SearXNG, en conservant vos autres réglages :
 

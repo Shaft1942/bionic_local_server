@@ -11,6 +11,30 @@ const registry=path.join(base,'registry.json');await fs.writeFile(registry,JSON.
 const files=createProjectFiles({registryPath:registry,backupDirectory:path.join(base,'backups')});
 const call=(name,args)=>({id:'test-call',function:{name,arguments:JSON.stringify(args)}});
 const agent=options=>createAgentTools({files,projectId:'p1',fileAccess:true,privateDirectory:path.join(base,'runs'),...options});
+
+test('a blocked search is not sent or approved repeatedly in one turn; direct reading remains available',async()=>{
+  let searches=0,approvals=0,reads=0;
+  const webService={describeSearch:()=>({url:'https://lite.duckduckgo.com/lite/?q=test',host:'lite.duckduckgo.com'}),search:async()=>{searches++;throw Object.assign(new Error('Recherche bloquée, aucun résultat obtenu.'),{status:502,searchBlocked:true});},read:async url=>{reads++;return {url,title:'Source',text:'Public source'};}};
+  const a=agent({webAccess:true,webApproval:true,webService,requestApproval:async()=>{approvals++;return {approved:true};}});
+  assert.equal((await a.execute(call('search_web',{query:'test'}))).action.ok,false);
+  assert.equal((await a.execute(call('search_web',{query:'other words'}))).action.ok,false);
+  assert.equal(searches,1);assert.equal(approvals,1);
+  assert.equal((await a.execute(call('read_web_page',{url:'https://example.com/'}))).action.ok,true);
+  assert.equal(reads,1);assert.equal(approvals,2);
+  const next=agent({webAccess:true,webService});await next.execute(call('search_web',{query:'test'}));assert.equal(searches,2);
+});
+
+test('the agent requests a separate fallback approval and records the real successful provider',async()=>{
+  const proposals=[];
+  const destination={url:'https://api.search.brave.com/res/v1/web/search?q=test&count=5',host:'api.search.brave.com',provider:'Brave'};
+  const webService={describeSearch:()=>({url:'https://lite.duckduckgo.com/lite/?q=test',host:'lite.duckduckgo.com',provider:'DuckDuckGo'}),search:async(query,options)=>{
+    assert.equal(options.allowRedirects,false);assert.equal(await options.approveFallback(destination),true);
+    return {query,provider:'Brave',fallbackFrom:'DuckDuckGo',searchDestination:destination,results:[{url:'https://example.com/',title:'Source'}]};
+  }};
+  const a=agent({webAccess:true,webApproval:true,webService,requestApproval:async proposal=>{proposals.push(proposal);return {approved:true,approval:{id:String(proposals.length)}};}});
+  const {action}=await a.execute(call('search_web',{query:'test'}));
+  assert.equal(action.ok,true);assert.equal(proposals.length,2);assert.equal(proposals[0].host,'lite.duckduckgo.com');assert.equal(proposals[1].host,'api.search.brave.com');assert.equal(action.outbound.provider,'Brave');assert.equal(action.approvalId,'2');assert.match(action.message,/secours Brave/);
+});
 test('file inspection, copy, move, trash and restoration preserve bytes and refuse overwrites',async()=>{
   await fs.writeFile(path.join(project,'source.txt'),'Exact original bytes.');const a=agent();
   assert(!(await a.execute(call('move_project_file',{path:'source.txt',destination:'moved.txt'}))).action.ok);

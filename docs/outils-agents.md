@@ -58,7 +58,7 @@ Les opérations d’inspection, copie, déplacement et corbeille acceptent des f
 
 Une recherche renvoie au plus cinq URL, avec titre et court extrait lorsqu’il est disponible. Le modèle peut ensuite lire les sources utiles. Un résultat de moteur n’est pas une page vérifiée : les liens du journal permettent de retrouver les sources effectivement obtenues. Les contenus externes restent des données non fiables, sans pouvoir d’accorder une permission de script ou de fichier.
 
-Les moteurs disponibles sont, par priorité : SearXNG explicitement configuré, Brave si une clé privée est définie, sinon DuckDuckGo sans clé. **DuckDuckGo ne garantit pas l’accès automatisé** : CAPTCHA, refus, schéma inattendu ou absence de résultats exploitables provoquent une erreur claire. Le compagnon n’invente pas de résultat et ne change pas silencieusement de moteur. Voir [la configuration des moteurs](configuration.md#moteur-de-recherche-des-agents).
+Les moteurs disponibles sont, par priorité : SearXNG explicitement configuré, Brave si une clé privée est définie, sinon DuckDuckGo Lite sans clé. **DuckDuckGo ne garantit pas l’accès automatisé** : CAPTCHA, refus, schéma inattendu ou absence de résultats exploitables provoquent une erreur claire. Un secours Brave après échec de DuckDuckGo peut être activé explicitement sur le serveur ; avec validation web, il nécessite un nouvel accord avant envoi à Brave. Les blocages DuckDuckGo HTTP 202/403/429 empêchent les recherches répétées dans le même tour, mais pas une lecture d’URL directe. Voir [la configuration des moteurs](configuration.md#moteur-de-recherche-des-agents).
 
 | Limite | Valeur |
 | --- | --- |

@@ -7,7 +7,7 @@ import { createWebTools, isPublicAddress, plainText } from '../lib/web-tools.mjs
 const publicRecords = [{ address: '93.184.216.34', family: 4 }];
 const page = (text = '<title>Example</title><p>Readable content</p>', headers = {}) => ({ status: 200, headers: { 'content-type': 'text/html; charset=utf-8', ...headers }, text });
 function service(options = {}) {
-  return createWebTools({ lookupImpl: async () => publicRecords, requestImpl: async () => page(), searchEndpoint: '', braveKey: '', ...options });
+  return createWebTools({ lookupImpl: async () => publicRecords, requestImpl: async () => page(), searchEndpoint: '', braveKey: '', searchFallback: '', ...options });
 }
 const errorStatus = status => error => error.status === status && typeof error.message === 'string';
 
@@ -61,10 +61,10 @@ test('redirect loops and malformed destinations have bounded clear failures', as
   for(const headers of [{},{location:'http://['},{location:['https://example.com/']}]) await assert.rejects(service({requestImpl:async()=>({status:302,headers,text:''})}).read('https://example.com/'),errorStatus(502));
 });
 
-test('accepted redirects report the final source URL and never forward search credentials', async () => {
+test('Brave refuses redirects without forwarding its key; ordinary reads report the final source URL', async () => {
   const calls=[];
   const web=service({braveKey:'injected-test-only-key',requestImpl:async(url,options)=>{calls.push({url:url.href,headers:options.headers});return calls.length===1?{status:302,headers:{location:'https://other.example/search'},text:''}:page(JSON.stringify({web:{results:[{title:'Result',url:'https://example.com/'}]}}),{'content-type':'application/json'});}});
-  const result=await web.search('test');assert.equal(result.provider,'Brave');assert.equal(calls[0].headers['X-Subscription-Token'],'injected-test-only-key');assert.equal(calls[1].headers,undefined);
+  await assert.rejects(web.search('test'),errorStatus(502));assert.equal(calls[0].headers['X-Subscription-Token'],'injected-test-only-key');assert.equal(calls.length,1);
   let request=0;
   const reader=service({requestImpl:async()=>++request===1?{status:301,headers:{Location:'https://final.example/page'},text:''}:page()});
   assert.equal((await reader.read('https://example.com/')).url,'https://final.example/page');
@@ -135,12 +135,59 @@ test('invalid excerpt/search arguments are rejected before DNS or network work',
 
 test('DuckDuckGo parses real-shaped result links, strips markup and deduplicates sources', async () => {
   const html='<a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa%3Fx%3D1%26y%3D2&amp;rut=x"><b>Example</b> &amp; source</a><a href="https://example.com/a?x=1&amp;y=2" class="result__a">Duplicate</a><a class="result__a" href="http://127.0.0.1/">Private</a><a class="result__a" href="/l/">Invalid redirect</a>';
-  const web=service({requestImpl:async(url)=>{assert.equal(url.hostname,'html.duckduckgo.com');assert.equal(url.searchParams.get('q'),'search & words');return page(html);}});
+  const web=service({requestImpl:async(url)=>{assert.equal(url.hostname,'lite.duckduckgo.com');assert.equal(url.searchParams.get('q'),'search & words');return page(html);}});
   const result=await web.search('search & words');assert.equal(result.provider,'DuckDuckGo');assert.deepEqual(result.results,[{title:'Example & source',url:'https://example.com/a?x=1&y=2',snippet:''}]);assert.match(result.note,/externes non fiables/);
 });
 
 test('a DuckDuckGo bot challenge or unusable result is an explicit error, never an invented success', async () => {
   for(const html of ['<form>Prove you are human</form>','<a class="result__a" href="http://127.0.0.1/">Private only</a>']) await assert.rejects(service({requestImpl:async()=>page(html)}).search('test'),error=>error.status===502&&/vérification humaine/.test(error.message));
+});
+
+test('Lite result links are parsed and the approved URL is exactly the sent URL', async () => {
+  for(const config of [{},{braveKey:'synthetic-key'},{searchEndpoint:'https://search.example/search'}]) {
+    let sent;
+    const web=service({...config,requestImpl:async url=>{sent=url.href;return config.braveKey?page(JSON.stringify({web:{results:[{title:'Source',url:'https://example.com/'}]}}),{'content-type':'application/json'}):config.searchEndpoint?page(JSON.stringify({results:[{title:'Source',url:'https://example.com/'}]}),{'content-type':'application/json'}):page(`<a href='//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2F' class='result-link'>Source</a>`);}});
+    const query='recette été + banane & noix?';
+    const approved=web.describeSearch(query);
+    const result=await web.search(query,{allowRedirects:false});
+    assert.equal(sent,approved.url);
+    assert.equal(result.results[0].url,'https://example.com/');
+  }
+});
+
+test('DuckDuckGo HTTP challenges do not trigger a hidden retry or provider fallback', async () => {
+  for(const status of [202,403,429]) {
+    let requests=0;
+    await assert.rejects(service({requestImpl:async()=>{requests++;return {status,headers:{},text:''};}}).search('test'),error=>error.status===502&&error.searchBlocked===true&&error.message.includes(`HTTP ${status}`)&&error.message.includes('Aucun résultat obtenu'));
+    assert.equal(requests,1);
+  }
+});
+
+test('optional Brave fallback needs a second exact approval and never exposes its key',async()=>{
+  for(const approved of [true,false]) {
+    const sent=[],key='synthetic-private-key';let approvals=0;
+    const web=service({braveKey:key,searchFallback:'brave',requestImpl:async(url,options)=>{
+      sent.push(url.href);
+      if(url.hostname==='lite.duckduckgo.com'){assert.equal(options.headers,undefined);return {status:202,headers:{},text:''};}
+      assert.equal(options.headers['X-Subscription-Token'],key);
+      return page(JSON.stringify({web:{results:[{title:'Source',url:'https://example.com/'}]}}),{'content-type':'application/json'});
+    }});
+    assert.equal(web.describeSearch('test').host,'lite.duckduckgo.com');
+    const pending=web.search('test',{allowRedirects:false,approveFallback:async destination=>{approvals++;assert.equal(destination.host,'api.search.brave.com');assert.equal(destination.url,web.describeSearch('test',{useBrave:true}).url);assert(!JSON.stringify(destination).includes(key));return approved;}});
+    if(approved){const result=await pending;assert.equal(result.provider,'Brave');assert.equal(result.fallbackFrom,'DuckDuckGo');assert(!JSON.stringify(result).includes(key));assert.equal(result.searchDestination.url,sent[1]);}
+    else await assert.rejects(pending,error=>error.status===403);
+    assert.equal(approvals,1);assert.equal(sent.length,approved?2:1);
+  }
+});
+
+test('fallback stays off without a key or exact-approval callback and after security refusals',async()=>{
+  for(const options of [{searchFallback:'brave'},{searchFallback:'brave',braveKey:'synthetic-key'}]) {
+    let sent=0;const web=service({...options,requestImpl:async()=>{sent++;return {status:202,headers:{},text:''};}});
+    await assert.rejects(web.search('test',{allowRedirects:false}));assert.equal(sent,1);
+  }
+  let sent=0;
+  const web=service({searchFallback:'brave',braveKey:'synthetic-key',lookupImpl:async()=>[{address:'127.0.0.1',family:4}],requestImpl:async()=>{sent++;return page();}});
+  await assert.rejects(web.search('test'),errorStatus(403));assert.equal(sent,0);
 });
 
 test('an explicitly configured SearXNG endpoint may be local but its results remain public only', async () => {
