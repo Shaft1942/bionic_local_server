@@ -29,6 +29,16 @@ La [dernière CI publique examinée, run 39498935835](https://github.com/Shaft19
 
 Aucun modèle Bionic réel, GPU, téléphone physique, lecteur d’écran réel ou réseau Wi-Fi physique n’est validé par ce lot. Aucune installation quotidienne n’est redémarrée ou mise à jour, aucun projet personnel n’est utilisé. Les essais de protocole et de contextes simulés ne prouvent pas les capacités des modèles installés. Les critères, dépendances, retours arrière et méta-prompts restitués sont dans [Choix d’audit](choix-audit.md).
 
+### Allègement de l’interface après essai — 21 octobre 2026
+
+L’ajustement de présentation part du commit local `90336e7` et ne change ni les routes ni les droits. Le menu Outils est maintenant replié aussi sur ordinateur ; modèle, effort et résumé des droits restent visibles. L’aide de l’effort s’affiche visuellement lorsque son sélecteur reçoit le focus, tout en restant décrite aux lecteurs d’écran. Les cinq groupes secondaires des réponses passent sous **Détails et actions** ; le fork d’un message utilisateur se trouve dans ses trois points.
+
+Sur la même fixture Chrome, la zone de composition passe de **404 à 230 px** à 1280 et 1920 px de large, de 550 à 230 px à 844 px. Ses rectangles de saisie, modèle, effort et envoi restent identiques à **390 et 320 px**, avec une hauteur totale de 240 px. Pour une réponse synthétique comportant une action et des métriques, la zone secondaire passe de 278 à **42 px** sur ordinateur et 54 px sur téléphone. Ce sont des mesures de contenu fictif, pas des valeurs garanties pour tous les messages.
+
+Les deux familles de parcours versionnés sont rejouées à 1280 et 320 px : menu fermé par défaut, Échap, retour du focus, clic extérieur, changement de format, réglages effectivement envoyés, brouillons et refus d’un accord. Elles vérifient aussi le volet des réponses et la conservation du titre d’un livrable pendant un nouveau rendu. Une sonde locale de conversation vérifie métriques, contexte et fork accessibles, erreur/interruption/opération incertaine hors du volet fermé et demande d’accord directement visible. Aucun POST n’est émis par la consultation des volets. Les vues finales conversation, outils ouverts et détails ouverts ont été inspectées à 1280 et 320 px ; aucune nouvelle erreur JavaScript ni débordement horizontal n’est observé. Le détecteur relève seulement l’aperçu d’image existant sans source avant sélection, déjà identifié comme faux positif.
+
+Ces essais restent synthétiques : ni modèle, ni téléphone physique, ni lecteur d’écran réel, ni modifications de fichiers personnels. La copie privée de test reçoit seulement les fichiers d’interface concernés ; une actualisation du navigateur suffit, sans redémarrage du serveur.
+
 ## Bilans historiques antérieurs au lot d’audit
 
 La distribution initiale a été préparée le 20 octobre 2026 dans une copie distincte de l’installation d’origine. Les tests utilisent des projets, conversations et modèles synthétiques ; ils n’appellent pas les modèles réels, n’écrivent pas dans les projets de l’utilisateur et ne changent aucune règle du pare-feu.

@@ -4,24 +4,27 @@ const composerFiles = $('composer-files'), composerFilesToggle = $('files-menu-t
 const mobileComposer = matchMedia('(max-width:760px)');
 const conversationMove = { busy: false, action: null, revision: 0 };
 function closeComposerFiles(restoreFocus = false) {
-  if (!mobileComposer.matches || !composerFiles.open) return;
+  if (!composerFiles.open) return;
   composerFiles.open = false;
   if (restoreFocus) composerFilesToggle.focus({ preventScroll: true });
 }
 function syncComposerFilesLayout() {
   const focusInside = composerFiles.contains(document.activeElement);
-  composerFiles.open = !mobileComposer.matches;
-  if (mobileComposer.matches && focusInside) composerFilesToggle.focus({ preventScroll: true });
+  composerFiles.open = false;
+  if (focusInside) composerFilesToggle.focus({ preventScroll: true });
 }
 syncComposerFilesLayout();
 mobileComposer.addEventListener('change', syncComposerFilesLayout);
 composerFiles.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && mobileComposer.matches && composerFiles.open) { event.preventDefault(); closeComposerFiles(true); }
+  if (event.key === 'Escape' && composerFiles.open) { event.preventDefault(); closeComposerFiles(true); }
 });
 composerFiles.addEventListener('focusout', event => {
   if (event.relatedTarget && !composerFiles.contains(event.relatedTarget)) closeComposerFiles();
 });
-document.addEventListener('pointerdown', event => { if (!composerFiles.contains(event.target)) closeComposerFiles(); });
+document.addEventListener('pointerdown', event => {
+  if (!composerFiles.contains(event.target)) closeComposerFiles();
+  for (const details of document.querySelectorAll('.message.user .message-extras[open]')) if (!details.contains(event.target)) details.open = false;
+});
 const icons = {
   more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
   refresh: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 18 17"/>',
@@ -468,6 +471,27 @@ function addToolApproval(article,approval,chat) {
   article.append(panel);
 }
 
+function groupMessageExtras(article, message, role) {
+  const auxiliary = [...article.children].filter(child => child.matches('.actions-log,.message-fork,.message-metrics,.context-receipt,.pin-control,.message-effort'));
+  const failed = (message.actions || []).some(action => action.ok === false);
+  const grouped = auxiliary.filter(child => {
+    if (!failed || !child.matches('.actions-log') || !child.querySelector('.action-rows')) return true;
+    child.classList.add('action-warning');
+    child.querySelector('summary').textContent = 'Action de l’agent en erreur · ' + (message.actions || []).filter(action => action.ok === false).length;
+    return false;
+  });
+  if (!grouped.length) return;
+  const details = node('details', 'message-extras'); details.dataset.disclosureKey = 'message-extras';
+  const summary = node('summary'); summary.dataset.workspaceFocus = 'message-extras:' + (message.id || message.localRequestId || message.requestId || '');
+  if (message.role === 'user') { summary.append(icon('more'), node('span','sr-only','Actions de ce message')); summary.title = 'Actions de ce message'; }
+  else summary.append(document.createTextNode('Détails et actions'));
+  const content = node('div','message-extras-content');
+  for (const child of grouped) { if (!child.dataset.disclosureKey) child.dataset.disclosureKey = child.classList[0]; content.append(child); }
+  details.append(summary, content);
+  details.addEventListener('keydown', event => { if (event.key === 'Escape' && details.open) { event.preventDefault(); details.open = false; summary.focus({preventScroll:true}); } });
+  if (message.role === 'user') details.addEventListener('focusout', event => { if (event.relatedTarget && !details.contains(event.relatedTarget)) details.open = false; });
+  if (message.role === 'user') role.append(details); else article.append(details);
+}
 function addMessage(message) {
   const article = node('article', 'message ' + message.role);
   if (message.id) { article.dataset.messageId = message.id; article.tabIndex = -1; }
@@ -498,7 +522,7 @@ function addMessage(message) {
   if(message.historicalActions?.length){const history=node('details','actions-log');history.append(node('summary','','Actions dans la conversation source · '+message.historicalActions.length));for(const action of message.historicalActions)history.append(node('p','message-footer',(action.message||action.name||'Action')+(action.path?' · '+action.path:'')));article.append(history);}
   if(message.id&&!(message.role==='assistant'&&(message.complete===false||state.chat?.generation?.status==='running'&&state.chat.generation.replyId===message.id))){const fork=node('button','message-fork','Créer une branche depuis ici');fork.type='button';fork.addEventListener('click',()=>forkChat(message.id));article.append(fork);}
   const footer = [];
-  if (message.reasoning && EFFORT_LABELS[message.reasoning]) footer.push('Effort : ' + EFFORT_LABELS[message.reasoning].toLocaleLowerCase('fr'));
+  if (message.reasoning && EFFORT_LABELS[message.reasoning]) article.append(node('p', 'message-footer message-effort', 'Effort : ' + EFFORT_LABELS[message.reasoning].toLocaleLowerCase('fr')));
   if (message.interrupted || message.limited) footer.push(message.interrupted ? 'Réponse interrompue.' : 'Limite de réponse atteinte. Tu peux demander de continuer.');
   if (footer.length) article.append(node('p', 'message-footer', footer.join(' · ')));
   if (message.metrics && message.role === 'assistant') {
@@ -527,6 +551,7 @@ function addMessage(message) {
     const running = state.chat?.generation?.status === 'running' && (state.chat.generation.replyId === message.id || (message.requestId || message.localRequestId) === state.chat.generation.requestId);
     if (!running && message.text) { const pin = workspace.pinControl(message, state.chat); if (pin) article.append(pin); }
   }
+  groupMessageExtras(article, message, role);
   $('messages').append(article); return content;
 }
 function scrollBottom() { $('messages').scrollTop = $('messages').scrollHeight; }

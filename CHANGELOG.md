@@ -4,6 +4,8 @@
 
 La branche `feat/choix-audit-bionic` part du commit `5e92da3` de `main` et conserve `package.json` en **1.8.0**. La dernière Release GitHub vérifiée le 21 octobre reste **v1.5.0**. Ce lot n’ajoute ni tag ni publication ; les sections ci-dessous décrivent des étapes historiques de préparation.
 
+- Ajustement après essai : outils et permissions repliés sur ordinateur comme sur téléphone ; modèle, effort et résumé des droits restent visibles. Les commandes secondaires des réponses sont regroupées dans **Détails et actions**, celles de vos messages dans les trois points de la bulle. Les demandes d’accord, interruptions, opérations incertaines et indicateurs d’erreur restent dans le fil.
+
 - Chats web JSON ou schéma illisibles isolés dans les listes et l’activité, avertissement d’inventaire partiel, source préservée et récupération manuelle.
 - Profils de fichiers Aucun/Lecture/Modification, compatibilité des anciens booléens et permissions figées par message. Accord volontaire pour chaque recherche et URL exacte des outils web ; redirections refusées en mode renforcé. Les scripts approuvés gardent leurs droits propres.
 - Corbeille accessible par projet sans dépendre du chat supprimé, contrôle des copies et restauration sans écrasement ni purge. Intentions avant mutations directes, résultat incertain après interruption et copies à examiner sans rejeu automatique ni promesse de transaction.
