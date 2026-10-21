@@ -15,7 +15,8 @@ function fixture(approval=false) {
  const chats=new Map(),requests=new Map();let counter=0,decisions=0;const now=Date.now();
  if(approval)chats.set('web-11111111-1111-4111-8111-111111111111',{id:'web-11111111-1111-4111-8111-111111111111',projectId,name:'Validation synthétique',source:'web',updatedAt:now,fileProfile:'none',scriptAccess:true,generation:{status:'running',replyId:'22222222-2222-4222-8222-222222222222',requestId:'synthetic-approval-request',awaitingApproval:true},messages:[{id:'22222222-2222-4222-8222-222222222222',role:'assistant',text:'Script proposé.',approvals:[{id:'33333333-3333-4333-8333-333333333333',projectId,chatId:'web-11111111-1111-4111-8111-111111111111',kind:'script',runtime:'python',code:'print("synthetic only")',directory:'',status:'pending',createdAt:now,expiresAt:now+600000}]}]});
  async function respond(url,method,input) {
-  if(url.pathname==='/api/ping')return {app:'bionic-mobile-local',version:'1.8.0',instanceId:'44444444-4444-4444-8444-444444444444'};
+  if(url.pathname==='/api/ping')return {app:'bionic-mobile-local',version:'1.9.0',instanceId:'44444444-4444-4444-8444-444444444444'};
+  if(url.pathname==='/api/updates')return {currentVersion:'1.9.0',enabled:true,candidate:null,lastCheckedAt:Date.now(),canInstall:false,installation:{status:'idle'}};
   if(url.pathname==='/api/status')return {ok:true,models:[model],addresses:[]};
   if(url.pathname==='/api/projects')return {projects:[{id:projectId,name:'Projet fictif',sessionsCount:chats.size}]};
   if(url.pathname==='/api/sessions')return {sessions:[...chats.values()].map(({messages,...chat})=>chat),warnings:[],partial:false};

@@ -21,6 +21,10 @@ import { forkConversation } from './lib/conversation-fork.mjs';
 import { createContextReceipt, addToolRead, addExternalContext, markContextTransmitted } from './lib/context-receipt.mjs';
 import { createWorkspaceFeatures } from './lib/workspace-features.mjs';
 import { createConversationOrganizer, conversationName } from './lib/conversation-organizer.mjs';
+import { createUpdateService } from './lib/update-service.mjs';
+import { prepareUpdate, launchUpdate } from './lib/update-installer.mjs';
+
+const APP_VERSION = JSON.parse(await defaultFS.readFile(new URL('./package.json', import.meta.url), 'utf8')).version;
 
 export async function createCompanion(options = {}) {
 const fs = options.fs || defaultFS;
@@ -78,6 +82,42 @@ const deletedChats = new Set();
 const acceptanceLocks = new Map();
 const nativeContinuations = new Map();
 let modelManagementBusy = false;
+const updater = options.updateService || await createUpdateService({ root: ROOT, currentVersion: APP_VERSION, fetchImpl: options.updateFetchImpl || globalThis.fetch, ...options.updateServiceOptions });
+const installer = options.updateInstaller || { prepareUpdate, launchUpdate };
+const updatePlatform = options.updatePlatform || process.platform;
+let updatePreparing = false, updateMaintenance = false, inFlightMutations = 0;
+let installation = { status: 'idle', message: '' };
+function updateHasWork() {
+  return busy.size > 0 || active.size > 0 || modelManagementBusy || acceptanceLocks.size > 0 ||
+    [...chatRequests.values()].some(request => ['starting', 'queued', 'running'].includes(request.status)) ||
+    [...chatStates.values()].some(({ chat }) => chat.generation?.status === 'running' || chat.queue?.some(item => item.status === 'queued'));
+}
+async function updateStatus() {
+  const checkout = await fs.lstat(path.join(ROOT, '.git')).then(() => true, error => { if (error.code === 'ENOENT') return false; throw error; });
+  const unavailableReason = updatePlatform !== 'win32' ? 'L’installation automatique est disponible sur Windows. Télécharge la Release pour une mise à jour manuelle.' :
+    checkout ? 'Ce dossier est un checkout Git. Mets-le à jour avec Git ; l’installateur automatique est réservé aux archives téléchargées.' :
+    updateHasWork() || inFlightMutations > 0 ? 'Attends la fin des réponses, des accords et des opérations en cours avant d’installer.' : '';
+  return { ...updater.status(), installation: { ...installation }, canInstall: !unavailableReason && !updatePreparing && !updateMaintenance, unavailableReason };
+}
+async function installUpdate(version) {
+  if (updatePreparing || updateMaintenance) throw fail(409, 'Une mise à jour est déjà en préparation.');
+  const available = await updateStatus();
+  if (!available.canInstall) throw fail(409, available.unavailableReason || 'Installation indisponible.');
+  if (updatePreparing || updateMaintenance || updateHasWork() || inFlightMutations > 0) throw fail(409, 'Une opération est en cours. Réessaie après sa fin.');
+  updatePreparing = true; installation = { status: 'preparing', message: 'Téléchargement et vérification de la mise à jour…' };
+  try {
+    const download = await updater.prepareInstall(version);
+    const plan = await installer.prepareUpdate({ root: ROOT, archive: download.archive, archiveBuffer: download.archive, metadata: download.metadata, currentVersion: APP_VERSION, instanceId: config.instanceId, port: PORT, nodePath: process.execPath, parentPid: process.pid });
+    if (updateHasWork() || inFlightMutations > 0) throw fail(409, 'Un travail a démarré pendant la préparation. Termine-le, puis réessaie.');
+    updateMaintenance = true;
+    await installer.launchUpdate(plan);
+    installation = { status: 'restarting', message: 'Mise à jour acceptée. Le serveur redémarre ; reconnecte-toi avec le même code.' };
+    return await updateStatus();
+  } catch (error) {
+    updateMaintenance = false; installation = { status: 'error', message: error.status ? error.message : 'La mise à jour n’a pas été lancée. Les données privées sont conservées. Consulte le guide des mises à jour.' };
+    throw error.status ? error : fail(500, installation.message);
+  } finally { updatePreparing = false; }
+}
 const allowedHosts = new Set(['127.0.0.1', 'localhost', ...localIPs]);
 let requestCounter = 0;
 
@@ -545,7 +585,7 @@ async function generateChat(res, chat, item, request) {
   }
 }
 
-const STATIC = { '/': 'index.html', '/app.js': 'app.js', '/message-drafts.js': 'message-drafts.js', '/files.js': 'files.js', '/workspace.js': 'workspace.js', '/style.css': 'style.css', '/manifest.webmanifest': 'manifest.webmanifest', '/icon.svg': 'icon.svg' };
+const STATIC = { '/': 'index.html', '/app.js': 'app.js', '/updates.js': 'updates.js', '/message-drafts.js': 'message-drafts.js', '/files.js': 'files.js', '/workspace.js': 'workspace.js', '/style.css': 'style.css', '/manifest.webmanifest': 'manifest.webmanifest', '/icon.svg': 'icon.svg' };
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml' };
 function handle(req, res) { return scanCycles.run({}, () => handleRequest(req, res)); }
 async function handleRequest(req, res) {
@@ -554,6 +594,7 @@ async function handleRequest(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   let requestId = ++requestCounter;
+  let countedMutation = false;
   try {
     if (!privateIP(req.socket.remoteAddress || '')) throw fail(403, 'Accès réservé au réseau local.');
     const host = new URL('http://' + (req.headers.host || '')).hostname;
@@ -573,7 +614,7 @@ async function handleRequest(req, res) {
       if (!/^127\.|^::1$|^::ffff:127\./.test(req.socket.remoteAddress) || d.token !== config.adminToken) throw fail(403, 'Accès refusé.');
       const revoked = sessions.size; sessions.clear(); json(res, 200, { revoked, canReconnectWithCode: true }); return;
     }
-    if (req.method === 'GET' && url.pathname === '/api/ping') { json(res, 200, { app: 'bionic-mobile-local', version: '1.8.0', instanceId: config.instanceId }); return; }
+    if (req.method === 'GET' && url.pathname === '/api/ping') { json(res, 200, { app: 'bionic-mobile-local', version: APP_VERSION, instanceId: config.instanceId }); return; }
     if (req.method === 'POST' && url.pathname === '/api/login') {
       const ip = req.socket.remoteAddress;
       let f = failures.get(ip);
@@ -595,6 +636,32 @@ async function handleRequest(req, res) {
     }
     if (url.pathname.startsWith('/api/')) {
       if (!auth(req)) throw fail(401, 'Connecte-toi avec le code du PC.');
+      if (!['GET', 'HEAD'].includes(req.method) && url.pathname !== '/api/updates/install') {
+        if (updateMaintenance) throw fail(503, 'Le serveur redémarre pour une mise à jour. Réessaie après reconnexion.');
+        if (!url.pathname.startsWith('/api/updates/')) { inFlightMutations++; countedMutation = true; }
+      }
+      if (req.method === 'GET' && url.pathname === '/api/updates') { json(res, 200, await updateStatus()); return; }
+      if (req.method === 'POST' && url.pathname === '/api/updates/check') { await updater.check({ manual: true }); json(res, 200, await updateStatus()); return; }
+      if (req.method === 'POST' && url.pathname === '/api/updates/preferences') {
+        const input = await body(req, 1024);
+        if (typeof input.enabled !== 'boolean') throw fail(400, 'Indique si les vérifications automatiques sont activées.');
+        await updater.setEnabled(input.enabled); json(res, 200, await updateStatus()); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/updates/ignore') {
+        const input = await body(req, 1024); await updater.ignore(input.version); json(res, 200, await updateStatus()); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/updates/install') {
+        const input = await body(req, 1024);
+        if (input.confirm !== true || typeof input.version !== 'string') throw fail(400, 'Confirme explicitement la version à installer.');
+        const result = await installUpdate(input.version);
+        // Installation consent has reached the server. A disconnected phone must
+        // not strand the worker or leave the server in maintenance indefinitely.
+        const timer = setTimeout(async () => {
+          try { await close(); if (options.onUpdateRestart) await options.onUpdateRestart(); else if (options.exitOnUpdate) process.exit(0); }
+          catch { console.error('Arrêt pour mise à jour non confirmé.'); }
+        }, 150); timer.unref?.();
+        json(res, 202, result); return;
+      }
       if (req.method === 'GET' && url.pathname === '/api/diagnostics') { json(res, 200, await runDiagnostics({ settings, nativeStore, fetchImpl: fetch, headers: apiHeaders })); return; }
       if (req.method === 'GET' && url.pathname === '/api/files/trash') { json(res, 200, { projectId: url.searchParams.get('projectId'), ...await projectFiles.listTrash(url.searchParams.get('projectId')) }); return; }
       if (req.method === 'GET' && ['/api/files/trash/download','/api/files/backup/download'].includes(url.pathname)) {
@@ -766,17 +833,18 @@ async function handleRequest(req, res) {
     if (!res.headersSent) json(res, e.status || 500, { error: e.status ? e.message : 'Lecture impossible. Réessaie puis consulte le journal du serveur.' });
     else res.end();
     if (!e.status) console.error(JSON.stringify({ time: new Date().toISOString(), requestId, error: e.code || e.name || 'Error' }));
-  }
+  } finally { if (countedMutation) inFlightMutations--; }
 }
 const server = http.createServer(handle);
 server.requestTimeout = settings.requestTimeoutMs || 180000;
 server.headersTimeout = 15000;
-async function close() { for (const job of active.values()) job.controller.abort(); await Promise.allSettled([...chatStates.values()].map(state => state.writes)); if (server.listening) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); } }
-return { server, handle, close, config, settings, readWeb, webChats, chatSnapshot, conversationModelContext, sendChat, chatStates, persistChat, measurements, inferenceGate, addresses:localIPs, withScanCycle: work => scanCycles.run({},work) };
+async function close() { updater.stop(); for (const job of active.values()) job.controller.abort(); await Promise.allSettled([...chatStates.values()].map(state => state.writes)); if (server.listening) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); } }
+if (options.enableUpdateScheduling) server.once('listening', () => updater.start());
+return { server, handle, close, config, settings, readWeb, webChats, chatSnapshot, conversationModelContext, sendChat, chatStates, persistChat, measurements, inferenceGate, updater, addresses:localIPs, withScanCycle: work => scanCycles.run({},work) };
 }
 
 if (process.argv[1] && (process.platform === 'win32' ? path.resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase() : path.resolve(process.argv[1]) === fileURLToPath(import.meta.url))) {
-  const app = await createCompanion();
+  const app = await createCompanion({ enableUpdateScheduling: true, exitOnUpdate: true });
   app.server.on('error', error => { console.error('Serveur non démarré : ' + error.code); process.exit(1); });
   app.server.listen(app.settings.port, '0.0.0.0', async () => {
     const root = path.dirname(fileURLToPath(import.meta.url));

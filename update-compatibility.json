@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "minInstalledVersion": "1.9.0",
+  "nodeMajorMin": 24,
+  "nodeMajorMax": null,
+  "platforms": ["win32"]
+}

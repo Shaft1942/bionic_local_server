@@ -29,7 +29,9 @@
     "docs/metaprompts-exploration.md",
     "docs/metaprompts-implementation-1.7.md",
     "docs/metaprompts-implementation-1.8.md",
+    "docs/metaprompts-mises-a-jour.md",
     "docs/metaprompts.md",
+    "docs/mises-a-jour.md",
     "docs/outils-agents.md",
     "docs/PISTES-UX.md",
     "docs/publication.md",
@@ -53,6 +55,8 @@
     "lib/request-body.mjs",
     "lib/script-tools.mjs",
     "lib/tool-approvals.mjs",
+    "lib/update-installer.mjs",
+    "lib/update-service.mjs",
     "lib/web-tools.mjs",
     "lib/workspace-features.mjs",
     "LICENSE",
@@ -64,6 +68,7 @@
     "public/manifest.webmanifest",
     "public/message-drafts.js",
     "public/style.css",
+    "public/updates.js",
     "public/workspace.js",
     "README.md",
     "Relancer.cmd",
@@ -102,7 +107,11 @@
     "test/script-tools.test.mjs",
     "test/server.test.mjs",
     "test/tool-approvals.test.mjs",
+    "test/update-installer.test.mjs",
+    "test/update-service.test.mjs",
+    "test/updates-http.test.mjs",
     "test/web-tools.test.mjs",
-    "test/workspace-features.test.mjs"
+    "test/workspace-features.test.mjs",
+    "update-compatibility.json"
   ]
 }

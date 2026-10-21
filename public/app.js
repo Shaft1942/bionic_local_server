@@ -139,6 +139,54 @@ const workspace = createWorkspace({ api, node, icon, toast, getState: () => stat
   await openChat(chatId);
   return state.projectId === projectId && state.chat?.id === chatId && !![...$('messages').querySelectorAll('.message')].find(el => el.dataset.messageId === messageId);
 } });
+const updateRecoveryKey = 'bm_update_recovery';
+let updateRecoveryTimer;
+function expireUpdateDrafts() {
+  clearTimeout(updateRecoveryTimer);
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(updateRecoveryKey) || 'null');
+    if (!saved) return;
+    const remaining = 1800000 - (Date.now() - saved.savedAt);
+    if (!Number.isFinite(remaining) || remaining <= 0 || remaining > 1860000) sessionStorage.removeItem(updateRecoveryKey);
+    else updateRecoveryTimer = setTimeout(() => { try { sessionStorage.removeItem(updateRecoveryKey); } catch {} }, remaining);
+  } catch { try { sessionStorage.removeItem(updateRecoveryKey); } catch {} }
+}
+expireUpdateDrafts();
+function rememberUpdateDrafts(instanceId) {
+  saveDraft();
+  const saved = JSON.stringify({ instanceId, savedAt: Date.now(), entries: [...drafts.entries()].slice(-100), view: sessionStorage.getItem('bm_view') });
+  if (saved.length > 2_000_000) throw new Error('Tes brouillons sont trop volumineux pour préparer la mise à jour. Télécharge-les avant de continuer.');
+  sessionStorage.setItem(updateRecoveryKey, saved);
+  expireUpdateDrafts();
+}
+function recoverUpdateDrafts(instanceId) {
+  const serialized = sessionStorage.getItem(updateRecoveryKey);
+  if (!serialized) return;
+  const saved = JSON.parse(serialized);
+  sessionStorage.removeItem(updateRecoveryKey);
+  if (saved.instanceId !== instanceId || !Number.isFinite(saved.savedAt) || Date.now() - saved.savedAt > 1800000 || saved.savedAt > Date.now() + 60000 || !Array.isArray(saved.entries)) return;
+  for (const entry of saved.entries.slice(-100)) {
+    if (!Array.isArray(entry) || typeof entry[0] !== 'string' || entry[0].length > 300 || !entry[1] || typeof entry[1] !== 'object' || typeof entry[1].text !== 'string' || entry[1].text.length > 16000) continue;
+    const current = drafts.get(entry[0]);
+    if (!current?.text && !current?.attachments?.length) drafts.set(entry[0], entry[1]);
+  }
+  if (typeof saved.view === 'string' && saved.view.length < 1000) sessionStorage.setItem('bm_view', saved.view);
+  rememberDrafts();
+}
+const updatesPanel = initUpdates({ api, isAuthenticated: () => state.authenticated, toast,
+  beforeInstall: async () => {
+    if (state.uploading || conversationMove.busy || fileBrowser.isWorking() || fileBrowser.hasUnsavedChanges()) throw new Error('Enregistre le fichier ouvert et attends la fin des opérations avant d’installer.');
+    const info = await api('/api/ping');
+    rememberUpdateDrafts(info.instanceId);
+    return true;
+  },
+  beforeReload: info => {
+    if (fileBrowser.hasUnsavedChanges()) throw new Error('Enregistre le fichier ouvert avant d’actualiser.');
+    const saved = JSON.parse(sessionStorage.getItem(updateRecoveryKey) || 'null');
+    if (saved?.instanceId && saved.instanceId !== info?.instanceId) throw new Error('L’instance du serveur a changé. Reconnexion automatique refusée.');
+    if (saved?.instanceId) rememberUpdateDrafts(saved.instanceId);
+  }
+});
 $('upload-file').prepend(icon('upload'));
 let toastTimeout;
 function toast(message) { $('toast').textContent = message; $('toast').hidden = false; clearTimeout(toastTimeout); toastTimeout = setTimeout(() => $('toast').hidden = true, 4500); }
@@ -250,7 +298,8 @@ function node(tag, className, text) { const el = document.createElement(tag); if
 async function api(route, options = {}) {
   const r = await fetch(route, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
   const j = await r.json().catch(() => ({ error: 'Réponse du serveur illisible.' }));
-  if (r.status === 401) hidePrivateViews();
+  if (route === '/api/updates/install' && !r.ok) { try { sessionStorage.removeItem(updateRecoveryKey); } catch {} }
+  if (r.status === 401 && !updatesPanel.isRestarting()) hidePrivateViews();
   if (!r.ok) throw Object.assign(new Error(j.error || `Le serveur ne répond pas (HTTP ${r.status}).`), { status: r.status });
   return j;
 }
@@ -887,8 +936,8 @@ function newChat(focus = true) {
 }
 async function start() {
   await checkStatus(); state.authenticated = true; ++state.authEpoch; $('login').hidden = true; $('app').hidden = false;
-  workspace.activate();
-  try { const info=await api('/api/ping'), saved=textDraftStore.activate(info.instanceId); $('draft-duration').value=String(saved.duration); for(const [key,value]of saved.entries){if(!drafts.get(key)?.text)drafts.set(key,{...drafts.get(key),text:value.text});} } catch { draftFailure(); }
+  workspace.activate(); updatesPanel.activate();
+  try { const info=await api('/api/ping'), saved=textDraftStore.activate(info.instanceId); $('draft-duration').value=String(saved.duration); for(const [key,value]of saved.entries){if(!drafts.get(key)?.text)drafts.set(key,{...drafts.get(key),text:value.text});} recoverUpdateDrafts(info.instanceId); } catch { draftFailure(); }
   await loadProjects();
   let view;
   try { view = JSON.parse(sessionStorage.getItem('bm_view') || 'null'); } catch {}
@@ -903,6 +952,7 @@ async function start() {
   await recoverReplies(); scheduleRecovery();
 }
 function hidePrivateViews() {
+  updatesPanel.stop();
   try { textDraftStore.clear(); } catch { toast('Impossible d’effacer la copie locale du brouillon. Efface les données de ce site dans le navigateur.'); } $('draft-duration').value='0'; sessionSignature=''; observedGenerations.clear(); announcedEvents.clear();
   closeInfo();
   closeConversationOptions();
@@ -964,6 +1014,7 @@ $('back').addEventListener('click', () => { $('app').classList.remove('thread-op
 $('refresh').addEventListener('click', async () => { if (state.uploading || conversationMove.busy) return; const epoch = state.authEpoch, revision = conversationMove.revision; saveDraft(); $('refresh').disabled = true; try { error(''); await Promise.all([checkStatus(), loadProjects()]); if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return; if (state.chat?.id) await openChat(state.chat.id); if (epoch === state.authEpoch && state.authenticated) toast('Projets et conversations actualisés.'); } catch (e) { if (epoch === state.authEpoch && state.authenticated) { error(e.message); toast(e.message); } } finally { $('refresh').disabled = state.uploading || conversationMove.busy; } });
 $('logout').addEventListener('click', async () => {
   if (state.uploading || conversationMove.busy) return;
+  try { sessionStorage.removeItem(updateRecoveryKey); } catch {}
   hidePrivateViews(); $('code').focus();
   try { await api('/api/logout', { method: 'POST', body: '{}' }); } catch {}
 });

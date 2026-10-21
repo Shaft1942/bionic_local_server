@@ -1,0 +1,122 @@
+'use strict';
+function initUpdates({ api, isAuthenticated = () => true, toast = () => {}, beforeInstall = () => true, beforeReload = () => {} }) {
+  const $ = id => document.getElementById(id);
+  const dialog = $('updates-dialog');
+  const state = { active: false, epoch: 0, revision: 0, status: null, busy: false, action: '', request: false, error: '', timer: null, reconnectTimer: null, controller: null, returnFocus: null, dismissed: null, announced: null, restarting: false };
+  const authenticated = () => state.active && isAuthenticated();
+  const candidate = () => state.status?.candidate;
+  const dirtyFile = () => {
+    const save = $('file-save');
+    return !!save && !save.hidden && !save.disabled && !$('files-view')?.hidden;
+  };
+  const date = value => {
+    if (!value) return '';
+    const time = new Date(value);
+    return Number.isNaN(time.getTime()) ? '' : time.toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
+  };
+  function message(text = '') { state.error = text; $('updates-error').textContent = text; $('updates-error').hidden = !text; }
+  function render() {
+    const data = state.status, next = candidate(), available = !!next && next.version !== data?.ignoredVersion && next.version !== state.dismissed;
+    $('updates-open').hidden = !authenticated(); $('updates-open-sidebar').hidden = !authenticated();
+    $('updates-badge').hidden = !available;
+    $('updates-open-sidebar').classList.toggle('update-available', available);
+    $('conversation-options-toggle').classList.toggle('update-available', available);
+    $('updates-open-sidebar').setAttribute('aria-label', available ? `Mise à jour ${next.version} disponible` : 'Mises à jour du compagnon');
+    $('updates-version').textContent = data ? `Version installée : ${data.currentVersion}` : 'Lecture de la version installée…';
+    const installing = state.restarting || ['preparing', 'installing', 'restarting'].includes(data?.installation?.status);
+    $('updates-status').textContent = installing ? data?.installation?.message || 'Installation en cours. Le serveur va redémarrer…' : state.busy ? state.action : data?.checking ? 'Vérification en cours…' : next ? next.version === data?.ignoredVersion ? 'Cette version est ignorée.' : `Une version compatible est disponible : ${next.version}.` : data ? 'Aucune mise à jour compatible à proposer.' : '';
+    $('updates-candidate').hidden = !next;
+    $('updates-candidate-title').textContent = next ? `Version ${next.version}` : '';
+    const published = date(next?.publishedAt); $('updates-published').textContent = published ? `Publiée le ${published}` : ''; $('updates-published').hidden = !published;
+    $('updates-notes').textContent = next?.notes ? String(next.notes).slice(0, 24000) : 'Aucune note fournie pour cette version.';
+    $('updates-enabled').checked = data?.enabled !== false;
+    $('updates-enabled').disabled = !data || state.busy || installing;
+    $('updates-check').disabled = state.busy || !!data?.checking || installing;
+    $('updates-install').disabled = !next || next.version === data?.ignoredVersion || !data?.canInstall || state.busy || installing;
+    $('updates-ignore').disabled = !next || state.busy || installing || next.version === data?.ignoredVersion;
+    $('updates-later').disabled = installing;
+    const unavailable = next && !data?.canInstall ? data?.unavailableReason || 'L’installation automatique est indisponible pour cette installation.' : '';
+    $('updates-unavailable').textContent = unavailable; $('updates-unavailable').hidden = !unavailable;
+    $('updates-checked').textContent = data?.lastCheckedAt ? `Dernière vérification : ${date(data.lastCheckedAt)}.` : 'Aucune vérification terminée.';
+    if (data?.error && !state.busy && !state.error) message(typeof data.error === 'string' ? data.error : data.error.message || 'La vérification a échoué. Réessaie avec « Vérifier maintenant ».');
+    if (available && state.announced !== next.version) { state.announced = next.version; $('updates-announcement').textContent = `La version ${next.version} du compagnon est disponible. Ouvre les mises à jour pour la consulter.`; }
+  }
+  function schedule() {
+    clearTimeout(state.timer);
+    if (authenticated() && !state.restarting) state.timer = setTimeout(() => { if (!document.hidden) refresh(); else schedule(); }, 60000);
+  }
+  async function refresh() {
+    if (!authenticated() || state.request || state.restarting) return;
+    const epoch = state.epoch, revision = state.revision; state.request = true;
+    const controller = new AbortController(); state.controller = controller;
+    try { const data = await api('/api/updates', { signal: controller.signal }); if (epoch !== state.epoch || revision !== state.revision || !authenticated()) return; state.status = data; if (!state.busy) message(''); render(); }
+    catch (error) { if (epoch === state.epoch && authenticated() && error.name !== 'AbortError') { if (dialog.open) message(error.message); } }
+    finally { if (epoch === state.epoch) { state.request = false; state.controller = null; schedule(); } }
+  }
+  async function mutate(route, body) {
+    if (!authenticated() || state.busy || state.restarting) return;
+    const epoch = state.epoch; ++state.revision; state.busy = true; state.action = route.endsWith('/install') ? 'Préparation de l’installation…' : route.endsWith('/check') ? 'Vérification en cours…' : 'Enregistrement du choix…'; message(''); render();
+    try {
+      const data = await api(route, { method: 'POST', body: JSON.stringify(body) });
+      if (epoch !== state.epoch || !authenticated()) return;
+      if (data?.currentVersion) state.status = data;
+      return data;
+    } catch (error) { if (epoch === state.epoch && authenticated()) { message(error.status === 409 ? 'Une opération est en cours sur le PC. Termine-la puis réessaie l’installation.' : error.message); } return null; }
+    finally { if (epoch === state.epoch) { state.busy = false; render(); } }
+  }
+  function close(returnFocus = true) {
+    if (dialog.open) dialog.close(); dialog.hidden = true;
+    if (returnFocus && state.returnFocus?.isConnected) state.returnFocus.focus({ preventScroll: true });
+  }
+  function open() {
+    if (!authenticated()) return;
+    state.returnFocus = document.activeElement; dialog.hidden = false;
+    if (!dialog.open) dialog.showModal();
+    $('updates-close').focus(); refresh();
+  }
+  async function reconnect(version, epoch) {
+    const started = Date.now();
+    const poll = async () => {
+      if (epoch !== state.epoch || !authenticated()) return;
+      const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 3500);
+      try {
+        const response = await fetch('/api/ping', { cache: 'no-store', signal: controller.signal });
+        const data = response.ok ? await response.json() : null;
+        if (data?.app === 'bionic-mobile-local' && data.version === version) {
+          state.restarting = false;
+          if (dirtyFile()) { message('La mise à jour est installée. Enregistre les changements du fichier, puis actualise cette page.'); render(); return; }
+          await beforeReload(data);
+          location.reload(); return;
+        }
+      } catch {} finally { clearTimeout(timeout); }
+      if (Date.now() - started > 120000) { state.restarting = false; message('Le serveur ne s’est pas reconnecté. Vérifie-le sur le PC, puis actualise la page. Tes modifications affichées restent ouvertes.'); render(); schedule(); return; }
+      state.reconnectTimer = setTimeout(poll, 2000);
+    };
+    state.reconnectTimer = setTimeout(poll, 1500);
+  }
+  async function install() {
+    const next = candidate(); if (!authenticated() || !next || !state.status?.canInstall || state.busy || state.restarting) return;
+    if (dirtyFile()) return message('Un fichier contient des changements non enregistrés. Enregistre-le sur le PC ou télécharge tes changements avant d’installer la mise à jour.');
+    if (!window.confirm(`Installer la version ${next.version} et redémarrer le serveur maintenant ? Les sources du programme seront remplacées avec une sauvegarde. Conversations, réglages et projets sont conservés. Tu devras peut-être te reconnecter avec le même code.`)) return;
+    try { if (!(await beforeInstall())) return; } catch (error) { return message(error.message || 'Impossible de préparer tes brouillons. L’installation n’a pas commencé.'); }
+    const epoch = state.epoch;
+    const result = await mutate('/api/updates/install', { version: next.version, confirm: true });
+    if (!result || epoch !== state.epoch || !authenticated()) return;
+    state.restarting = true; clearTimeout(state.timer); message(''); render();
+    reconnect(next.version, epoch);
+  }
+  $('updates-open').addEventListener('click', open); $('updates-open-sidebar').addEventListener('click', open);
+  $('updates-close').addEventListener('click', () => close());
+  dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
+  $('updates-later').addEventListener('click', () => { state.dismissed = candidate()?.version; render(); close(); });
+  $('updates-ignore').addEventListener('click', async () => { const version = candidate()?.version; if (!version) return; const result = await mutate('/api/updates/ignore', { version }); if (result) { state.status.ignoredVersion = version; render(); toast(`La version ${version} ne sera plus proposée.`); } });
+  $('updates-enabled').addEventListener('change', async () => { const enabled = $('updates-enabled').checked; const result = await mutate('/api/updates/preferences', { enabled }); if (result) { state.status.enabled = enabled; render(); } else render(); });
+  $('updates-check').addEventListener('click', async () => { state.dismissed = null; const result = await mutate('/api/updates/check', {}); if (result) await refresh(); });
+  $('updates-install').addEventListener('click', install);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+  return {
+    activate() { if (state.active) return refresh(); state.active = true; ++state.epoch; render(); return refresh(); },
+    stop() { state.active = false; ++state.epoch; clearTimeout(state.timer); clearTimeout(state.reconnectTimer); state.controller?.abort(); state.controller = null; state.request = false; state.busy = false; state.restarting = false; state.status = null; state.dismissed = null; state.announced = null; close(false); message(''); $('updates-announcement').textContent = ''; render(); },
+    open, refresh, isRestarting() { return state.restarting; }
+  };
+}

@@ -1,5 +1,15 @@
 # Journal des versions
 
+## 1.9.0 — en préparation
+
+- Vérification centrale des Releases publiques à chaque démarrage du serveur puis toutes les 24 heures de fonctionnement, avec vérification manuelle et désactivation facultative.
+- Proposition discrète de la seule version stable la plus récente compatible avec l'installation, Windows et Node.js, même en sautant plusieurs versions. Métadonnées de compatibilité jointes aux futures Releases ; les anciennes Releases sans ce contrat ne sont pas proposées automatiquement.
+- Choix distincts : installer et redémarrer après confirmation, reporter dans cet onglet, ou ignorer durablement cette version. Le refus d'une version ne masque pas une suivante.
+- Installation réservée aux dossiers extraits d'une archive, quand aucun travail n'est en cours. Vérification des empreintes et de l'inventaire, sauvegarde des sources remplacées, protection des données privées et redémarrage avec contrôle de l'identité et de la version. Retour aux sources précédentes si l'application de la mise à jour ou son contrôle de démarrage échoue.
+- Préservation temporaire des brouillons de l'onglet pendant le redémarrage. Les fichiers ouverts non enregistrés empêchent l'installation ; le même code permet de se reconnecter.
+
+La première installation de 1.9.0 reste manuelle : 1.8.0 n'inclut pas de vérificateur. Les limites de compatibilité et de récupération sont décrites dans [Mises à jour](docs/mises-a-jour.md).
+
 ## 1.8.0 — 21 octobre 2026
 
 Cette version réunit les conversations parallèles, les livrables, les outils et branches de conversations, le lot d’audit et les ajustements de présentation après essai. Les historiques natifs Bionic restent en lecture seule ; les données privées et les fichiers des projets ne font pas partie de l’archive.

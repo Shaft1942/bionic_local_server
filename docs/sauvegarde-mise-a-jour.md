@@ -44,7 +44,9 @@ Une intention de mutation directe restée sans reçu est marquée **Opération �
 
 ## Installer une nouvelle version
 
-Pour cette version, choisissez `bionic-mobile-v1.8.0.zip` et les notes de la [Release 1.8.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.8.0). Conservez votre installation précédente et ses données privées avant la mise à jour. Le numéro dans les sources ne suffit pas à identifier une Release : vérifiez aussi son tag et le résultat du workflow. Voir [le guide de publication](publication.md).
+À partir de 1.9.0, les installations extraites d'un ZIP peuvent accepter une [mise à jour proposée](mises-a-jour.md), après vérification au démarrage et toutes les 24 heures de fonctionnement. Le refus d'une version est mémorisé et aucune installation ne commence sans confirmation. La première installation de ce mécanisme depuis 1.8.0 reste manuelle ; les instructions ci-dessous restent utilisables pour une mise à jour ou une récupération manuelle.
+
+Choisissez le ZIP construit et les notes de la [Release souhaitée](https://github.com/Shaft1942/bionic_local_server/releases). Si vous partez de 1.8.0, l'installation initiale du vérificateur de mises à jour demande cette procédure manuelle. Conservez votre installation précédente et ses données privées avant la mise à jour. Le numéro dans les sources ne suffit pas à identifier une Release : vérifiez aussi son tag et le résultat du workflow. Voir [le guide de publication](publication.md).
 
 1. Faites la sauvegarde précédente.
 2. Téléchargez la nouvelle archive depuis les [Releases](https://github.com/Shaft1942/bionic_local_server/releases) et extrayez-la dans un nouveau dossier.

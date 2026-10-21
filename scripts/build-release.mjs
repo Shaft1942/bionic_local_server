@@ -6,6 +6,8 @@ import { collectReleaseFiles, repositoryRoot } from './release-files.mjs';
 const files = await collectReleaseFiles();
 const pkg = JSON.parse(files.find(file => file.path === 'package.json').bytes.toString('utf8'));
 if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(pkg.version)) throw new Error('Version invalide.');
+const compatibility = JSON.parse(files.find(file => file.path === 'update-compatibility.json')?.bytes.toString('utf8') || 'null');
+if (!compatibility || compatibility.schemaVersion !== 1 || !/^\d+\.\d+\.\d+$/.test(compatibility.minInstalledVersion) || !Number.isInteger(compatibility.nodeMajorMin) || compatibility.nodeMajorMin < 24 || (compatibility.nodeMajorMax !== null && (!Number.isInteger(compatibility.nodeMajorMax) || compatibility.nodeMajorMax < compatibility.nodeMajorMin)) || !Array.isArray(compatibility.platforms) || compatibility.platforms.length !== 1 || compatibility.platforms[0] !== 'win32') throw new Error('Compatibilité des mises à jour invalide.');
 const prefix = `bionic-mobile-v${pkg.version}/`, local = [], central = [];
 let offset = 0;
 for (const file of files) {
@@ -25,8 +27,10 @@ const archive = Buffer.concat([...local,directory,end]);
 const dist = path.join(repositoryRoot, 'dist');
 await mkdir(dist,{recursive:true});
 if ((await lstat(dist)).isSymbolicLink() || path.relative(await realpath(repositoryRoot),await realpath(dist)) !== 'dist') throw new Error('Le dossier dist doit rester dans le dépôt.');
-const name = `bionic-mobile-v${pkg.version}.zip`, destination = path.join(dist,name), sums = path.join(dist,'SHA256SUMS.txt');
-for (const file of [destination,sums]) { const info = await lstat(file).catch(e => { if (e.code !== 'ENOENT') throw e; }); if (info?.isSymbolicLink()) throw new Error('Une sortie de distribution est un lien.'); }
+const name = `bionic-mobile-v${pkg.version}.zip`, destination = path.join(dist,name), sums = path.join(dist,'SHA256SUMS.txt'), updateManifest = path.join(dist,'update-manifest.json');
+for (const file of [destination,sums,updateManifest]) { const info = await lstat(file).catch(e => { if (e.code !== 'ENOENT') throw e; }); if (info?.isSymbolicLink()) throw new Error('Une sortie de distribution est un lien.'); }
+const sha256 = createHash('sha256').update(archive).digest('hex');
 await writeFile(destination,archive);
-await writeFile(sums,createHash('sha256').update(archive).digest('hex')+'  '+name+'\n');
-console.log(`Archive propre : dist/${name} (${files.length} fichiers). Empreinte : dist/SHA256SUMS.txt`);
+await writeFile(sums,sha256+'  '+name+'\n');
+await writeFile(updateManifest, JSON.stringify({ ...compatibility, version: pkg.version, archive: name, sha256 }, null, 2) + '\n');
+console.log(`Archive propre : dist/${name} (${files.length} fichiers). Empreinte : dist/SHA256SUMS.txt. Compatibilité : dist/update-manifest.json`);

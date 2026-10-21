@@ -11,6 +11,7 @@
   <script src="/message-drafts.js" defer></script>
   <script src="/files.js" defer></script>
   <script src="/workspace.js" defer></script>
+  <script src="/updates.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -41,7 +42,7 @@
       <p id="sessions-warning" class="listing-warning" hidden></p>
       <nav id="sessions" class="sessions" aria-label="Conversations du projet"></nav>
       <button id="models-open-sidebar" class="models-open" type="button">Modèles chargés</button>
-      <div class="sidebar-bottom"><span id="status" class="status">Connexion…</span><button id="logout" class="icon-button" aria-label="Se déconnecter"></button></div>
+      <div class="sidebar-bottom"><span id="status" class="status">Connexion…</span><div class="sidebar-system-actions"><button id="updates-open-sidebar" class="icon-button updates-indicator" type="button" aria-label="Mises à jour du compagnon" title="Mises à jour du compagnon" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3a7 7 0 0 0 11.6-1"></path></svg></button><button id="logout" class="icon-button" aria-label="Se déconnecter"></button></div></div>
     </aside>
     <main class="thread" id="thread">
       <header class="thread-header"><button id="back" class="icon-button back" aria-label="Retour aux conversations"></button><div class="thread-titles"><h1 id="thread-title">Tes conversations, ici.</h1><p id="thread-subtitle">Choisis un projet et un fil pour commencer.</p></div><button id="activity-open-thread" class="icon-button activity-thread" aria-label="Depuis votre départ"></button><button id="models-open-thread" class="icon-button" aria-label="Voir et décharger les modèles chargés"></button><button id="conversation-options-toggle" class="icon-button" type="button" aria-label="Options de la conversation" aria-expanded="false" aria-controls="conversation-options"></button></header>
@@ -52,6 +53,7 @@
         <button id="info-button" class="conversation-help" type="button" aria-expanded="false" aria-controls="info">Comment fonctionne ce compagnon ?</button>
         <details class="draft-settings"><summary>Brouillons sur cet appareil</summary><label for="draft-duration">Conserver les messages non envoyés</label><select id="draft-duration"><option value="0">Cet onglet uniquement</option><option value="3600000">1 heure</option><option value="86400000">24 heures</option><option value="604800000">7 jours</option></select><p>La durée part de la dernière modification du texte. Aucun fichier joint ni contenu de l’éditeur n’est conservé durablement. Déconnexion et « Effacer » retirent les copies locales. Ce stockage n’est pas une sauvegarde garantie.</p><div class="workspace-actions"><button id="draft-download" class="file-action" type="button">Télécharger ce brouillon</button><button id="draft-clear" class="file-action" type="button">Effacer mes brouillons</button></div><p id="draft-status" role="status"></p></details>
         <button id="diagnostics-open" class="conversation-help" type="button">Diagnostic de connexion</button>
+        <button id="updates-open" class="conversation-help" type="button" hidden>Mises à jour du compagnon <span id="updates-badge" class="updates-badge" hidden>Disponible</span></button>
         <div id="diagnostics-result" class="diagnostics-result" hidden></div>
       </section>
       <section id="info" class="info-panel" aria-labelledby="info-title" hidden><header class="info-panel-header"><h2 id="info-title">Comment fonctionne ce compagnon ?</h2><button id="info-close" class="icon-button" type="button" aria-label="Fermer l’aide" title="Fermer l’aide"></button></header><div id="info-body" class="info-panel-body"><p>Les historiques natifs restent lus sans modification. Les réponses écrites ici forment des conversations web distinctes sur ce PC.</p><p>Lorsque l’option de modification est cochée, le modèle dispose d’outils pour lire, créer et modifier les textes du dossier de travail de ce projet. Les actions sont enregistrées dans le chat. Les remplacements conservent une copie précédente que tu peux rétablir.</p><p>« Importer un fichier » copie les fichiers de ton appareil dans « Imports telephone », au sein du projet. Les formats lisibles sont joints au prochain message, dans la limite de quatre pièces jointes. Pour analyser une image PNG, JPEG ou WebP, choisis un modèle marqué Vision.</p><p>« Fichiers du projet » reste disponible pour consulter et éditer les fichiers manuellement. Cette connexion HTTP est destinée au réseau domestique de confiance.</p></div></section>
@@ -127,6 +129,26 @@
     <div id="models-list" class="models-list"></div>
     <p class="models-note">Cette action concerne les sessions Bionic qui utilisent cette instance. Un prochain message peut recharger le modèle à la demande.</p>
   </dialog>
+  <dialog id="updates-dialog" class="updates-dialog" aria-labelledby="updates-title" aria-describedby="updates-description" hidden>
+    <header class="updates-header"><h2 id="updates-title">Mises à jour</h2><button id="updates-close" class="icon-button" type="button" aria-label="Fermer les mises à jour"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg></button></header>
+    <div class="updates-body">
+      <p id="updates-description">Les mises à jour concernent le compagnon web installé sur ce PC.</p>
+      <p id="updates-version" class="updates-version"></p>
+      <p id="updates-status" role="status" aria-live="polite"></p>
+      <p id="updates-error" class="error" role="alert" hidden></p>
+      <section id="updates-candidate" aria-labelledby="updates-candidate-title" hidden>
+        <h3 id="updates-candidate-title"></h3>
+        <p id="updates-published" class="updates-published" hidden></p>
+        <details class="updates-notes"><summary>Notes de version</summary><pre id="updates-notes"></pre></details>
+        <p id="updates-install-note">Les sources du programme seront remplacées, avec une copie de sauvegarde. Conversations, réglages et projets sont conservés. Enregistre les fichiers et messages non envoyés avant de continuer. Le serveur redémarre ; reconnecte-toi avec le même code.</p>
+        <p id="updates-unavailable" hidden></p>
+        <div class="updates-actions"><button id="updates-install" class="primary" type="button">Installer et redémarrer</button><button id="updates-later" class="file-action" type="button">Plus tard</button><button id="updates-ignore" class="updates-text-action" type="button">Ignorer cette version</button></div>
+      </section>
+      <div class="updates-preferences"><label for="updates-enabled"><input id="updates-enabled" type="checkbox"><span>Vérifier automatiquement</span></label><p>À chaque démarrage du serveur, puis toutes les 24 heures de fonctionnement. L’installation reste soumise à ton accord.</p></div>
+      <div class="updates-check-row"><button id="updates-check" class="file-action" type="button">Vérifier maintenant</button><p id="updates-checked"></p></div>
+    </div>
+  </dialog>
+  <p id="updates-announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
   <div id="toast" class="toast" role="status" hidden></div>
   <div id="event-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 </body>

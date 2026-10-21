@@ -2,6 +2,16 @@
 
 [Retour au README](../README.md)
 
+## Contrat des mises à jour à partir de 1.9.0
+
+`npm run release` produit désormais trois pièces jointes : le ZIP, `SHA256SUMS.txt` et `update-manifest.json`. Le workflow de publication joint les trois à la Release ; une version sans ce manifeste reste téléchargeable manuellement mais n'est pas proposée automatiquement.
+
+Avant un tag, examinez `update-compatibility.json` : `schemaVersion: 1`, `minInstalledVersion`, borne `maxInstalledVersion` facultative, `nodeMajorMin`, `nodeMajorMax` et `platforms`. Ces champs sont une déclaration de compatibilité à vérifier par le mainteneur, pas une déduction fiable du seul numéro de version. Gardez la borne minimale de la plus ancienne version depuis laquelle la mise à jour directe a été validée ; n'imposez pas une version intermédiaire inutilement. Un changement incompatible doit relever cette borne ou annoncer une mise à jour manuelle. Le protocole inconnu sera refusé par les anciens vérificateurs.
+
+Le générateur ajoute au manifeste le numéro du paquet, le nom du ZIP et son SHA-256. Ne modifiez pas ces champs à la main après génération. Le manifeste est une pièce jointe extérieure au ZIP afin d'éviter une empreinte circulaire. Avant publication, vérifiez les tests Windows/Ubuntu du commit choisi et un parcours d'installation depuis la version minimale annoncée, avec données synthétiques et récupération. Les empreintes vérifient la cohérence des pièces jointes ; elles ne constituent pas une signature indépendante du compte qui publie la Release.
+
+La branche de travail 1.9.0 ne publie pas automatiquement une Release. La Release 1.8.0 est conservée ; son installation initiale de ce mécanisme nécessite une mise à jour manuelle.
+
 Ce guide concerne la **copie de distribution propre** du programme. Il ne faut pas publier le dossier d’une installation active contenant des conversations, codes, journaux ou sauvegardes.
 
 Le dépôt prévu est [Shaft1942/bionic_local_server](https://github.com/Shaft1942/bionic_local_server). La licence du compagnon est [MIT](../LICENSE). Elle n’inclut pas Bionic, les modèles ou les documents des utilisateurs.
@@ -90,7 +100,7 @@ Une publication future nécessite une instruction distincte, un numéro de versi
 
 La note doit dire ce qui est nouveau, comment installer et mettre à jour, ce qui a été testé et les limitations connues. Les versions de Bionic et les systèmes non vérifiés ne doivent pas être présentés comme compatibles par défaut.
 
-Le workflow `release.yml` automatise cette procédure lors de l’envoi d’un tag `v*` : il vérifie que le tag correspond à la version du paquet, lance les tests, construit l’archive depuis le manifeste et crée une Release avec le ZIP et `SHA256SUMS.txt`. L’envoi de ce tag déclenche donc une publication téléchargeable ; ne l’effectuez qu’après revue des sources. Les vérifications ordinaires des branches et pull requests disposent seulement d’un accès en lecture au dépôt.
+Le workflow `release.yml` automatise cette procédure lors de l’envoi d’un tag `v*` : il vérifie que le tag correspond à la version du paquet, lance les tests, construit l’archive depuis le manifeste et crée une Release avec le ZIP, `SHA256SUMS.txt` et `update-manifest.json`. L’envoi de ce tag déclenche donc une publication téléchargeable ; ne l’effectuez qu’après revue des sources. Les vérifications ordinaires des branches et pull requests disposent seulement d’un accès en lecture au dépôt.
 
 GitHub peut distribuer le code et les archives, mais **GitHub Pages n’héberge pas le serveur Node.js de cette application**. Chaque personne télécharge et exécute sa propre copie sur son PC avec Bionic. Aucun serveur central n’est nécessaire à cette distribution.
 
