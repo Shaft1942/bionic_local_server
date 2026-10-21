@@ -44,7 +44,7 @@ Une intention de mutation directe restée sans reçu est marquée **Opération �
 
 ## Installer une nouvelle version
 
-Au contrôle GitHub du **21 octobre 2026**, la dernière Release reste **v1.5.0** ; `main` au commit `5e92da3` indique 1.8.0 et le lot local d’audit n’est pas publié. Choisissez l’archive et ses notes correspondantes. Le numéro 1.8.0 dans les sources ne transforme pas cette branche en Release. Voir [le statut de distribution](publication.md#statut-de-distribution-vérifié).
+Pour cette version, choisissez `bionic-mobile-v1.8.0.zip` et les notes de la [Release 1.8.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.8.0). Conservez votre installation précédente et ses données privées avant la mise à jour. Le numéro dans les sources ne suffit pas à identifier une Release : vérifiez aussi son tag et le résultat du workflow. Voir [le guide de publication](publication.md).
 
 1. Faites la sauvegarde précédente.
 2. Téléchargez la nouvelle archive depuis les [Releases](https://github.com/Shaft1942/bionic_local_server/releases) et extrayez-la dans un nouveau dossier.

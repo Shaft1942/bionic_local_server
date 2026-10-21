@@ -1,8 +1,8 @@
-# Choix d’audit retenus — diff local non publié
+# Choix d’audit retenus — journal de préparation 1.8.0
 
 [Retour au README](../README.md) · [Vérification](verification.md) · [Développement](developpement.md)
 
-Ce lot reprend les **23 choix explicitement retenus** le 20 octobre 2026 dans l’audit `bionic-audit-1.8.0-5e92da3-2026-10-20`. Sa référence est [`5e92da3fae6dccdb36738eb42ab4a0b1b2b00bf1`](https://github.com/Shaft1942/bionic_local_server/commit/5e92da3fae6dccdb36738eb42ab4a0b1b2b00bf1), `main` annoncé en 1.8.0. Les changements sont préparés sur `feat/choix-audit-bionic`, avec ce numéro conservé. Ils ne sont pas publiés. Au contrôle GitHub du 21 octobre 2026, la dernière Release reste v1.5.0 et la dernière CI examinée sur la référence auditée, run 39498935835, est rouge.
+Ce journal reprend les **23 choix explicitement retenus** le 20 octobre 2026 dans l’audit `bionic-audit-1.8.0-5e92da3-2026-10-20`. Sa référence est [`5e92da3fae6dccdb36738eb42ab4a0b1b2b00bf1`](https://github.com/Shaft1942/bionic_local_server/commit/5e92da3fae6dccdb36738eb42ab4a0b1b2b00bf1). Les changements ont été préparés sur `feat/choix-audit-bionic` pour 1.8.0. Les constats de distribution et de CI des tableaux décrivent cet audit avant publication ; ils ne sont pas des mesures continues. Consultez [les Releases et la CI](publication.md#statut-de-distribution-vérifié) pour le commit publié.
 
 Les fonctions décrites ici sont présentes dans le diff local. Les critères ci-dessous forment un contrat de vérification ; leur présence dans le tableau ne signifie pas qu’un essai réel, une plateforme ou chaque combinaison d’interface a été validé. Le [bilan de vérification](verification.md) fait autorité sur les essais effectués. Aucune publication ni modification d’installation personnelle ne fait partie du lot.
 

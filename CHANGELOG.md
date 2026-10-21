@@ -1,8 +1,8 @@
 # Journal des versions
 
-## Lot d’audit — changements locaux non publiés, 21 octobre 2026
+## 1.8.0 — 21 octobre 2026
 
-La branche `feat/choix-audit-bionic` part du commit `5e92da3` de `main` et conserve `package.json` en **1.8.0**. La dernière Release GitHub vérifiée le 21 octobre reste **v1.5.0**. Ce lot n’ajoute ni tag ni publication ; les sections ci-dessous décrivent des étapes historiques de préparation.
+Cette version réunit les conversations parallèles, les livrables, les outils et branches de conversations, le lot d’audit et les ajustements de présentation après essai. Les historiques natifs Bionic restent en lecture seule ; les données privées et les fichiers des projets ne font pas partie de l’archive.
 
 - Ajustement après essai : outils et permissions repliés sur ordinateur comme sur téléphone ; modèle, effort et résumé des droits restent visibles. Les commandes secondaires des réponses sont regroupées dans **Détails et actions**, celles de vos messages dans les trois points de la bulle. Les demandes d’accord, interruptions, opérations incertaines et indicateurs d’erreur restent dans le fil.
 
@@ -16,9 +16,9 @@ La branche `feat/choix-audit-bionic` part du commit `5e92da3` de `main` et conse
 - Plafond d’inférences optionnel, désactivé par défaut (`maxConcurrentInferences: 0`), FIFO par appel modèle et créneau libéré pendant les accords humains. Le délai global existant de trente minutes inclut admission et attente d’accord.
 - Diagnostic à cinq contrôles avec export par liste blanche, sans prompt ni lancement de modèle. Fabrique importable `createCompanion`, fixtures de chemins canoniques/POSIX corrigées et deux parcours navigateur de développement versionnés ; Playwright reste une dépendance de développement.
 
-La portée des vérifications, la CI publique encore en échec et les essais non réalisés sont dans [Vérification](docs/verification.md). Les critères et retours arrière sont dans [Choix d’audit](docs/choix-audit.md).
+La portée des vérifications et les essais non réalisés sont dans [Vérification](docs/verification.md). Le résultat de la CI est à vérifier sur le commit du tag. Les critères et retours arrière sont dans [Choix d’audit](docs/choix-audit.md).
 
-## 1.8.0 — en préparation
+### Outils et branches de conversations inclus dans 1.8.0
 
 - Outils du compagnon activables séparément pour les fichiers, le web public et les scripts ; autorisations figées dans chaque message envoyé, y compris en file d’attente.
 - Recherche ciblée de noms ou de passages, inspection, création de dossiers, copie et déplacement sans écrasement, corbeille privée et restauration depuis l’action d’origine.
@@ -30,7 +30,7 @@ La portée des vérifications, la CI publique encore en échec et les essais non
 - Guide des outils, configuration des moteurs et méta-prompts exécutés. La portée des essais reste détaillée dans le bilan de vérification ; la disponibilité d’un site public ou d’un modèle réel n’est pas déduite de tests simulés.
 - Compatibilité avec le classement, le renommage, la suppression et Sans projet : droits de fichiers et scripts désactivés après déplacement, restauration de corbeille sérialisée avec les changements du chat, noms de branches limités à 120 caractères et projets d’origine conservés.
 
-## 1.7.0 — en préparation
+### Livrables et contexte inclus dans 1.8.0
 
 - Fermeture directe de l’aide « Comment fonctionne ce compagnon ? », avec un bouton toujours visible pendant le défilement et le raccourci Échap.
 - Déplacement des conversations entre projets ou vers **Sans projet**, depuis les options du chat. Le classement des historiques natifs reste propre au compagnon ; leurs originaux Bionic restent intacts.
@@ -42,7 +42,7 @@ La portée des vérifications, la CI publique encore en échec et les essais non
 - Menu **Fichiers** sur téléphone pour les pièces jointes, les imports et l’autorisation de modification, dont l’état reste visible quand le menu est fermé.
 - Documentation des méta-prompts exécutés et vérifications sur des données synthétiques.
 
-## 1.6.0 — en préparation
+### Conversations parallèles incluses dans 1.8.0
 
 - Rédaction du message suivant pendant la réponse du modèle, avec mise en attente dans la même conversation.
 - Navigation et nouveaux chats pendant les générations, avec suivi distinct des réponses.

@@ -6,9 +6,9 @@ Ce projet communautaire est indépendant de Bionic. Bionic et ses modèles ne so
 
 ## Quelle version télécharger ?
 
-État vérifié sur GitHub le **21 octobre 2026** : la dernière Release publiée est **v1.5.0**. Le `main` examiné, commit [`5e92da3`](https://github.com/Shaft1942/bionic_local_server/commit/5e92da3fae6dccdb36738eb42ab4a0b1b2b00bf1), s’annonce en **1.8.0**. La branche locale `feat/choix-audit-bionic` conserve ce numéro mais ses changements ne sont **pas publiés**. Le téléchargement d’une Release v1.5.0 ne contient donc pas toutes les fonctions décrites ci-dessous. **Code → Download ZIP** fournit l’état de la branche choisie, qui peut différer de la dernière Release.
+Ce guide décrit la **version 1.8.0**. Téléchargez **`bionic-mobile-v1.8.0.zip`** depuis [la page de cette version](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.8.0), avec son fichier `SHA256SUMS.txt`. Les archives plus anciennes, notamment 1.5.0, ne contiennent pas toutes les fonctions décrites ici. **Code → Download ZIP** fournit l’état de la branche choisie, qui peut différer d’une Release.
 
-Le [bilan du lot d’audit](docs/choix-audit.md) décrit les changements locaux et leurs limites. La [vérification](docs/verification.md) distingue les essais synthétiques locaux de la CI et des essais réels.
+Le [bilan du lot d’audit](docs/choix-audit.md) décrit les choix intégrés et leurs limites. La [vérification](docs/verification.md) distingue les essais synthétiques locaux de la CI et des essais réels. Pour mettre à jour une installation existante, suivez [la procédure de sauvegarde](docs/sauvegarde-mise-a-jour.md).
 
 ## Ce que vous pouvez faire
 

@@ -8,7 +8,7 @@ Le dépôt prévu est [Shaft1942/bionic_local_server](https://github.com/Shaft19
 
 ## Statut de distribution vérifié
 
-Vérification GitHub au début du travail du **21 octobre 2026** :
+État historique relevé au début de l’audit, le **21 octobre 2026**, avant la préparation de la Release 1.8.0 :
 
 | Source | État observé |
 | --- | --- |
@@ -17,7 +17,7 @@ Vérification GitHub au début du travail du **21 octobre 2026** :
 | Lot `feat/choix-audit-bionic` | Modifications locales, numéro 1.8.0 conservé, non publiées |
 | Dernière CI publique examinée | [Run 39498935835](https://github.com/Shaft1942/bionic_local_server/actions/runs/39498935835) sur la référence auditée, en échec |
 
-Ces observations sont datées. Aucun push, tag, merge, publication ni CI distante sur le nouveau diff n’est compris dans ce lot. Une archive construite localement est un artefact de vérification, pas une Release. Les critères A05 de CI Windows/Ubuntu sur le futur commit restent à satisfaire avant une promotion.
+Ces observations sont historiques et ne décrivent pas le dernier état du dépôt. Consultez [les Releases](https://github.com/Shaft1942/bionic_local_server/releases) et [les exécutions CI](https://github.com/Shaft1942/bionic_local_server/actions/workflows/ci.yml) pour la version choisie. Une archive construite localement est un artefact de vérification ; sa publication exige une CI Windows/Ubuntu verte sur le commit exact avant l’envoi du tag.
 
 ## Vérifier la copie avant l’envoi
 

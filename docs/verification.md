@@ -1,8 +1,8 @@
 # Vérification des distributions
 
-## Lot d’audit local du 21 octobre 2026 — non publié
+## Contrôles locaux avant publication 1.8.0 — 21 octobre 2026
 
-La branche `feat/choix-audit-bionic` part de `main` au commit `5e92da3fae6dccdb36738eb42ab4a0b1b2b00bf1`. La version du paquet reste 1.8.0. La dernière Release GitHub vérifiée au début du travail reste [v1.5.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.5.0). Aucun push, merge, tag ou publication n’est inclus dans cette validation ; un commit local ne constitue pas une livraison GitHub. Les bilans plus bas sont **historiques** et leurs nombres ne décrivent pas ce nouveau diff.
+La préparation 1.8.0 part de `main` au commit `5e92da3fae6dccdb36738eb42ab4a0b1b2b00bf1`. La dernière Release au début du travail était [v1.5.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.5.0). Les contrôles ci-dessous décrivent les essais locaux prépublication, pas une certification de compatibilité Bionic. La CI Windows/Ubuntu doit réussir sur le commit exact avant l’envoi du tag ; son état est consultable dans [GitHub Actions](https://github.com/Shaft1942/bionic_local_server/actions/workflows/ci.yml). Les bilans des versions précédentes restent **historiques**.
 
 Les contrôles locaux Windows/Node utilisent des dossiers temporaires synthétiques et des dépendances injectées : chats JSON/schémas invalides préservés, erreurs globales distinctes, profils de fichiers, accord web exact et refus de redirections, corbeille indépendante, intentions sans rejeu, réception HTTP, admission FIFO, révocation, diagnostic filtré et import sans effets de la fabrique. Les tests de chemins utilisent des fixtures canoniques et absolues sur la plateforme.
 
@@ -25,7 +25,7 @@ Le script versionné `scripts/browser-smoke.mjs` utilise l’interface réelle e
 
 Le benchmark synthétique sur 10/100/1 000 chats, froid puis chaud, compare un contrôle de parcours par projet au partage de cycle avec le même lecteur actuel : deux parcours deviennent un, les JSON du cache chaud ne sont pas relus. La requête d’activité partage aussi un parcours. Ces observations ne comparent pas deux serveurs complets et n’établissent aucun gain utilisateur de latence ou de mémoire. Aucun index, pagination ou cache LRU n’est ajouté.
 
-La [dernière CI publique examinée, run 39498935835](https://github.com/Shaft1942/bionic_local_server/actions/runs/39498935835), sur la référence auditée est **en échec**. Les corrections locales de fixtures ne constituent pas une CI réparée. WSL n’a pas pu être lancé dans l’environnement de validation (`E_ACCESSDENIED`) : Ubuntu et une nouvelle CI distante ne sont pas exécutés sur ce diff. Aucune CI navigateur automatique n’est ajoutée.
+La [CI de la référence auditée, run 39498935835](https://github.com/Shaft1942/bionic_local_server/actions/runs/39498935835), était **en échec**. Ce résultat historique ne décrit pas un nouveau commit. Les corrections locales de fixtures ne constituent pas à elles seules une CI réparée. WSL n’a pas pu être lancé dans l’environnement local (`E_ACCESSDENIED`) : aucune exécution Ubuntu locale n’est acquise. Le résultat distant du commit choisi doit être vérifié séparément dans GitHub Actions. Aucune CI navigateur automatique n’est ajoutée.
 
 Aucun modèle Bionic réel, GPU, téléphone physique, lecteur d’écran réel ou réseau Wi-Fi physique n’est validé par ce lot. Aucune installation quotidienne n’est redémarrée ou mise à jour, aucun projet personnel n’est utilisé. Les essais de protocole et de contextes simulés ne prouvent pas les capacités des modèles installés. Les critères, dépendances, retours arrière et méta-prompts restitués sont dans [Choix d’audit](choix-audit.md).
 
