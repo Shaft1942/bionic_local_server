@@ -10,7 +10,7 @@ Avant un tag, examinez `update-compatibility.json` : `schemaVersion: 1`, `minIns
 
 Le générateur ajoute au manifeste le numéro du paquet, le nom du ZIP et son SHA-256. Ne modifiez pas ces champs à la main après génération. Le manifeste est une pièce jointe extérieure au ZIP afin d'éviter une empreinte circulaire. Avant publication, vérifiez les tests Windows/Ubuntu du commit choisi et un parcours d'installation depuis la version minimale annoncée, avec données synthétiques et récupération. Les empreintes vérifient la cohérence des pièces jointes ; elles ne constituent pas une signature indépendante du compte qui publie la Release.
 
-La branche de travail 1.9.0 ne publie pas automatiquement une Release. La Release 1.8.0 est conservée ; son installation initiale de ce mécanisme nécessite une mise à jour manuelle.
+La publication de 1.9.0 est déclenchée volontairement par son tag après les contrôles de la branche. La Release 1.8.0 est conservée ; l'installation initiale de ce mécanisme depuis 1.8.0 nécessite une mise à jour manuelle.
 
 Ce guide concerne la **copie de distribution propre** du programme. Il ne faut pas publier le dossier d’une installation active contenant des conversations, codes, journaux ou sauvegardes.
 

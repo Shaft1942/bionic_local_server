@@ -1,6 +1,6 @@
 # Journal des versions
 
-## 1.9.0 — en préparation
+## 1.9.0 — 21 octobre 2026
 
 - Vérification centrale des Releases publiques à chaque démarrage du serveur puis toutes les 24 heures de fonctionnement, avec vérification manuelle et désactivation facultative.
 - Proposition discrète de la seule version stable la plus récente compatible avec l'installation, Windows et Node.js, même en sautant plusieurs versions. Métadonnées de compatibilité jointes aux futures Releases ; les anciennes Releases sans ce contrat ne sont pas proposées automatiquement.
