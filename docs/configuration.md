@@ -1,5 +1,13 @@
 # Configuration
 
+Les [paramètres V2](v2-utilisation.md) permettent de régler les plafonds de réponse
+par modèle/conversation et de configurer ComfyUI sans modifier de fichier.
+Pour l’initialisation, `comfyEnabled` vaut `false`, `comfyUrl` vaut
+`http://127.0.0.1:8188` et `comfyWorkflowId` vaut `krea2_turbo`.
+Les variables équivalentes sont `BIONIC_COMFY_ENABLED`, `BIONIC_COMFY_URL` et
+`BIONIC_COMFY_WORKFLOW_ID`. Les préférences enregistrées dans l’UI sont ensuite
+prioritaires, dans `data/comfy-settings.json`. Voir [le contrat ComfyUI](comfyui.md).
+
 [Retour au README](../README.md)
 
 Le fichier **`config.example.json`** contient les valeurs de départ partageables. Copiez-le en **`config.local.json`**, à la racine du compagnon. Ce second fichier est privé et ignoré par Git. Redémarrez le serveur après un changement.

@@ -1,0 +1,107 @@
+{
+  "53": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "hassakuXLIllustrious_v34.safetensors"
+    },
+    "_meta": {
+      "title": "Hassaku XL Illustrious v34"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "Anime illustration. An adult botanist examining a fern in a sunlit greenhouse, waist-up portrait, soft morning light, green and warm amber palette.",
+      "clip": [
+        "53",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "HASSAKU — prompt"
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": [
+        "53",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "HASSAKU — négatif facultatif"
+    }
+  },
+  "5": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 832,
+      "height": 1216,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "Format — lot 1"
+    }
+  },
+  "56": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "53",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ],
+      "seed": 42,
+      "steps": 25,
+      "cfg": 6.0,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 1.0
+    },
+    "_meta": {
+      "title": "HASSAKU — recette sauvegardée, seed fixe"
+    }
+  },
+  "17": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "56",
+        0
+      ],
+      "vae": [
+        "53",
+        2
+      ]
+    },
+    "_meta": {
+      "title": "Pixels via VAE Hassaku"
+    }
+  },
+  "19": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "17",
+        0
+      ],
+      "filename_prefix": "Bionic/Hassaku"
+    },
+    "_meta": {
+      "title": "Sortie Hassaku"
+    }
+  }
+}

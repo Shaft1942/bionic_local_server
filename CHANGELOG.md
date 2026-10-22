@@ -1,5 +1,18 @@
 # Journal des versions
 
+## 2.0.0 — 22 octobre 2026
+
+- Paramètres accessibles depuis la barre latérale et les options de conversation, avec fermeture directe et Échap.
+- Réponses : plafond automatique de 8 192 tokens, ajusté au contexte estimé à chaque appel, y compris outils et résultats. Choix par modèle ou conversation ; les valeurs souhaitées restent conservées. Signalement des réponses coupées.
+- ComfyUI facultatif, réglable dans l’UI : URL locale/LAN, test sans rendu, Krea2 Turbo ou HassakuXL Illustrious v34. Suivi persistant lié à l’adresse et au workflow d’origine ; images consultables après désactivation.
+- Projets et conversations regroupés dans un arbre repliable, listes chargées à l’ouverture et affichage progressif.
+- Mémoire courte des reçus d’outils déjà transmis, bornée et dépourvue d’autorisations ; vue des capacités et limites réellement fournies par le compagnon.
+- Métaprompts exécutés, plan de projet, décisions d’audit, exports de workflows et preuves de validation conservés dans la documentation. Sources 1.11.0 locales réunies avec l’historique Git 1.10.0.
+
+## 1.11.0 — 22 octobre 2026
+
+- Génération Krea2 Turbo locale depuis les conversations, avec permission Images indépendante, paramètres bornés, suivi persistant et affichage/téléchargement de l’image. Aucune resoumission automatique après un envoi incertain ; reprise du suivi après redémarrage. Le compagnon sert les images authentifiées au réseau local.
+
 ## 1.10.0 — 22 octobre 2026
 
 - Assistant Windows `Installer.cmd` : choix du dossier, configuration guidée de l’API Bionic et du port, détection de Node.js et téléchargement portable officiel facultatif avec contrôle SHA-256 et signature Windows. Raccourci et démarrage proposés ; accès au téléphone facultatif avec accord Windows pour le pare-feu privé. Préservation des données et sauvegarde des réglages pour une reconfiguration sur place ; aucune migration automatique entre installations.

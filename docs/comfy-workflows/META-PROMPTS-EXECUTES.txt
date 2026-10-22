@@ -1,0 +1,93 @@
+MÉTA-PROMPTS EXÉCUTÉS AVEC TROIS AGENTS — 22 octobre 2026
+
+Objectif parent : préparer des workflows ComfyUI locaux utilisant les modèles
+réellement installés HassakuXL et Krea2, exportés en UI/API et paramétrables depuis
+Bionic ou le compagnon réseau. Pas de modification du compagnon dans cette étape.
+Lire et appliquer les skills comfyui, hassakuxl, krea2. Préserver les workflows et
+réglages existants. Ne pas copier les presets/prompts privés dans les exemples.
+Séparer inspection, précontrôle, import UI et exécution GPU.
+
+AGENT 1 — modeles — mission exécutée
+
+Méta-prompt agent expert modèles : préparer la conception d'un workflow local
+HassakuXL et Krea2 appelable depuis Bionic/compagnon. Lis
+%USERPROFILE%/.codex/skills/hassakuxl/SKILL.md et krea2/SKILL.md et références
+nécessaires. Recherche EN LECTURE SEULE les modèles, workflows sauvegardés et
+métadonnées exacts disponibles sous E:/comfy et configurations Comfy Desktop sous
+AppData si utiles ; pas d'installation ni génération. Détermine familles, loaders,
+réglages repris de workflows existants, compatibilité img2img et pièges. Tu peux
+consulter sources primaires web si nécessaire. Ne lis pas les données privées
+Bionic. Rapporte chemins précis, preuves et incertitudes, propose branches
+indépendantes vs chaîne. Écris ton rapport dans work/agent-modeles.md uniquement
+si utile. Aucun changement hors workspace, aucun lancement GPU.
+
+Complément transmis après relevé API : modèles confirmés Illustrious v34 et Pony
+v13, Krea2 Turbo FP8, Qwen3VL type krea2, VAE Qwen Image ; trouver le workflow natif
+et éviter les nœuds cloud Krea2ImageNode.
+
+Résultat : deux Hassaku SDXL complets ; recette Illustrious sauvegardée et recette
+Krea2 native identifiées. Recommandation : deux workflows autonomes, img2img
+optionnel expérimental et transfert par pixels uniquement.
+
+AGENT 2 — contrat — mission exécutée
+
+Méta-prompt agent architecte : lis skill ComfyUI
+%USERPROFILE%/.codex/skills/comfyui/SKILL.md et références API. Prépare contrat
+stable pour workflows HassakuXL/Krea2 pilotés via Bionic et compagnon réseau :
+exports UI/API, noms d'entrées, limites et collecte résultats. Examine en lecture
+seule fichiers sous outputs/work du cwd et, si pertinent, compagnon
+E:/AI/ChatGPT/2026-10-19/je-voudrais-3/outputs/bionic-mobile pour connaître contrats
+actuels sans modifier ni lire données privées. Pas d'implémentation du compagnon
+dans cette tâche. Recherche chemins de workflows existants utile. Livrer
+recommandations et revue de risques concrets dans work/agent-contrat.md. Aucun
+lancement GPU ni installation.
+
+Complément transmis : audit du compagnon courant v1.10.0 disponible dans le
+workspace ; corriger la description ancienne de l'absence de boucle d'outils.
+
+Résultat : boucle d'outils déjà présente ; outil ComfyUI dédié à ajouter.
+Proposition de profils fermés, paramètres bornés, deux outils submit/get, états
+persistants, prévention des doubles soumissions et relais des images côté compagnon.
+
+AGENT 3 — revue — mission exécutée
+
+Méta-prompt agent reviewer indépendant : utilise skill comfyui, inspecte source
+réelle Krea2 (E:/Comfy-Desktop/ComfyUI-Installs/ComfyUI/ComfyUI) et workflow
+sauvegardé Krea2WF.app.json (user/default/workflows), snapshot
+work/comfy-preparation/object_info.json. Vérifie pour un graphe core-only Krea2
+Turbo : UNET krea2_turbo_fp8_scaled/default ; CLIP qwen3vl_4b_fp8_scaled type
+krea2/device default ; VAE qwen_image_vae ; EmptyLatentImage 1024 carré lot1 ;
+CLIPTextEncode positif -> ConditioningZeroOut négatif ; KSampler euler/simple
+steps8 cfg1 denoise1 ; VAEDecode SaveImage. Est-ce conforme au support natif et
+source officielle ? Pour img2img via VAEEncode pixels puis KSampler denoise .5
+quelle validité structurelle et limites distillation ? Pas de génération,
+pas d'install ni modification hors work/agent-revue.md. Revue fichiers
+outputs/bionic-comfy quand ils apparaissent. Identifie blocages réels et
+vérifications sans POST /prompt qui lance exécution.
+
+Résultat : txt2img conforme au template officiel ; shift natif Krea2 1.15,
+ne pas ajouter AuraFlow. Denoise .5 modifie la trajectoire distillée : qualité
+et fidélité non établies. Précontrôle API sans erreur sur les fichiers inspectés.
+
+SECONDE MISSION DE REVUE — exécutée après création des fichiers UI
+
+Revue finale hors ligne : outputs/bionic-comfy contient 3 couples UI/API,
+manifest et verification.json. UI01/02 exportés du frontend ; UI03 assemblé à
+partir des prototypes natifs avec widgets_values_named, noms d'entrées et liens,
+après blocage navigateur. Vérifier finish_bundle.py et JSON : links, modes,
+seeds, bindings, absence d'AuraFlow/enhancer/LoRA/prompts privés. Aucun accès
+navigateur/réseau, aucun rendu. Rapport work/agent-revue-finale.md.
+
+INTÉGRATION PARENT
+
+Construction des trois API à partir des contrats nommés et recettes attestées.
+Imports frontend des trois API. Exports UI01/UI02 récupérés puis comparés à leurs
+API par widgets_values_named et liaisons. Assemblage UI03 à partir de ces exports,
+sans inférence de position de widget. Contrôle offline des trois couples : classes,
+choix du schéma réel, égalité paramètres, typage liens, cycles, SHA256.
+Un export API frontend nommé Hassaku contenait encore le graphe Krea2 : anomalie
+détectée par lecture des classes et rejet de cet export. Les API livrés sont les
+graphes préparés et recoupés avec les exports UI, pas cette capture incohérente.
+
+Périmètre accompli : préparation des workflows et contrat d'appel. Aucun rendu
+GPU ni intégration active au compagnon n'a été exécuté.

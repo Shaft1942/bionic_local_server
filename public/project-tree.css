@@ -1,0 +1,25 @@
+.project-group{margin:0 0 7px;min-width:0}
+.project-group-heading{display:flex;align-items:center;min-width:0;border-radius:8px}
+.project-group-heading:hover{background:#e8ebf0}
+.project-toggle,.project-select{border:0;background:transparent;color:var(--muted);min-height:44px;padding:0;flex-shrink:0}
+.project-toggle{width:34px;display:grid;place-items:center;border-radius:8px}
+.project-toggle svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.project-toggle[aria-expanded=true] svg{transform:rotate(90deg)}
+.project-select{display:flex;align-items:center;gap:8px;flex:1;min-width:0;padding:7px 8px 7px 0;text-align:left;border-radius:8px;font-size:14px;font-weight:600}
+.project-select>svg{width:18px;height:18px;flex-shrink:0;color:var(--muted)}
+.project-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-conversation-count{margin-left:auto;padding-left:5px;color:var(--muted);font-size:11px;font-weight:400;font-variant-numeric:tabular-nums}
+.project-current>.project-group-heading .project-select{color:#104eaf}
+.project-current>.project-group-heading .project-select>svg{color:#1265e8}
+.project-conversations{margin-left:20px;padding-left:10px;border-left:1px solid var(--line)}
+.project-conversations .session{padding:9px 10px;min-height:58px;gap:4px;border-radius:7px}
+.project-conversations .session-name{font-size:13px;font-weight:500}
+.project-conversations .session-meta{font-size:11px;flex-wrap:wrap;row-gap:2px}
+.project-group-state,.project-search-scope{font-size:12px;line-height:1.5;color:var(--muted);margin:4px 0 10px;padding:4px 8px;overflow-wrap:anywhere}
+.project-search-scope{padding:4px 4px 9px;margin-bottom:5px}
+.project-group-state.error{color:var(--error)}
+.project-more{display:block;min-height:44px;width:100%;text-align:left;border:0;background:transparent;border-radius:7px;padding:8px 10px;color:#0953c9;font-size:12px}
+.project-more:hover{background:#e8ebf0;text-decoration:underline;text-underline-offset:3px}
+.project-toggle:focus-visible,.project-select:focus-visible,.project-more:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.project-toggle:disabled,.project-select:disabled,.project-more:disabled{opacity:.55;cursor:default}
+@media(max-width:760px){.project-toggle{width:44px}.project-select{min-height:48px;font-size:15px}.project-conversations{margin-left:22px;padding-left:10px}.project-conversations .session{min-height:64px;padding:11px 10px}.project-conversations .session-name{font-size:14px}.project-conversations .session-meta{font-size:12px}}
