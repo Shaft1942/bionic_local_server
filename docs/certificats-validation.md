@@ -135,3 +135,59 @@ Les tests incluent de vrais handshakes TLS/mTLS, l’import PKCS#12 Windows .NET
 redémarrage HTTPS/mTLS, refus de baisse vers HTTP, rollback et verrou Windows.
 L’interface navigateur reste simulée ; aucun import mobile, règle pare-feu,
 autorité système ou déploiement utilisateur n’est effectué.
+
+## Parcours navigateur V2.1
+
+Le parcours normal est désormais dans **Paramètres → Sécurité des connexions**,
+y compris sur un téléphone. HTTP permet la préparation HTTPS et le téléchargement
+de la CA publique uniquement. Depuis HTTPS authentifié, le navigateur peut créer,
+renouveler et télécharger un PKCS#12 chiffré, puis préparer mTLS. La récupération
+totale reste locale, serveur arrêté. Les clés CA/serveur restent sur le PC.
+
+Le port TLS de preuve est fixe et configurable (`certificateProofPort`), mais
+n’écoute que pendant la préparation. `runtime/transport.json` annonce ce port ;
+le provisionnement réseau Windows est lu dans le reçu local de cette instance
+et doit correspondre à l’interface/adresse/préfixe actuellement actifs. Ce reçu
+ne remplace pas une connexion depuis le téléphone. Le pare-feu et l’assistant
+Windows sont intégrés par la coordination dans un autre commit.
+
+Les mutations exigent cookie, origine exacte et nonce CSRF. Le nouveau parcours
+de preuve utilise trois POST sans secret dans l’URL : application, passerelle
+avec CSP limitée à l’origine candidate exacte, puis confirmation HTTPS. Chromium
+réel a confirmé les headers `same-origin`, `cross-site`, `same-origin` de ces
+trois étapes. La politique `strict-origin` des pages concernées préserve l’Origin
+nécessaire sans transmettre chemin ou ticket ; `no-referrer` rendait l’Origin de
+navigation POST nul et a été corrigé après reproduction navigateur.
+
+L’export privé est en mémoire pour cinq minutes, utilisable une fois et lié à la
+session, à l’epoch et au certificat client éventuel. La fermeture des paramètres
+efface le mot de passe du DOM ; logout/révocation globale/transition de transport
+invalident aussi les exports serveur. Renouveler ne retire pas l’ancienne identité
+avant l’import et la vérification de son remplacement. Les gardes de révocation
+sont revérifiées dans la section sérialisée du transport : deux appareils ne
+peuvent pas s’exclure simultanément et retirer le dernier accès.
+
+Contrôles ciblés, avant assemblage final par la coordination :
+
+- `test/certificate-web.test.mjs` : **6 réussis**, bootstrap HTTP→HTTPS réel,
+  PKCS#12 chiffré, liaison session/usage unique, mTLS, renouvellement conservant
+  l’ancien appareil, conflit du port de preuve, expiration d’export, révocations
+  concurrentes et invalidation du reçu réseau après changement d’adresse.
+- UI/config/paramètres : **29 réussis**, dont fermeture pendant création ou
+  préparation, réouverture avec boutons actifs, réponse privée tardive ignorée,
+  et conservation du curseur/saisie jusqu’à 5 000 000 tokens.
+- `scripts/browser-certificate-bootstrap.mjs` : vrai Chromium à 390 px,
+  trois POST et activation confirmée. La confiance de ce navigateur de test est
+  limitée à la clé SPKI de la fixture dans son processus ; ce test ne prouve pas
+  la confiance système. Les tests Node valident séparément la chaîne TLS native.
+- `scripts/browser-certificates.mjs` : données fictives à 1440 et 390 px,
+  préparation, export/téléchargement, erreur/reprise, fermeture/Échap/focus et
+  effacement du mot de passe. Captures inspectées en une passe et confirmation
+  après correction de la hiérarchie de l’étape active et de la taille du mot de passe.
+- **99 fichiers JavaScript** vérifiés ; **190 sources** exportables contrôlées.
+  Le détecteur Impeccable ne signale qu’un `<img>` sans `src` déjà présent :
+  aperçu de fichier caché, alimenté dynamiquement par le navigateur de fichiers.
+
+Aucun appareil physique, magasin de confiance OS, pare-feu réel, installation
+utilisateur ou serveur de modèles n’a été modifié. La suite globale, les parcours
+V2 combinés, la construction et la répétition d’upgrade relèvent de l’intégration.

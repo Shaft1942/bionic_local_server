@@ -28,6 +28,7 @@ import { createUpdateService } from './lib/update-service.mjs';
 import { prepareUpdate, launchUpdate } from './lib/update-installer.mjs';
 import { openCertificateStore } from './lib/certificate-store.mjs';
 import { clientFingerprint, requireCertificateTransport, startCertificateTransport } from './lib/certificate-transport.mjs';
+import { createCertificateWeb } from './lib/certificate-web.mjs';
 
 const APP_VERSION = JSON.parse(await defaultFS.readFile(new URL('./package.json', import.meta.url), 'utf8')).version;
 
@@ -75,6 +76,7 @@ if (!config.instanceId) {
 const privateAccessFile = path.join(ROOT, 'ACCES-PRIVE.txt');
 
 const sessions = new Map();
+const certificateWeb = createCertificateWeb({ store: certificateStore, transport: () => certificateTransport, suggestedHosts: ['127.0.0.1', 'localhost', ...localIPs], root: ROOT, instanceId: config.instanceId });
 function connectionUrls() {
   const protocol = certificateStore.state.mode === 'http' ? 'http:' : 'https:';
   const hosts = certificateStore.state.mode === 'http' ? localIPs : certificateStore.state.server?.hosts || [];
@@ -83,8 +85,8 @@ function connectionUrls() {
 async function refreshSecurityAddresses() {
   try {
     const content = await fs.readFile(privateAccessFile, 'utf8');
-    const note = certificateStore.state.mode === 'http' ? 'Le serveur utilise HTTP sur le réseau de confiance de la maison.' : 'Le serveur exige HTTPS. La gestion des certificats se fait sur le PC avec Certificats.cmd.';
-    const updated = content.replace(/Sur le téléphone,[\s\S]*?\r?\n\r?\nCode d’accès/, `Sur le téléphone, connecté au Wi-Fi de la maison :\r\n${connectionUrls().join('\r\n')}\r\n\r\nCode d’accès`).replace(/Sur ce PC : https?:\/\/127\.0\.0\.1:\d+/, `Sur ce PC : ${connectionUrls().find(url => url.includes('127.0.0.1')) || connectionUrls()[0] || 'consulte Certificats.cmd'}`).replace(/Le serveur (?:utilise HTTP sur le réseau de confiance de la maison\.|exige HTTPS\. La gestion des certificats se fait sur le PC avec Certificats\.cmd\.)/, note);
+    const note = certificateStore.state.mode === 'http' ? 'Le serveur utilise HTTP sur le réseau de confiance de la maison.' : 'Le serveur exige HTTPS. La gestion des certificats se fait dans Paramètres > Sécurité des connexions.';
+    const updated = content.replace(/Sur le téléphone,[\s\S]*?\r?\n\r?\nCode d’accès/, `Sur le téléphone, connecté au Wi-Fi de la maison :\r\n${connectionUrls().join('\r\n')}\r\n\r\nCode d’accès`).replace(/Sur ce PC : https?:\/\/127\.0\.0\.1:\d+/, `Sur ce PC : ${connectionUrls().find(url => url.includes('127.0.0.1')) || connectionUrls()[0] || 'consulte les paramètres de connexion'}`).replace(/Le serveur (?:utilise HTTP sur le réseau de confiance de la maison\.|exige HTTPS\. La gestion des certificats se fait (?:sur le PC avec Certificats\.cmd|dans Paramètres > Sécurité des connexions)\.)/, note);
     if (content !== updated) await fs.writeFile(privateAccessFile, updated, { mode: 0o600 });
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
 }
@@ -106,7 +108,7 @@ const updatePlatform = options.updatePlatform || process.platform;
 let updatePreparing = false, updateMaintenance = false, inFlightMutations = 0;
 let installation = { status: 'idle', message: '' };
 function updateHasWork() {
-  return !!certificateTransport?.status().candidate || busy.size > 0 || active.size > 0 || modelManagementBusy || acceptanceLocks.size > 0 || comfyImages.getSettings?.()?.activeJobs > 0 ||
+  return certificateWeb.busy || !!certificateTransport?.status().candidate || busy.size > 0 || active.size > 0 || modelManagementBusy || acceptanceLocks.size > 0 || comfyImages.getSettings?.()?.activeJobs > 0 ||
     [...chatRequests.values()].some(request => ['starting', 'queued', 'running'].includes(request.status)) ||
     [...chatStates.values()].some(({ chat }) => chat.generation?.status === 'running' || chat.queue?.some(item => item.status === 'queued'));
 }
@@ -712,7 +714,7 @@ async function handleRequest(req, res) {
     if (req.method === 'POST' && url.pathname === '/api/admin/revoke-sessions') {
       const d = await body(req, 1024);
       if (!/^127\.|^::1$|^::ffff:127\./.test(req.socket.remoteAddress) || d.token !== config.adminToken) throw fail(403, 'Accès refusé.');
-      const revoked = sessions.size; sessions.clear(); json(res, 200, { revoked, canReconnectWithCode: certificateStore.state.mode !== 'mtls', requiresClientCertificate: certificateStore.state.mode === 'mtls' }); return;
+      const revoked = sessions.size; certificateWeb.clear(); sessions.clear(); json(res, 200, { revoked, canReconnectWithCode: certificateStore.state.mode !== 'mtls', requiresClientCertificate: certificateStore.state.mode === 'mtls' }); return;
     }
     if (req.method === 'POST' && url.pathname === '/api/admin/certificates/action') {
       const d = await body(req, 8192);
@@ -738,14 +740,37 @@ async function handleRequest(req, res) {
       json(res, 200, { ok: true }); return;
     }
     if (url.pathname === '/api/logout' && req.method === 'POST') {
+      const session = sessions.get(cookie(req)); if (session) certificateWeb.releaseSession(session);
       sessions.delete(cookie(req)); res.setHeader('Set-Cookie', sessionCookieName() + '=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' + (req.socket.encrypted ? '; Secure' : '')); json(res, 200, { ok: true }); return;
     }
     if (url.pathname.startsWith('/api/')) {
       if (!auth(req)) throw fail(401, 'Connecte-toi avec le code du PC.');
-      if (req.method === 'GET' && url.pathname === '/api/security/status') { json(res, 200, certificateTransport ? certificateTransport.status() : certificateStore.publicStatus()); return; }
+      if (req.method === 'GET' && url.pathname === '/api/security/status') { res.setHeader('Cache-Control', 'no-store'); json(res, 200, await certificateWeb.status(req, sessions.get(cookie(req)))); return; }
+      if (req.method === 'GET' && url.pathname === '/api/security/authority') {
+        const download = await certificateWeb.authorityCertificate();
+        res.writeHead(200, { 'Content-Type': download.contentType, 'Content-Disposition': `attachment; filename="${download.filename}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(download.bytes); return;
+      }
       if (!['GET', 'HEAD'].includes(req.method) && url.pathname !== '/api/updates/install') {
         if (updateMaintenance) throw fail(503, 'Le serveur redémarre pour une mise à jour. Réessaie après reconnexion.');
         if (!url.pathname.startsWith('/api/updates/')) { inFlightMutations++; countedMutation = true; }
+      }
+      if (req.method === 'POST' && url.pathname === '/api/security/actions') {
+        if (updatePreparing || updateMaintenance) throw fail(409, 'Attends la fin de la mise à jour avant de modifier les connexions.');
+        res.setHeader('Cache-Control', 'no-store');
+        json(res, 200, await certificateWeb.action(req, sessions.get(cookie(req)), await body(req, 8192))); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/security/proof') {
+        const input = new URLSearchParams((await receiveBody(req, { limit: 2048, timeoutMs: 15000 })).toString('utf8'));
+        const proof = certificateWeb.startProof(req, sessions.get(cookie(req)), Object.fromEntries(input));
+        const escape = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+        res.setHeader('Content-Security-Policy', `default-src 'none'; style-src 'unsafe-inline'; form-action ${new URL(proof.url).origin}; frame-ancestors 'none'; base-uri 'none'`);
+        res.setHeader('Referrer-Policy', 'strict-origin');
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(`<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Vérifier la connexion HTTPS</title><style>body{font:17px system-ui;max-width:40rem;margin:8vh auto;padding:24px;line-height:1.6}button{font:inherit;padding:12px 18px;cursor:pointer}button:focus-visible{outline:3px solid #1976d2;outline-offset:4px}</style><main><h1>Vérifier la connexion HTTPS</h1><p>Installe d’abord l’autorité du compagnon dans les réglages de ton appareil. Le navigateur va ensuite vérifier le nouveau certificat.</p><p>Continue uniquement si la page suivante s’ouvre sans avertissement de certificat. Si elle reste inaccessible, vérifie sur le PC l’autorisation réseau du port de preuve.</p><form method="post" action="${escape(proof.url)}"><input type="hidden" name="ticket" value="${escape(proof.ticket)}"><button type="submit">Ouvrir la vérification sécurisée</button></form></main></html>`); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/security/device-download') {
+        const download = certificateWeb.downloadDevice(req, sessions.get(cookie(req)), await body(req, 2048));
+        res.writeHead(200, { 'Content-Type': download.contentType, 'Content-Disposition': `attachment; filename="${download.filename}"`, 'Cache-Control': 'no-store', 'Pragma': 'no-cache', 'X-Content-Type-Options': 'nosniff' }); res.end(download.bytes, () => download.bytes.fill(0)); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/updates') { json(res, 200, await updateStatus()); return; }
       if (req.method === 'POST' && url.pathname === '/api/updates/check') { await updater.check({ manual: true }); json(res, 200, await updateStatus()); return; }
@@ -962,6 +987,9 @@ async function handleRequest(req, res) {
       throw fail(404, 'Action inconnue.');
     }
     if ((req.method === 'GET' || req.method === 'HEAD') && STATIC[url.pathname]) {
+      // Native POST navigation needs a non-null Origin for certificate proof.
+      // Send only the origin, never a conversation path or a token-bearing URL.
+      if (url.pathname === '/') res.setHeader('Referrer-Policy', 'strict-origin');
       const file = path.join(ROOT, 'public', STATIC[url.pathname]);
       const content = await fs.readFile(file);
       res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' }); res.end(req.method === 'HEAD' ? undefined : content); return;
@@ -977,9 +1005,9 @@ async function handleRequest(req, res) {
 const server = http.createServer(handle);
 server.requestTimeout = settings.requestTimeoutMs || 180000;
 server.headersTimeout = 15000;
-async function close() { await certificateTransport?.close(); updater.stop(); await comfyImages.close(); for (const job of active.values()) job.controller.abort(); await Promise.allSettled([...chatStates.values()].map(state => state.writes)); if (server.listening) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); } }
+async function close() { certificateWeb.clear(); await certificateTransport?.close(); updater.stop(); await comfyImages.close(); for (const job of active.values()) job.controller.abort(); await Promise.allSettled([...chatStates.values()].map(state => state.writes)); if (server.listening) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); } }
 if (options.enableUpdateScheduling) server.once('listening', () => updater.start());
-return { server, handle, close, config, settings, certificateStore, attachCertificateTransport: controller => { certificateTransport = controller; }, clearSecuritySessions: () => sessions.clear(), refreshSecurityAddresses, readWeb, webChats, chatSnapshot, conversationModelContext, sendChat, chatStates, persistChat, measurements, inferenceGate, updater, addresses:localIPs, withScanCycle: work => scanCycles.run({},work) };
+return { server, handle, close, config, settings, certificateStore, attachCertificateTransport: controller => { certificateTransport = controller; }, clearSecuritySessions: () => { certificateWeb.clear(); sessions.clear(); }, refreshSecurityAddresses, readWeb, webChats, chatSnapshot, conversationModelContext, sendChat, chatStates, persistChat, measurements, inferenceGate, updater, addresses:localIPs, withScanCycle: work => scanCycles.run({},work) };
 }
 
 if (process.argv[1] && (process.platform === 'win32' ? path.resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase() : path.resolve(process.argv[1]) === fileURLToPath(import.meta.url))) {
@@ -988,7 +1016,7 @@ if (process.argv[1] && (process.platform === 'win32' ? path.resolve(process.argv
   try {
     const transport = await startCertificateTransport({ app, root });
     await defaultFS.writeFile(path.join(root, 'runtime', 'server.json'), JSON.stringify({ pid: process.pid, port: transport.appPort, node: process.execPath, root, instanceId: app.config.instanceId, startedAt: new Date().toISOString(), addresses: app.addresses }));
-    console.log('Bionic Mobile actif en ' + app.certificateStore.state.mode.toUpperCase() + ' sur le port ' + transport.appPort + '. Accès privé : ACCES-PRIVE.txt ; gestion locale : Certificats.cmd');
+    console.log('Bionic Mobile actif en ' + app.certificateStore.state.mode.toUpperCase() + ' sur le port ' + transport.appPort + '. Accès privé : ACCES-PRIVE.txt ; certificats : Paramètres > Sécurité des connexions ; récupération locale : Certificats.cmd');
   } catch (error) {
     await app.close();
     console.error('Serveur non démarré : ' + (error.code || 'configuration de sécurité invalide') + '. Consulte Certificats.cmd sur le PC.');

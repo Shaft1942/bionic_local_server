@@ -1,5 +1,6 @@
 {
   "port": 8769,
+  "certificateProofPort": 8770,
   "apiUrl": "http://127.0.0.1:1235",
   "bionicRoot": "",
   "python": "",

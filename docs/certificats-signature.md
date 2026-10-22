@@ -87,7 +87,11 @@ La clé privée d’un appareil ne figure jamais dans ce stockage. Elle reste
 temporairement en mémoire durant la création du PKCS#12, puis le magasin ne
 conserve que son identité publique. Les fichiers d’export locaux sont privés et
 doivent être supprimés après transfert fiable et import. L’API interne retournant
-le Buffer PFX est réservée au parcours d’export local, sans route HTTP de clé.
+le Buffer PFX alimente soit l’export local de maintenance, soit le téléchargement
+HTTPS authentifié du navigateur. Dans ce dernier cas, l’archive reste en mémoire
+cinq minutes au plus, liée à une session/epoch/empreinte client, et n’est utilisable
+qu’une fois. Le mot de passe est retourné une fois sous HTTPS et n’est jamais
+journalisé ou placé dans une URL. Aucune clé n’est servie en HTTP non chiffré.
 
 L’état version 1 comprend le niveau `http`/`https`/`mtls`, une epoch UUID,
 l’autorité, le serveur actif, le candidat et le registre des appareils. Les

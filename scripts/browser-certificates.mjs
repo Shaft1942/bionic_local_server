@@ -21,7 +21,8 @@ const bootstrap=`
 `;
 try{
   for(const width of [1440,390]){
-    let metadata={mode:'http',epoch:1,server:null,authority:null,devices:[]},unavailable=false;
+    const web={csrfToken:'N'.repeat(43),canConfigure:true,canIssueDevice:false,currentDeviceId:null,suggestedHosts:['127.0.0.1','bionic.local'],proofPort:8770,proofPortProvisioned:true};
+    let metadata={mode:'http',epoch:1,server:null,authority:null,devices:[],web},unavailable=false;
     const errors=[],requests=[];
     const context=await browser.newContext({viewport:{width,height:1100}}),page=await context.newPage();
     page.on('pageerror',error=>errors.push(error.message));page.setDefaultTimeout(6000);
@@ -36,6 +37,16 @@ try{
       requests.push({path:url.pathname,method:request.method()});
       if(url.pathname==='/api/security/status'&&unavailable)return route.fulfill({status:503,contentType:'application/json',body:'{}'});
       let data={};
+      if(url.pathname==='/api/security/actions'){
+        const input=request.postDataJSON();
+        assert.equal(request.headers()['x-bionic-csrf'],web.csrfToken);
+        if(input.action==='prepare'){
+          metadata={...metadata,authority:{fingerprint,expiresAt},candidate:{mode:input.mode,url:'https://127.0.0.1:8770',expiresAt:new Date(Date.now()+600000).toISOString()},web:{...web,proofRequest:{url:'/api/security/proof',id:'synthetic-proof'}}};
+          return route.fulfill({contentType:'application/json',body:JSON.stringify({status:metadata,proofRequest:metadata.web.proofRequest})});
+        }
+        if(input.action==='issue-device')return route.fulfill({contentType:'application/json',body:JSON.stringify({device:{id:'synthetic-device'},exportId:'synthetic-export',passphrase:'Synthetic-only-password-123',expiresAt:new Date(Date.now()+300000).toISOString()})});
+      }
+      if(url.pathname==='/api/security/device-download')return route.fulfill({contentType:'application/pkcs12',body:Buffer.from('SYNTHETIC_PRIVATE_DOWNLOAD_FIXTURE')});
       if(url.pathname==='/api/security/status')data=metadata;
       if(url.pathname==='/api/model-preferences')data={source:'auto',automatic:true,maxOutputTokens:8192,contextLength:16000,applyToAllSessions:false};
       if(url.pathname==='/api/comfy/settings')data={enabled:false,url:'http://127.0.0.1:8188',workflowId:'krea2_turbo',activeJobs:0,workflows:[{id:'krea2_turbo',label:'Krea 2 Turbo'}]};
@@ -45,9 +56,18 @@ try{
     await page.goto(origin);await page.locator('#settings-open-sidebar').click();
     await page.locator('#certificate-mode').getByText('HTTP',{exact:true}).waitFor();
     assert.match(await page.locator('#certificate-description').textContent(),/ne sont pas chiffrés/);
+    await page.locator('#certificate-prepare').click();await page.locator('#certificate-proof-form').waitFor({state:'visible'});
+    assert.equal(await page.locator('#certificate-proof-form').getAttribute('action'),'/api/security/proof');
+    assert.equal(await page.locator('#certificate-proof-id').inputValue(),'synthetic-proof');
+    assert.equal(await page.locator('#certificate-device-form').isVisible(),false);
+    if(captures)await page.screenshot({path:path.join(captures,width+'-prepare.png')});
     const refresh=async()=>{await page.locator('#certificate-refresh').click();await page.locator('#certificate-refresh').waitFor({state:'visible'});await page.waitForFunction(()=>!document.getElementById('certificate-refresh').disabled);};
-    metadata={...metadata,mode:'https',server:{fingerprint,expiresAt,hosts:['127.0.0.1','bionic.local']},authority:{fingerprint,expiresAt}};
+    metadata={...metadata,mode:'https',candidate:null,server:{fingerprint,expiresAt,hosts:['127.0.0.1','bionic.local']},authority:{fingerprint,expiresAt},web:{...web,canIssueDevice:true}};
     await refresh();assert.equal(await page.locator('#certificate-mode').textContent(),'HTTPS');
+    await page.locator('#certificate-device-name').fill('Téléphone de démonstration');await page.locator('#certificate-issue').click();
+    await page.locator('#certificate-export-password').getByText('Synthetic-only-password-123',{exact:true}).waitFor();
+    const download=page.waitForEvent('download');await page.locator('#certificate-download').click();assert.equal((await download).suggestedFilename(),'bionic-appareil.p12');
+    assert.equal(await page.locator('#certificate-download').isVisible(),false);
     metadata={...metadata,mode:'mtls',devices:[{id:'demo',name:'Téléphone de démonstration',fingerprint,expiresAt,revokedAt:null},{id:'old',name:'Ancienne tablette de démonstration',fingerprint,expiresAt,revokedAt:'2026-01-02T12:00:00Z'}]};
     await refresh();assert.equal(await page.locator('#certificate-mode').textContent(),'HTTPS + certificat client');
     assert.equal(await page.locator('.certificate-device').count(),2);
@@ -56,14 +76,15 @@ try{
     unavailable=false;metadata={...metadata,mode:'https',candidate:{mode:'mtls',url:'https://127.0.0.1:9999/proof?token=HIDDEN',expiresAt:new Date(Date.now()+3600000).toISOString()}};await refresh();
     assert.match(await page.locator('#certificate-pending').textContent(),/en attente de vérification/);
     assert.equal(await page.locator('body').getByText(/HIDDEN/).count(),0);
-    await page.locator('.certificate-technical summary').click();
+    await page.getByText('Détails des certificats',{exact:true}).click();
     assert.equal(await page.locator('#certificate-details').isVisible(),true);
-    assert.equal(await page.locator('#certificate-data button,#certificate-data a,#certificate-data input,#certificate-data form').count(),0);
+    assert.equal(await page.locator('#certificate-controls').isVisible(),true);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     assert.equal(await page.locator('.settings-body').evaluate(el=>el.scrollWidth<=el.clientWidth),true);
     if(captures)await page.screenshot({path:path.join(captures,width+'-certificates.png')});
     await page.locator('#certificate-refresh').press('Escape');
     assert.equal(await page.locator('#settings-view').isVisible(),false);
+    assert.equal(await page.locator('#certificate-export-password').textContent(),'');
     assert.equal(await page.evaluate(()=>document.activeElement.id),'settings-open-sidebar');
     await page.locator('#settings-open-sidebar').click();await page.locator('#certificate-mode').getByText('HTTPS',{exact:true}).waitFor();await page.locator('#settings-close').click();
     assert.equal(await page.evaluate(()=>document.activeElement.id),'settings-open-sidebar');

@@ -1,11 +1,66 @@
-# Certificats : parcours local sur le PC serveur
+# Certificats : configuration depuis le navigateur
 
-Le compagnon commence en HTTP. `Certificats.cmd`, dans le dossier de
-l’installation, ouvre le parcours local de gestion. `Installer.cmd` propose
-également **Accès sécurisés** pour l’installation sélectionnée. Ce parcours ne
-sollicite aucun modèle Bionic ni aucune génération ComfyUI.
+Le compagnon commence en HTTP. Ouvrir **Paramètres → Sécurité des connexions**
+sur le téléphone ou le PC. Le lien `/?settings=security` ouvre directement cette
+section après connexion ; **Accès sécurisés** dans l’assistant Windows ouvre
+la même interface. Aucune opération de ce parcours ne sollicite Bionic ou ComfyUI.
 
-## Activer HTTPS
+## Parcours recommandé sur le téléphone
+
+1. Lors de l’installation Windows, autoriser si souhaité l’accès au téléphone.
+   L’assistant prépare les deux ports précis, principal et vérification HTTPS,
+   sur le même réseau Windows privé. Une installation existante sans ce réglage
+   le signale dans les paramètres : terminer cette configuration une fois sur le
+   PC. Le navigateur n’ouvre aucune règle de pare-feu et ne demande pas d’UAC.
+2. Dans **Sécurité des connexions**, choisir **Préparer HTTPS**. Les adresses
+   actuelles sont proposées ; les autres noms/IP se règlent sous **Adresses du
+   serveur**. Le niveau actif reste HTTP à ce stade.
+3. Télécharger **l’autorité du compagnon** directement sur ce téléphone et
+   l’installer comme autorité de confiance dans les réglages du système. Le
+   système impose ses confirmations. Pour ce premier transfert HTTP, comparer
+   l’empreinte avec celle affichée sur le PC par un canal fiable : le réseau HTTP
+   initial ne fournit pas à lui seul une preuve d’identité.
+4. Choisir **Vérifier la connexion sécurisée**, puis **Ouvrir la vérification
+   sécurisée**. Un nouvel onglet vérifie le certificat du candidat. Ne jamais
+   confirmer après avoir ignoré un avertissement de certificat. Confirmer le
+   passage à HTTPS dans la page sécurisée, puis ouvrir le compagnon à l’adresse
+   HTTPS et se reconnecter avec son code. Les anciennes sessions sont invalidées.
+5. Depuis cette connexion HTTPS, nommer l’appareil puis choisir **Créer le
+   certificat de cet appareil**. Télécharger le `.p12` chiffré et importer ce
+   fichier dans le système avec le mot de passe affiché dans le panneau. Le
+   téléchargement est lié à la session et utilisable une fois pendant cinq
+   minutes. Le mot de passe disparaît à la fermeture du panneau ou après cinq
+   minutes ; aucune copie n’est conservée dans le stockage du navigateur.
+6. Pour rendre ce certificat obligatoire, choisir **Exiger un certificat client
+   pour se connecter**. La nouvelle preuve TLS exige une identité enregistrée ;
+   un appareil sans certificat ne peut pas confirmer. Le niveau HTTPS reste
+   actif tant que la preuve mTLS n’est pas confirmée.
+
+Créer un certificat par appareil. En mTLS, un appareil déjà autorisé peut créer
+une identité pour le suivant ; transférer le fichier privé et communiquer son
+mot de passe de façon appropriée. Ce second appareil doit importer la même
+autorité et sa propre identité. Aucun mot de passe ou export privé ne transite
+par HTTP, par une URL ou par le canal de maintenance local.
+
+Pour renouveler une identité, utiliser **Renouveler** dans sa ligne. L’ancien
+certificat reste autorisé pendant l’import et la vérification du remplaçant.
+Le retirer ensuite explicitement depuis un autre appareil autorisé. **Retirer
+cet appareil** demande une confirmation nommée et ferme ses connexions. Le
+certificat de la connexion actuelle ne peut pas être révoqué depuis cette même
+connexion. Une course entre deux révocations ne retire pas tous les accès.
+
+Le port de preuve `certificateProofPort` écoute seulement pendant la préparation,
+dix minutes au maximum. Un conflit de port ou un échec de preuve conserve le
+niveau confirmé et les données. Recommencer dans les paramètres après correction.
+La réception du `.p12` facilite le parcours ; le navigateur ne peut pas effectuer
+l’import système ou la sélection de certificat à la place de l’utilisateur.
+
+## Maintenance et compatibilité sur le PC
+
+`Certificats.cmd` conserve les commandes locales ci-dessous pour la récupération,
+un serveur expiré ou les anciens usages. Ce n’est plus le parcours normal.
+
+### Préparer HTTPS depuis le PC
 
 1. Démarrer ce compagnon avec `Demarrer.cmd`, puis ouvrir `Certificats.cmd` et
    choisir **Préparer HTTPS**. Indiquer les noms/IP réellement utilisés par les
@@ -46,7 +101,7 @@ mécanisme. Le statut final du moniteur est dans
 Windows n’est exécuté lors des tests automatisés de ce helper : ses commandes
 sont simulées.
 
-## Ajouter un appareil, puis imposer son certificat
+### Export local d’un appareil, puis certificat obligatoire
 
 1. Arrêter **cette installation** avec `Arreter.cmd`. Bionic et ComfyUI restent
    ouverts. Dans `Certificats.cmd`, choisir **Créer un certificat appareil** et
@@ -67,7 +122,7 @@ Pour ajouter un appareil après activation du mTLS, répéter la création local
 serveur arrêté, puis redémarrer. Le niveau confirmé reste mTLS pendant toute
 l’opération. Aucun accès réseau HTTP n’est rouvert.
 
-## Perte, révocation et renouvellement
+### Perte, révocation et renouvellement depuis le PC
 
 - **Retirer un appareil** : serveur actif, utiliser son identifiant ou son
   empreinte visible dans **État**. Son certificat est refusé et ses connexions

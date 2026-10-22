@@ -13,6 +13,7 @@ test('portable defaults never grant an extra project folder or depend on an agen
   const root=await fixture(t), home=path.join(root,'user');
   const settings=await loadSettings({root,home,env:{},platform:'win32'});
   assert.equal(settings.port,8769);assert.equal(settings.apiUrl,'http://127.0.0.1:1235');assert.equal(settings.python,'python');assert.deepEqual(settings.extraRoots,[]);assert.equal(settings.bionicRoot,path.join(home,'.lmstudio/apps/bionic'));
+  assert.equal(settings.certificateProofPort,8770);
 });
 test('local settings and explicit environment overrides apply to the matching installation',async t=>{
   const root=await fixture(t), native=path.join(root,'native');
@@ -23,5 +24,10 @@ test('local settings and explicit environment overrides apply to the matching in
 test('remote APIs, URL credentials, malformed roots and unknown settings are rejected',async t=>{
   const root=await fixture(t);
   for(const apiUrl of ['https://example.com','http://192.168.0.10:1235','http://user:password@localhost:1235','http://localhost:1235/v1'])await assert.rejects(loadSettings({root,env:{BIONIC_API_URL:apiUrl}}),/Configuration invalide/);
-  for(const config of [{port:0},{port:70000},{bionicRoot:'relative/path'},{extraRoots:[{id:'project',name:'x',path:root}]},{unexpected:true}]) {await fs.writeFile(path.join(root,'config.local.json'),JSON.stringify(config));await assert.rejects(loadSettings({root,env:{}}),/Configuration invalide/);}
+  for(const config of [{port:0},{port:70000},{certificateProofPort:0},{certificateProofPort:8769},{certificateProofPort:65536},{bionicRoot:'relative/path'},{extraRoots:[{id:'project',name:'x',path:root}]},{unexpected:true}]) {await fs.writeFile(path.join(root,'config.local.json'),JSON.stringify(config));await assert.rejects(loadSettings({root,env:{}}),/Configuration invalide/);}
+});
+test('certificate proof port is distinct, deterministic at the boundary and explicitly overridable',async t=>{
+  const root=await fixture(t);
+  assert.equal((await loadSettings({root,env:{BIONIC_MOBILE_PORT:'65535'}})).certificateProofPort,65534);
+  assert.equal((await loadSettings({root,env:{BIONIC_MOBILE_PORT:'4000',BIONIC_MOBILE_CERTIFICATE_PROOF_PORT:'4100'}})).certificateProofPort,4100);
 });

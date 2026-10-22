@@ -16,6 +16,7 @@ function fixture(intercept=()=>status()){
   const elements=new Map(),calls=[];
   function node(tag='div',className='',textContent=''){
     return {tag,className,textContent,hidden:false,disabled:false,children:[],listeners:{},
+      value:'',focus(){},querySelectorAll(){return this.children.filter(child=>child.tag==='button');},
       append(...children){this.children.push(...children);},replaceChildren(...children){this.children=children;},
       addEventListener(type,fn){this.listeners[type]=fn;}};
   }
@@ -40,6 +41,21 @@ test('all three active levels have distinct truthful descriptions and certificat
     assert.equal(f.el('certificate-refresh').disabled,false);
     assert.deepEqual(f.calls,[['/api/security/status']]);
     if(mode!=='http'){assert.ok(f.allText().includes(fingerprint));assert.ok(f.allText().includes('bionic.local'));}
+  }
+});
+
+test('closing while preparing or issuing restores enabled controls and discards the late private response',async()=>{
+  for(const action of ['prepare','issue-device']){
+    const reply=deferred(),web={csrfToken:'n'.repeat(43),canConfigure:true,canIssueDevice:true,suggestedHosts:['127.0.0.1'],proofPortProvisioned:true};
+    const f=fixture((route)=>route==='/api/security/actions'?reply.promise:{...status('https'),web});
+    f.el('certificate-controls').append(f.el('certificate-prepare'),f.el('certificate-issue'));f.el('certificate-prepare').tag='button';f.el('certificate-issue').tag='button';
+    await f.certificates.load();f.el('certificate-device-name').value='Fixture device';
+    f.el(action==='prepare'?'certificate-setup-form':'certificate-device-form').listeners.submit({preventDefault(){}});
+    assert.equal(f.el('certificate-prepare').disabled,true);assert.equal(f.el('certificate-issue').disabled,true);
+    f.certificates.reset();f.el('settings-view').hidden=false;await f.certificates.load();
+    assert.equal(f.el('certificate-prepare').disabled,false);assert.equal(f.el('certificate-issue').disabled,false);
+    reply.resolve(action==='prepare'?{status:{...status('https'),web}}:{passphrase:'PRIVATE_LATE_RESPONSE',exportId:'late',expiresAt:later});await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(f.el('certificate-export').hidden,true);assert.equal(f.el('certificate-export-password').textContent,'');assert(!f.allText().includes('PRIVATE_LATE_RESPONSE'));
   }
 });
 
@@ -69,17 +85,17 @@ test('pending activation stays separate from the active level and never reveals 
   await f.certificates.load();
   assert.equal(f.el('certificate-mode').textContent,'HTTP');
   assert.match(f.el('certificate-pending').textContent,/Préparation de HTTPS en attente/);
-  assert.match(f.el('certificate-pending').textContent,/Certificats.cmd/);
+  assert.match(f.el('certificate-pending').textContent,/accès actuel reste actif/);
   assert.equal(f.el('certificate-pending').hidden,false);
   assert.ok(!f.allText().includes('PRIVATE'));
   assert.ok(!f.allText().includes('https://127.0.0.1:9999'));
 });
 
-test('expired activation reports a local restart of preparation',async()=>{
+test('expired activation offers a new browser preparation',async()=>{
   const f=fixture(()=>({...status('https'),candidate:{mode:'mtls',expiresAt:'2000-01-01T00:00:00Z'}}));await f.certificates.load();
   assert.equal(f.el('certificate-mode').textContent,'HTTPS');
   assert.match(f.el('certificate-pending').textContent,/a expiré/);
-  assert.match(f.el('certificate-pending').textContent,/PC serveur/);
+  assert.match(f.el('certificate-pending').textContent,/Recommence la préparation ci-dessous/);
 });
 
 test('each device shows its own validity and revocation while metadata remains plain text',async()=>{
