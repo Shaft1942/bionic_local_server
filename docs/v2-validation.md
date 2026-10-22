@@ -197,3 +197,16 @@ Hassaku du prompt français a ajouté un personnage et n’a pas respecté la co
 demandée ; l’exécution technique ne prouve donc pas la fidélité du résultat.
 Les consignes finales demandent une description anglaise fidèle en conservant
 les textes à afficher et les prompts exacts fournis par l’utilisateur.
+
+## Release publique 2.0.0 réunie — 22 octobre 2026
+
+Les itérations de développement locales 2.1.0 à 2.1.3 sont consolidées sous le numéro public 2.0.0, avec le slider de tokens jusqu’à 5 000 000 et les deux LoRA jusqu’à 20. La branche certificats est séparée de cette livraison. Les preuves précédentes restent des étapes historiques ; les contrôles ci-dessous portent sur les sources réunies.
+
+- Suite complète Windows : **457 tests réussis**, aucun échec ni test ignoré ; **83 fichiers JavaScript** vérifiés et **161 sources publiques** contrôlées par le manifeste d’export.
+- Navigateur synthétique : **12 parcours réussis**, largeurs 1280 et 320 px, sans erreur JavaScript ni débordement. Le scénario V2 exerce ensemble tokens à 5 000 000, deux LoRA à 20, clavier, valeurs affichées, sauvegarde et changement de modèle ; arborescence et parcours de conversations également rejoués. La fixture a été complétée pour simuler le catalogue LoRA.
+- Wizard : correction des noms des scripts de pare-feu facultatifs et test de présence dans le manifeste. Installation réelle par le helper du wizard depuis le ZIP dans un dossier vide, avec Node existant, authentification neuve, routes statiques et API vérifiées. Les quatre écrans WinForms ont été exportés sans ouvrir de fenêtre interactive. Aucun réglage du pare-feu utilisateur, raccourci ou téléchargement réel de Node n’a été effectué.
+- Mise à jour directe : sources réelles du tag **v1.9.0**, installation et données fictives, puis ZIP candidat 2.0.0 via `prepareUpdate`, worker détaché et redémarrage du vrai serveur. Version, identité d’instance, runtime et sources contrôlés ; les **10 fichiers privés synthétiques** sont strictement identiques avant/après. Code d’accès conservé, ancienne session refusée, reconnexion, conversations, classement, livrable et préférences ComfyUI vérifiés.
+- Protection des travaux : tests couvrant le refus d’autoupdate pendant une génération ComfyUI et lorsqu’une image apparaît durant la préparation. Aucun téléchargement ou redémarrage dans ces cas.
+- Le refus de retour **2.1.3 → 2.0.0** a été vérifié et conservé. Les installations de développement numérotées 2.1.x suivent la procédure manuelle documentée si elles passent à la distribution publique.
+
+Ces essais utilisent des installations séparées, des ports dédiés et des données fictives. Aucun serveur utilisateur, inférence Bionic, rendu ComfyUI ou GPU n’a été sollicité par la recette d’intégration. Les processus de test ont été arrêtés et aucun appel au backend fictif n’a été observé. L’archive candidate vérifiée contient le code validé ; la documentation de cette recette est ajoutée avant reconstruction de l’archive finale et CI du commit à publier.
