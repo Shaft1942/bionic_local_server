@@ -1,6 +1,6 @@
 # Journal des versions
 
-## En préparation
+## 1.10.0 — 22 octobre 2026
 
 - Assistant Windows `Installer.cmd` : choix du dossier, configuration guidée de l’API Bionic et du port, détection de Node.js et téléchargement portable officiel facultatif avec contrôle SHA-256 et signature Windows. Raccourci et démarrage proposés ; accès au téléphone facultatif avec accord Windows pour le pare-feu privé. Préservation des données et sauvegarde des réglages pour une reconfiguration sur place ; aucune migration automatique entre installations.
 

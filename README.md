@@ -6,7 +6,7 @@ Ce projet communautaire est indépendant de Bionic. Bionic et ses modèles ne so
 
 ## Quelle version télécharger ?
 
-Ce guide décrit la **version 1.9.0**, avec des mises à jour proposées au démarrage puis toutes les 24 heures de fonctionnement. Téléchargez **`bionic-mobile-v1.9.0.zip`** depuis [la Release 1.9.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.9.0), avec `SHA256SUMS.txt`. **Node.js 24 ou ultérieur est requis et n'est pas inclus dans l'archive** ; sous Windows, choisissez l'installateur `.msi`, sans Docker. La première installation depuis [1.8.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.8.0) reste manuelle, car cette ancienne version ne possède pas le vérificateur. **Code → Download ZIP** fournit l'état de la branche choisie, qui peut différer d'une Release. Voir [les mises à jour proposées](docs/mises-a-jour.md).
+Ce guide décrit la **version 1.10.0**, avec un assistant d’installation Windows et des mises à jour proposées au démarrage puis toutes les 24 heures. Téléchargez **`bionic-mobile-v1.10.0.zip`** depuis [la Release 1.10.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.10.0), avec `SHA256SUMS.txt`. **Node.js 24 ou ultérieur est requis** : l’assistant peut réutiliser une installation existante ou, avec votre accord, télécharger une copie portable officielle. Node.js n’est pas inclus dans le ZIP. Aucun Docker requis. Depuis 1.9.0, une mise à jour compatible peut être proposée dans le compagnon ; depuis 1.8.0, suivez [la procédure manuelle](docs/sauvegarde-mise-a-jour.md). **Code → Download ZIP** fournit l’état de la branche choisie, qui peut différer d’une Release. Voir [les mises à jour proposées](docs/mises-a-jour.md).
 
 Le [bilan du lot d’audit](docs/choix-audit.md) décrit les choix intégrés et leurs limites. La [vérification](docs/verification.md) distingue les essais synthétiques locaux de la CI et des essais réels. Pour mettre à jour une installation existante, suivez [la procédure de sauvegarde](docs/sauvegarde-mise-a-jour.md).
 
@@ -30,16 +30,15 @@ Le [bilan du lot d’audit](docs/choix-audit.md) décrit les choix intégrés et
 
 **Les messages écrits ici ne sont pas ajoutés aux conversations natives de Bionic.** Les outils d’agent, MCP et compétences de Bionic ne sont pas hérités. Le compagnon fournit ses propres outils de fichiers, de web et de scripts, avec des autorisations distinctes.
 
-## Démarrer
+## Démarrer sous Windows
 
-**Assistant Windows en préparation sur cette branche** : après extraction complète des sources correspondantes, double-cliquez sur **Installer.cmd** pour choisir le dossier, détecter Node.js ou télécharger une copie portable, configurer Bionic et créer un raccourci. Aucun Docker ni modification manuelle du JSON n’est nécessaire. Il n’est pas inclus dans la Release 1.9.0 déjà publiée. Voir [l’assistant d’installation](docs/assistant-installation.md). Le parcours manuel ci-dessous reste disponible.
+1. Téléchargez **bionic-mobile-v1.10.0.zip** depuis [la Release 1.10.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.10.0), puis extrayez entièrement l’archive.
+2. Double-cliquez sur **Installer.cmd**. Choisissez le dossier du compagnon et un Node.js compatible, ou cochez le téléchargement portable proposé.
+3. Dans **Bionic → API des modèles locaux**, activez le serveur. Reportez son adresse dans l’assistant ; le suffixe `/v1` est accepté et retiré automatiquement. Le bouton **Tester l’API** lit la liste des modèles sans génération ni déchargement.
+4. Vérifiez le récapitulatif puis cliquez sur **Installer**. Le raccourci et le démarrage sont proposés. L’accès au téléphone via le pare-feu est facultatif et demande l’accord Windows sur un réseau privé.
+5. Ouvrez **ACCES-PRIVE.txt** dans le dossier installé pour trouver votre code personnel et les adresses du PC et du téléphone. Le téléphone doit être connecté au même Wi-Fi.
 
-1. Installez **Node.js 24 ou une version ultérieure** depuis [nodejs.org](https://nodejs.org/en/download). Bionic doit déjà fonctionner sur ce PC.
-2. Téléchargez une [version publiée](https://github.com/Shaft1942/bionic_local_server/releases), ou utilisez **Code → Download ZIP** sur [le dépôt](https://github.com/Shaft1942/bionic_local_server). Extrayez entièrement l’archive dans un dossier à vous.
-3. Dans Bionic, activez le serveur **API des modèles locaux** et notez son adresse. Copiez `config.example.json` en `config.local.json`, puis ajustez `apiUrl` si nécessaire. Le port d’exemple `1235` n’est pas forcément celui de votre installation.
-4. Sous Windows, double-cliquez sur **Demarrer.cmd**. Sur le PC, ouvrez [http://127.0.0.1:8769](http://127.0.0.1:8769) si vous avez conservé le port proposé.
-5. Ouvrez **ACCES-PRIVE.txt**, créé au premier démarrage, pour trouver votre code personnel et l’adresse à ouvrir sur le téléphone.
-6. Connectez le téléphone au même Wi-Fi. Si le pare-feu bloque l’accès, lancez **Autoriser-reseau.cmd** sur un réseau Windows privé, puis réessayez.
+L’assistant ne transfère aucune conversation depuis un autre dossier. Pour reconfigurer une installation existante, arrêtez-la puis lancez son propre **Installer.cmd** et choisissez **Ce dossier**. Pour la mettre à jour, utilisez le parcours prévu à cet effet. Le [guide de l’assistant](docs/assistant-installation.md) détaille les choix et leurs limites ; le [parcours manuel](docs/installation.md#installation-manuelle) reste disponible.
 
 Aucune installation de dépendances npm n’est nécessaire pour exécuter le serveur. **Python est facultatif** : il sert à extraire le texte des documents PDF, DOCX et XLSX et à exécuter les scripts Python que vous validez. Le téléchargement des fichiers et les autres fonctions restent disponibles sans Python.
 

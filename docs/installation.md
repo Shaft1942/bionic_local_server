@@ -4,13 +4,15 @@
 
 ## Sur le PC qui exécute Bionic
 
-Les sources en préparation proposent désormais **Installer.cmd**, un assistant graphique Windows qui fonctionne même sans Node.js installé. Il guide le choix du dossier, la préparation de Node.js, les ports et l’API Bionic, puis propose le démarrage, un raccourci et l’autorisation réseau facultative. Il n’est pas dans l’archive 1.9.0 déjà publiée. Consultez [le parcours et ses limites](assistant-installation.md) ; la procédure manuelle reste décrite ci-dessous.
+Depuis la version **1.10.0**, double-cliquez sur **Installer.cmd** après extraction complète de l’archive. L’assistant graphique Windows fonctionne même sans Node.js installé. Il guide le choix du dossier, la préparation de Node.js, les ports et l’API Bionic, puis propose le démarrage, un raccourci et l’autorisation réseau facultative. Consultez [le parcours et ses limites](assistant-installation.md).
+
+## Installation manuelle
 
 Le PC héberge Bionic, ses modèles et ce compagnon. Le téléphone n’installe aucun modèle : il utilise son navigateur.
 
 1. Vérifiez qu’une conversation fonctionne directement dans Bionic.
 2. Installez [Node.js](https://nodejs.org/en/download), version **24 minimum**. Sous Windows x64, choisissez **Windows Installer (.msi)** ; Docker n'est pas nécessaire. Laissez l'installateur ajouter Node.js au `PATH`, puis rouvrez les fenêtres de terminal déjà ouvertes. L'archive du compagnon n'inclut pas Node.js.
-3. Téléchargez **`bionic-mobile-v1.9.0.zip`** et `SHA256SUMS.txt` depuis la [Release 1.9.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.9.0). **Source code** et **Code → Download ZIP** fournissent les sources, qui peuvent différer du paquet construit par le workflow. La première installation depuis 1.8.0 reste manuelle ; les suivantes pourront être proposées par le compagnon. Voir [Mises à jour](mises-a-jour.md).
+3. Téléchargez **`bionic-mobile-v1.10.0.zip`** et `SHA256SUMS.txt` depuis la [Release 1.10.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.10.0). **Source code** et **Code → Download ZIP** fournissent les sources, qui peuvent différer du paquet construit par le workflow. La première installation depuis 1.8.0 reste manuelle ; depuis 1.9.0, les suivantes peuvent être proposées par le compagnon. Voir [Mises à jour](mises-a-jour.md).
 4. Extrayez tous les fichiers dans un dossier utilisateur accessible en écriture. Ne lancez pas l’application depuis l’intérieur de l’archive ou depuis `Program Files`.
 5. Dans les paramètres de **Bionic → API des modèles locaux**, activez le serveur. Relevez l’URL affichée. Il n’est pas nécessaire d’activer CORS ni d’exposer cette API au réseau : le compagnon l’appelle depuis le PC.
 6. Copiez `config.example.json` en `config.local.json`. Si Bionic affiche par exemple `http://localhost:1234/v1`, utilisez `"apiUrl": "http://127.0.0.1:1234"`. Il faut l’adresse du serveur, **sans `/v1` final**. Le réglage doit correspondre à votre propre port Bionic.

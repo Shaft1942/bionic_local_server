@@ -1,6 +1,6 @@
 # Assistant d'installation Windows
 
-Cette fonctionnalite est en preparation sur la branche `feature/assistant-installation`. Elle n'est pas incluse dans la Release 1.9.0 deja publiee.
+L’assistant est inclus depuis la version **1.10.0**. Téléchargez l’archive depuis [la Release 1.10.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.10.0). Une installation 1.9.0 peut recevoir cette version par son vérificateur de mises à jour.
 
 Extraire entierement l'archive puis double-cliquer sur **Installer.cmd**. L'assistant fonctionne avec Windows PowerShell 5.1, meme si Node.js n'est pas encore installe. Aucun compte ni Docker requis.
 
