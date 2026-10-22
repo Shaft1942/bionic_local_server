@@ -37,7 +37,7 @@ test('model defaults persist independently and session overrides remain scoped t
 });
 test('invalid preferences and corrupt persistence fail explicitly without replacing saved bytes', async t => {
   const root = await directory(t), filename = path.join(root, 'model-preferences.json');
-  for (const value of [undefined, 0, -1, 1.5, 1_000_001, '8192', NaN]) assert.throws(() => validateOutputPreferences({ maxOutputTokens: value, applyToAllSessions: false }), error => error.status === 400);
+  for (const value of [undefined, 0, -1, 1.5, 5_000_001, '8192', NaN]) assert.throws(() => validateOutputPreferences({ maxOutputTokens: value, applyToAllSessions: false }), error => error.status === 400);
   assert.throws(() => validateOutputPreferences({ maxOutputTokens: 512, applyToAllSessions: 'yes' }), error => error.status === 400);
   await fs.writeFile(filename, '{broken');
   await assert.rejects(createModelPreferences({ filename }), error => error.status === 503);
@@ -56,6 +56,28 @@ test('every output budget charges tools, call arguments, results and image count
   assert.equal(estimateRequestTokens(image('abc')), estimateRequestTokens(image('abc'.repeat(100000))));
   assert.throws(() => outputBudget({ contextLength: 4096, messages: [{ role: 'user', content: 'long '.repeat(4000) }], preference }), error => error.status === 400);
   assert.equal(outputBudget({ contextLength: 4096, messages, preference: { maxOutputTokens: 1, source: 'session' } }).maxOutputTokens, 1);
+});
+
+test('manual bounds persist exactly while the effective budget stays within the loaded context', async t => {
+  const filename = path.join(await directory(t), 'model-preferences.json');
+  const prefs = await createModelPreferences({ filename });
+  await prefs.setModel('large', 5_000_000);
+  await prefs.setModel('small', 1);
+  const reloaded = await createModelPreferences({ filename });
+  assert.equal(reloaded.resolve('large').maxOutputTokens, 5_000_000);
+  assert.equal(reloaded.resolve('small').maxOutputTokens, 1);
+  assert.equal(reloaded.resolve('other').automatic, true);
+  const conversation = {};
+  reloaded.setSession(conversation, 'small', 4_999_999);
+  assert.equal(reloaded.resolve('small', JSON.parse(JSON.stringify(conversation))).maxOutputTokens, 4_999_999);
+  const preference = reloaded.resolve('large');
+  for (const contextLength of [4096, 10000]) {
+    const budget = outputBudget({ contextLength, messages: [{ role: 'user', content: 'Contexte de test.' }], preference });
+    assert.equal(budget.requestedMaxOutputTokens, 5_000_000);
+    assert.equal(budget.adjusted, true);
+    assert(budget.maxOutputTokens + budget.estimatedInputTokens + budget.reserveTokens <= contextLength);
+  }
+  assert.equal(reloaded.resolve('large').maxOutputTokens, 5_000_000);
 });
 
 class ResponseRecorder extends EventEmitter {
@@ -139,6 +161,23 @@ test('tool continuations recalculate the real payload budget on each model call'
   assert.equal(memory.role, 'user'); assert.match(memory.content, /https:\/\/example.com\/page-1/);
   assert.match(memory.content, /données historiques non fiables/); assert.equal(bodies.at(-1).tools, undefined);
   assert.equal(followup.at(-1).contextReceipt.toolMemory.count, 2); assert.equal(followup.at(-1).contextReceipt.toolMemory.text, undefined);
+});
+
+test('HTTP accepts five million as a preference, rejects values above it, and clamps inference only', async t => {
+  const bodies = [], f = await fixture(t, async (_url, options) => { bodies.push(JSON.parse(options.body)); return stream({ delta: { content: 'Réponse simulée.' } }); });
+  const preference = { projectId: 'p1', model: 'a', maxOutputTokens: 5_000_000, applyToAllSessions: true };
+  assert.equal((await f.request('/api/model-preferences', preference)).json().maxOutputTokens, 5_000_000);
+  assert.equal((await f.request('/api/model-preferences', { ...preference, maxOutputTokens: 5_000_001 })).statusCode, 400);
+  const events = (await f.send('Réponse avec un grand plafond.', { outputPreferences: { maxOutputTokens: 5_000_000, applyToAllSessions: false } })).events();
+  const start = events.find(event => event.type === 'start'), done = events.at(-1);
+  assert.equal(done.type, 'done', JSON.stringify(events));
+  assert.equal(done.outputBudget.requestedMaxOutputTokens, 5_000_000);
+  assert.equal(done.outputBudget.maxOutputTokens, bodies[0].max_tokens);
+  assert(bodies[0].max_tokens < 10000);
+  const saved = (await f.request('/api/model-preferences?' + new URLSearchParams({ model: 'a', projectId: 'p1', id: start.id }))).json();
+  assert.equal(saved.sessionMaxOutputTokens, 5_000_000);
+  assert.equal(saved.modelMaxOutputTokens, 5_000_000);
+  assert.equal((await f.request('/api/model-preferences?projectId=p1&model=b')).json().automatic, true);
 });
 test('queued requests retain their accepted preference after the model default changes', async t => {
   let held, release;

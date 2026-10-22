@@ -6,6 +6,10 @@ reste visible ; Échap ferme le panneau et rend le focus à son bouton d’ouver
 ## Longueur des réponses
 
 Choisir le modèle, puis **Automatique** ou **Valeur personnalisée**.
+Le mode personnalisé propose un curseur et une saisie précise synchronisés, de
+**1 à 5 000 000 tokens**. Le curseur permet un réglage rapide ; la saisie conserve
+la précision à un token près. Ce maximum configurable ne modifie pas la capacité
+du modèle : le plafond effectivement envoyé reste limité par son contexte disponible.
 Le mode automatique demande jusqu’à **8 192 tokens par appel**. Le serveur
 réduit ce nombre si les messages, images et outils occupent le contexte chargé.
 Le reçu indique le budget réellement envoyé et précise qu’il s’agit d’une estimation.
