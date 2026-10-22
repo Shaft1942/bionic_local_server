@@ -92,6 +92,8 @@ test('connection test reads actual HTTP endpoints, checks both exact models and 
   const f=await fixture(t);
   let result=await f.service.checkConnection({url});
   assert.equal(result.ok,true,JSON.stringify(result));
+  assert.equal(result.memoryCleanup.available,true);assert.equal(result.memoryCleanup.afterWorkflow,true);
+  assert.equal(result.memoryCleanup.packagePath,'comfyui/custom_nodes/free_memory_after_workflow.py');
   assert.equal(result.workflows.length,2);assert(result.workflows.every(profile=>profile.compatible));
   assert.equal(f.service.getSettings().enabled,false);assert.equal(f.service.getSettings().url,'http://127.0.0.1:8188');
   assert.deepEqual(routes.map(route=>route.method),['GET','GET','GET']);
@@ -99,6 +101,14 @@ test('connection test reads actual HTTP endpoints, checks both exact models and 
   result=await f.service.checkConnection({url,workflowId:'hassaku_illustrious'});
   assert.equal(result.ok,false);assert.equal(result.reachable,true);assert.match(result.workflows.find(profile=>profile.id==='hassaku_illustrious').errors.join(' '),/hassakuXLIllustrious_v34/);
   assert(result.workflows.find(profile=>profile.id==='krea2_turbo').compatible);
+  info.FreeMemoryAfterWorkflow.output_node=false;
+  result=await f.service.checkConnection({url,workflowId:'krea2_turbo'});
+  assert.equal(result.ok,false);assert.equal(result.memoryCleanup.available,false);
+  assert.match(result.workflows.find(profile=>profile.id==='krea2_turbo').errors.join(' '),/comfyui\/custom_nodes\/free_memory_after_workflow\.py/);
+  delete info.FreeMemoryAfterWorkflow;
+  result=await f.service.checkConnection({url,workflowId:'krea2_turbo'});
+  assert.equal(result.reachable,true);assert.equal(result.memoryCleanup.available,false);
+  assert.match(result.workflows.find(profile=>profile.id==='krea2_turbo').errors.join(' '),/Nœud absent : FreeMemoryAfterWorkflow/);
   assert(routes.every(route=>route.url!=='/prompt'));
 });
 test('Hassaku retains the saved recipe and blocks disruptive configuration until terminal history',async t=>{

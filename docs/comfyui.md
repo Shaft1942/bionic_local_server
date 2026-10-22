@@ -29,6 +29,15 @@ les drapeaux `unload_models` et `free_memory`, comme `/free` ; ComfyUI les trait
 après le workflow. Le nettoyage est donc effectué après la sauvegarde de l’image.
 Le nœud doit être installé sur l’instance visée ; le test de connexion signale son
 absence. Les anciens exports éditables archivés ne sont pas les graphes exécutés.
+Le module sans dépendance est désormais fourni dans
+`comfyui/custom_nodes/free_memory_after_workflow.py` ; voir `comfyui/README.md`
+pour l'installation et les limites. Après une erreur ou interruption terminale
+d'un nouveau job du compagnon, un nettoyage de récupération est demandé une seule
+fois si la file ComfyUI est vide. Une file occupée ou un résultat incertain
+n'entraîne aucun nouvel essai automatique. Aucun travail n'est interrompu.
+La durée d'exécution vient des événements ComfyUI lorsqu'ils sont disponibles ;
+une demande de nettoyage acceptée ne prouve ni la quantité de mémoire libérée
+ni une accélération.
 
 Le serveur ComfyUI doit être démarré sur le PC ou le réseau privé. L’adresse par
 défaut est `http://127.0.0.1:8188` ; HTTP loopback et les IPv4 RFC1918 sont acceptés,
