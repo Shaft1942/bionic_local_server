@@ -51,6 +51,39 @@ async function assertPrivate(root) {
   assert.equal(await fs.readFile(path.join(root, 'user-note.txt'), 'utf8'), 'CUSTOM_CANARY');
 }
 
+async function lockWindowsFile(filename) {
+  const quoted = "'" + filename.replaceAll("'", "''") + "'";
+  const code = "$ErrorActionPreference='Stop'; $handle=[IO.File]::Open(" + quoted + ",[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite); try { [Console]::Out.WriteLine('LOCKED'); [Console]::Out.Flush(); $null=[Console]::In.ReadLine() } finally { $handle.Dispose() }";
+  const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(code, 'utf16le').toString('base64')], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  const closed = new Promise(resolve => child.once('close', resolve));
+  child.stdin.on('error', () => {}); child.stderr.resume();
+  try {
+    await new Promise((resolve, reject) => {
+      let output = '';
+      const finish = error => { clearTimeout(timer); child.stdout.off('data', onData); child.off('error', onError); child.off('exit', onExit); error ? reject(error) : resolve(); };
+      const onData = bytes => { output += bytes; if (output.includes('LOCKED')) finish(); };
+      const onError = () => finish(new Error('Synthetic Windows lock helper could not start.'));
+      const onExit = () => finish(new Error('Synthetic Windows file lock was not acquired.'));
+      const timer = setTimeout(() => finish(new Error('Synthetic Windows lock acquisition timed out.')), 10000);
+      child.stdout.on('data', onData); child.once('error', onError); child.once('exit', onExit);
+    });
+  } catch (error) { child.kill(); await closed; throw error; }
+  let released = false;
+  return { async release() {
+    if (released) return; released = true; child.stdin.end('\n');
+    let timer;
+    try { await Promise.race([closed, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Synthetic Windows lock release timed out.')), 5000); })]); }
+    catch (error) { child.kill(); await closed; throw error; }
+    finally { clearTimeout(timer); }
+  } };
+}
+async function waitForTemporary(destination) {
+  for (let attempt = 0; attempt < 500; attempt++) {
+    if ((await fs.readdir(path.dirname(destination))).some(name => name.startsWith(path.basename(destination) + '.update-'))) return;
+    await pause(10);
+  }
+  assert.fail('No pending atomic replacement was observed while the destination was locked.');
+}
 test('ZIP: STORE and DEFLATE produce the exact public inventory and bytes', () => {
   const files = sourceFiles('1.10.0');
   for (const deflate of [false, true]) {
@@ -114,6 +147,68 @@ test('an apply failure restores original source bytes and removes only newly ins
   await assertPrivate(prepared.root);
 });
 
+test('Windows retries an atomic replacement until a transient reader releases its delete lock', { skip: process.platform !== 'win32', timeout: 20000 }, async t => {
+  const prepared = await plan(t), destination = path.join(prepared.root, 'lib/source.mjs');
+  const held = await lockWindowsFile(destination), restarts = [];
+  let applying, settled = false;
+  try {
+    applying = applyPreparedUpdate(prepared, { restart: async (_plan, version) => { restarts.push(version); return { pid: 321 }; } }).finally(() => { settled = true; });
+    void applying.catch(() => {});
+    await waitForTemporary(destination); await pause(150);
+    assert.equal(settled, false);
+    assert.equal(await fs.readFile(destination, 'utf8'), '// source 1.9.0', 'The locked destination must remain present and intact.');
+    await held.release();
+    assert.equal((await applying).state, 'completed');
+    assert.deepEqual(restarts, ['1.10.0']);
+    assert.equal(await fs.readFile(destination, 'utf8'), '// source 1.10.0');
+    assert(!(await fs.readdir(path.dirname(destination))).some(name => name.includes('.update-')));
+    await assertPrivate(prepared.root);
+  } finally { await held.release(); await applying?.catch(() => {}); }
+});
+
+test('a permanent Windows replacement lock leaves old bytes intact and rolls back with the old server restarted', { skip: process.platform !== 'win32', timeout: 20000 }, async t => {
+  const prepared = await plan(t), destination = path.join(prepared.root, 'lib/source.mjs');
+  const held = await lockWindowsFile(destination), restarts = [];
+  try {
+    await assert.rejects(applyPreparedUpdate(prepared, { restart: async (_plan, version) => { restarts.push(version); return { pid: 321 }; } }), error => ['EPERM', 'EBUSY', 'EACCES'].includes(error.code));
+    assert.deepEqual(restarts, ['1.9.0']);
+    const status = JSON.parse(await fs.readFile(path.join(prepared.jobRoot, 'status.json')));
+    assert.equal(status.state, 'rolled-back'); assert.equal(status.recovered, true); assert.deepEqual(status.rollbackErrors, []);
+    for (const [name, content] of Object.entries(sourceFiles('1.9.0'))) assert.equal(await fs.readFile(path.join(prepared.root, name), 'utf8'), content);
+    await assertPrivate(prepared.root);
+  } finally { await held.release(); }
+});
+
+test('a Windows lock on changed source bytes reports a real rollback failure and never restarts mixed sources', { skip: process.platform !== 'win32', timeout: 20000 }, async t => {
+  const prepared = await plan(t), destination = path.join(prepared.root, 'lib/source.mjs'), restarts = [];
+  let held;
+  try {
+    await assert.rejects(applyPreparedUpdate(prepared, {
+      afterOperation: async operation => { if (operation.path === 'lib/source.mjs') { held = await lockWindowsFile(destination); throw new Error('Synthetic failure after the locked source changed.'); } },
+      restart: async (_plan, version) => { restarts.push(version); }
+    }), /Retour arrière incomplet/);
+    assert.deepEqual(restarts, []);
+    const status = JSON.parse(await fs.readFile(path.join(prepared.jobRoot, 'status.json')));
+    assert.equal(status.state, 'rollback-failed'); assert.equal(status.recovered, false); assert.deepEqual(status.rollbackErrors, ['lib/source.mjs']);
+    assert.equal(await fs.readFile(destination, 'utf8'), '// source 1.10.0');
+    assert.equal(await fs.readFile(path.join(prepared.jobRoot, 'backup/lib/source.mjs'), 'utf8'), '// source 1.9.0');
+    assert.equal(JSON.parse(await fs.readFile(path.join(prepared.root, 'package.json'))).version, '1.9.0');
+    await assertPrivate(prepared.root);
+  } finally { await held?.release(); }
+});
+
+test('rollback accepts a new source already absent and confirms the remaining original bytes', async t => {
+  const prepared = await plan(t, { newFiles: sourceFiles('1.10.0', { 'new/file.txt': 'NEW' }) }), restarts = [];
+  await assert.rejects(applyPreparedUpdate(prepared, {
+    afterOperation: async operation => { if (operation.path === 'new/file.txt') { await fs.unlink(path.join(prepared.root, operation.path)); throw new Error('Synthetic failure after removing a new source.'); } },
+    restart: async (_plan, version) => { restarts.push(version); }
+  }), /Synthetic failure/);
+  assert.deepEqual(restarts, ['1.9.0']);
+  const status = JSON.parse(await fs.readFile(path.join(prepared.jobRoot, 'status.json')));
+  assert.equal(status.state, 'rolled-back'); assert.equal(status.recovered, true); assert.deepEqual(status.rollbackErrors, []);
+  for (const [name, content] of Object.entries(sourceFiles('1.9.0'))) assert.equal(await fs.readFile(path.join(prepared.root, name), 'utf8'), content);
+  await assert.rejects(fs.access(path.join(prepared.root, 'new/file.txt')), { code: 'ENOENT' });
+});
 test('a failed new server health check triggers rollback and restarts the old release', async t => {
   const prepared = await plan(t), restarts = [];
   await assert.rejects(applyPreparedUpdate(prepared, { restart: async (_plan, version) => { restarts.push(version); if (version === '1.10.0') throw new Error('health failed'); } }), /health failed/);
