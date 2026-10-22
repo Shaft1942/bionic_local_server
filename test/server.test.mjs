@@ -56,6 +56,7 @@ async function request(route,opt){const res=new Res();await handle(req(route,opt
 const data=(text,sessionId=null)=>({projectId:'p1',sessionId,model:'synthetic',text});const send=(text,id=null)=>request('/api/chat',{method:'POST',headers:{cookie},body:data(text,id)});
 function finishHold(controller){controller.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n'));controller.close()}
 function activeRequestStatus(res){return JSON.parse(res.text()).status}
+async function waitForCondition(condition,timeoutMs=5000){const deadline=performance.now()+timeoutMs;do{if(await condition())return true;await sleep(25)}while(performance.now()<deadline);return false}
 const findings=[];
 const runId=randomUUID(),backgroundRequestId=runId+'-checkpoint';
 try {
@@ -137,9 +138,12 @@ try {
  const detachedAgentId=agentRes.records().find(e=>e.type==='start').id;r=await request('/api/conversation?projectId=p1&id='+detachedAgentId,{headers:{cookie}});const detachedAgent=JSON.parse(r.text());
  findings.push({test:'file actions and their backup journal also continue after the phone closes',pass:detachedAgent.generation.status==='completed'&&detachedAgent.messages.at(-1).actions.some(a=>a.backupId)&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='after'});
  const backgroundRes=new Res();const backgroundJob=handle(req('/api/chat',{method:'POST',headers:{cookie},body:{...data('HOLD'),requestId:backgroundRequestId}}),backgroundRes);
- for(let i=0;i<50&&!backgroundRes.records().some(e=>e.type==='delta');i++)await sleep(10);const backgroundId=backgroundRes.records().find(e=>e.type==='start')?.id;backgroundRes.destroyed=true;backgroundRes.emit('close');await sleep(1100);
- const checkpoint=JSON.parse(await fs.readFile(path.join(root,'data/chats',backgroundId+'.json'),'utf8'));
- findings.push({test:'partial reply is checkpointed while the browser is disconnected',pass:checkpoint.messages.at(-1).text==='Synthetic reply'&&checkpoint.generation.status==='running'});
+ assert(await waitForCondition(()=>backgroundRes.records().some(e=>e.type==='delta')),'The synthetic response must start before disconnecting the browser');
+ const backgroundId=backgroundRes.records().find(e=>e.type==='start').id;backgroundRes.destroyed=true;backgroundRes.emit('close');
+ // The 1-second checkpoint timer and its asynchronous disk write may finish
+ // later on a busy runner. Observe the saved partial reply before Stop can save it.
+ const checkpointSaved=await waitForCondition(async()=>{const checkpoint=JSON.parse(await fs.readFile(path.join(root,'data/chats',backgroundId+'.json'),'utf8'));return checkpoint.messages.at(-1).text==='Synthetic reply'&&checkpoint.generation.status==='running'&&checkpoint.generation.requestId===backgroundRequestId;});
+ findings.push({test:'partial reply is checkpointed while the browser is disconnected',pass:checkpointSaved});
  r=await request('/api/cancel',{method:'POST',headers:{cookie},body:{requestId:backgroundRequestId}});await backgroundJob;
  r=await request('/api/conversation?projectId=p1&id='+backgroundId,{headers:{cookie}});const stopped=JSON.parse(r.text());
  findings.push({test:'explicit Stop still cancels a detached job and preserves partial text',pass:stopped.generation.status==='stopped'&&stopped.messages.at(-1).interrupted&&stopped.messages.at(-1).text==='Synthetic reply'});upstream.splice(0);
