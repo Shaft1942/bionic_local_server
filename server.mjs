@@ -93,7 +93,7 @@ const updatePlatform = options.updatePlatform || process.platform;
 let updatePreparing = false, updateMaintenance = false, inFlightMutations = 0;
 let installation = { status: 'idle', message: '' };
 function updateHasWork() {
-  return busy.size > 0 || active.size > 0 || modelManagementBusy || acceptanceLocks.size > 0 ||
+  return busy.size > 0 || active.size > 0 || modelManagementBusy || acceptanceLocks.size > 0 || comfyImages.getSettings?.()?.activeJobs > 0 ||
     [...chatRequests.values()].some(request => ['starting', 'queued', 'running'].includes(request.status)) ||
     [...chatStates.values()].some(({ chat }) => chat.generation?.status === 'running' || chat.queue?.some(item => item.status === 'queued'));
 }

@@ -26,6 +26,19 @@ async function fixture(t) {
 const install=(source,target,extra='')=>`Install-BionicCompanion -Source ${q(source)} -Destination ${q(target)} -Port 3002 -ApiUrl 'http://localhost:1235/v1' -NodePath ${q(process.execPath)} -DownloadNode $false ${extra}`;
 const reject=code=>`try { $null=${code}; throw 'unexpected-success' } catch { if($_.Exception.Message -eq 'unexpected-success'){throw}; 'rejected' }`;
 
+test('wizard launchers and recovery commands exist in the downloadable distribution',async()=>{
+  const wizard=await fs.readFile(path.join(root,'Installer.ps1'),'utf8');
+  const manifest=JSON.parse(await fs.readFile(path.join(root,'release-manifest.json'),'utf8'));
+  const scripts=[...wizard.matchAll(/Join-Path \$(?:PSScriptRoot|result\.Root) '([^']+\.ps1)'/g)].map(match=>match[1]);
+  const commands=[...wizard.matchAll(/\b[A-Za-z\u00c0-\u00ff0-9_-]+\.cmd\b/g)].map(match=>match[0]);
+  assert(scripts.length>0,'No wizard script references found.');
+  assert(commands.length>0,'No wizard recovery commands found.');
+  for(const relative of new Set([...scripts,...commands])){
+    assert(manifest.files.includes(relative),`Wizard references a launcher absent from the release: ${relative}`);
+    assert((await fs.stat(path.join(root,relative))).isFile(),`Wizard launcher is not a source file: ${relative}`);
+  }
+});
+
 test('installer accepts only loopback HTTP APIs and normalizes the Bionic /v1 suffix',{skip:!windows},()=>{
   assert.equal(ps(`ConvertTo-BionicApiUrl 'http://localhost:1235/v1'`),'http://localhost:1235');
   for(const url of ['https://localhost:1235','http://192.168.1.1:1235','http://user:secret@localhost:1235','http://localhost:1235/other','http://localhost:1235/?x=1'])assert.equal(ps(reject(`ConvertTo-BionicApiUrl ${q(url)}`)),'rejected');
