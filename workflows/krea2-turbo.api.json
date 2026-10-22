@@ -123,5 +123,17 @@
     "_meta": {
       "title": "Sortie Krea2"
     }
+  },
+  "99": {
+    "class_type": "FreeMemoryAfterWorkflow",
+    "inputs": {
+      "trigger": [
+        "9",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Free Memory after Workflow (/free)"
+    }
   }
 }

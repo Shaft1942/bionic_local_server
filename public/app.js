@@ -48,7 +48,7 @@ $('info-close').append(icon('close'));
 $('models-open-sidebar').prepend(icon('models'));
 $('conversation-options-toggle').append(icon('more'));
 $('new-chat').append(icon('plus'), document.createTextNode('Nouveau chat web'));
-const state = { projects: [], sessions: [], projectId: null, chat: null, sending: false, loading: false, uploading: false, status: null, viewSeq: 0, projectSeq: 0, authenticated: false, authEpoch: 0, viewKey: null, draftReasoning: {}, draftFileProfile: null, draftFileAccess: null, draftWebAccess:null, draftWebApproval:null, draftScriptAccess:null, draftImageAccess:null, sessionsPartial:false, sessionWarnings:[] };
+const state = { projects: [], sessions: [], projectId: null, chat: null, sending: false, loading: false, uploading: false, status: null, viewSeq: 0, projectSeq: 0, authenticated: false, authEpoch: 0, viewKey: null, draftReasoning: {}, draftFileProfile: null, draftFileAccess: null, draftWebAccess:null, draftWebApproval:null, draftScriptAccess:null, draftImageAccess:null, draftImageWorkflowId:null, sessionsPartial:false, sessionWarnings:[] };
 const companionSettings = createCompanionSettings({api,getState:()=>state,node,onChange:()=>setSending()});
 const textDraftStore = createMessageDraftStore({ storage: { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value), removeItem: key => localStorage.removeItem(key) } });
 const chats = new Map(), drafts = readDrafts(), jobs = readJobs();
@@ -117,7 +117,7 @@ function anyGeneration() { return jobs.size > 0 || state.sessions.some(chat => c
 function draftForView() { return drafts.get(state.viewKey) || {}; }
 function saveDraft() {
   if (!state.viewKey) return;
-  drafts.set(state.viewKey, { ...draftForView(), text: $('prompt').value, model: $('model').value, reasoning: { ...state.draftReasoning }, fileProfile:currentFileProfile(), fileAccess:currentFileProfile()==='write', webAccess:$('agent-web').checked, webApproval:$('agent-web-approval').checked, scriptAccess:$('agent-scripts').checked, imageAccess:$('agent-images').checked, attachments: fileBrowser.snapshot(), uploadStatus: $('upload-status').hidden ? '' : $('upload-status').textContent });
+  drafts.set(state.viewKey, { ...draftForView(), text: $('prompt').value, model: $('model').value, reasoning: { ...state.draftReasoning }, fileProfile:currentFileProfile(), fileAccess:currentFileProfile()==='write', webAccess:$('agent-web').checked, webApproval:$('agent-web-approval').checked, scriptAccess:$('agent-scripts').checked, imageAccess:$('agent-images').checked, imageWorkflowId:$('image-workflow').value, attachments: fileBrowser.snapshot(), uploadStatus: $('upload-status').hidden ? '' : $('upload-status').textContent });
   rememberDrafts();
 }
 function restoreDraft(key) {
@@ -126,7 +126,7 @@ function restoreDraft(key) {
   const draft = draftForView();
   state.draftReasoning = { ...draft.reasoning }; state.draftFileAccess = draft.fileAccess ?? null;
   state.draftFileProfile = ['none','read','write'].includes(draft.fileProfile) ? draft.fileProfile : typeof draft.fileAccess === 'boolean' ? fileProfile(draft) : null;
-  state.draftWebAccess=draft.webAccess??null;state.draftWebApproval=draft.webApproval??null;state.draftScriptAccess=draft.scriptAccess??null;state.draftImageAccess=draft.imageAccess??null;
+  state.draftWebAccess=draft.webAccess??null;state.draftWebApproval=draft.webApproval??null;state.draftScriptAccess=draft.scriptAccess??null;state.draftImageAccess=draft.imageAccess??null;state.draftImageWorkflowId=draft.imageWorkflowId??null;
   $('prompt').value = draft.text || ''; fileBrowser.restore(draft.attachments || []);
   $('upload-status').textContent = draft.uploadStatus || ''; $('upload-status').hidden = !draft.uploadStatus;
   $('model').value = (state.status?.models || []).some(model => model.id === draft.model) ? draft.model : modelForChat();
@@ -657,6 +657,10 @@ function renderQueue(chat) {
         state.draftReasoning[$('model').value] = item.reasoning || 'default'; state.draftFileProfile = sameProject && !unassignedProject() ? fileProfile(item,'none') : 'none'; $('agent-files').value = state.draftFileProfile; state.draftWebApproval = item.webApproval === true; $('agent-web-approval').checked = state.draftWebApproval;
         state.draftWebAccess = item.webAccess === true; state.draftScriptAccess = sameProject && !unassignedProject() && item.scriptAccess === true;
         $('agent-web').checked = state.draftWebAccess; $('agent-scripts').checked = state.draftScriptAccess;
+        state.draftImageAccess = item.imageAccess === true;
+        state.draftImageWorkflowId = item.imageSelection?.workflowId ?? item.imageWorkflowId ?? null;
+        $('agent-images').checked = state.draftImageAccess;
+        companionSettings.imagePermission();
         const references = sameProject ? item.attachmentReferences || item.attachments || [] : [];
         if (!sameProject && item.attachments?.length) toast('Le texte est repris. Rejoins ses fichiers depuis le projet courant.');
         fileBrowser.restore(references.map(reference => ({ ...reference, name: item.attachments?.find(file => file.path === reference.path && file.rootId === reference.rootId)?.name || reference.name })));
@@ -747,6 +751,8 @@ function setSending() {
   $('agent-files').disabled = locked || unassignedProject();
   $('fork-chat').disabled = locked || !state.chat?.id;
   $('agent-images').disabled = locked || !companionSettings.enabled(); $('agent-web').disabled = locked; $('agent-scripts').disabled = locked || unassignedProject();
+  companionSettings.imagePermission();
+  $('image-workflow').disabled = locked || !companionSettings.enabled();
   $('agent-web-approval').disabled = locked || !$('agent-web').checked;
   $('files-permission-state').textContent = ({none:'Outils fichiers désactivés',read:'Fichiers en lecture',write:'Fichiers modifiables'}[currentFileProfile()]) + ($('agent-web').checked ? ' · Web' : '') + ($('agent-scripts').checked ? ' · Scripts' : '') + (companionSettings.enabled()&&$('agent-images').checked ? ' · Images' : '');
   $('logout').disabled = state.uploading || conversationMove.busy;
@@ -915,7 +921,7 @@ async function send(event) {
           const current = localChatForJob(job);
           current.id = e.id; current.name = e.name || current.name; current.source = 'web'; current.model = data.model;
           current.reasoningByModel = { ...current.reasoningByModel, [data.model]: e.reasoning || data.reasoning }; current.fileAccess = e.fileAccess ?? data.fileAccess; current.fileProfile = e.fileProfile ?? data.fileProfile; current.webApproval=e.webApproval??data.webApproval;
-          current.imageAccess=e.imageAccess??data.imageAccess;current.webAccess=e.webAccess??data.webAccess;current.scriptAccess=e.scriptAccess??data.scriptAccess;
+          current.imageWorkflowId=e.imageWorkflowId??data.imageWorkflowId;current.imageAccess=e.imageAccess??data.imageAccess;current.webAccess=e.webAccess??data.webAccess;current.scriptAccess=e.scriptAccess??data.scriptAccess;
           if (e.type === 'start') {
             current.messages ||= [];
             if (!current.messages.some(message => message.requestId === requestId)) current.messages.push({ role: 'user', id: e.contextReceipt?.current?.messageId, text, requestId });
@@ -1017,6 +1023,7 @@ $('project').addEventListener('change', async () => {
   try { await selectProject($('project').value, { clearSearch: true }); } catch (e) { error(e.message); }
 });
 $('agent-files').addEventListener('change', () => { state.draftFileProfile = currentFileProfile(); saveDraft(); setSending(); });
+$('image-workflow').addEventListener('change',()=>{state.draftImageWorkflowId=$('image-workflow').value;saveDraft();companionSettings.imagePermission();});
 for(const [id,key] of [['agent-web','draftWebAccess'],['agent-web-approval','draftWebApproval'],['agent-scripts','draftScriptAccess'],['agent-images','draftImageAccess']])$(id).addEventListener('change',()=>{state[key]=$(id).checked;saveDraft();setSending();});
 $('attach-file').addEventListener('click', () => closeComposerFiles());
 $('fork-chat').addEventListener('click',()=>forkChat());

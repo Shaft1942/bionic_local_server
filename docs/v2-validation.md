@@ -162,3 +162,38 @@ utilisent des conversations synthétiques. Le rendu de validation et le déploie
 autorisés sont distingués des contrôles de connexion sans génération ci-dessus.
 
 Voir [le périmètre et les critères](v2-plan.md).
+
+
+## Extension 2.1.0 : choix du modèle et deux LoRA
+
+Le 22 octobre 2026, 449 tests passent et 83 fichiers JavaScript passent le
+contrôle de syntaxe. Les tests couvrent les préférences indépendantes, la
+migration de configuration, les catalogues avec sous-dossiers, deux LoRA en
+chaîne, la sélection figée par message, les références modèle/CLIP/VAE et le
+nettoyage après SaveImage. Le détecteur UI signale uniquement l’image d’aperçu
+de fichier préexistante : elle est masquée sans fichier et reçoit son URL avant
+affichage (`public/files.js`). Aucun changement de cette fonction n’est requis.
+
+Le précontrôle réel par API sur ComfyUI 0.42.2 confirme les deux graphes sans
+LoRA, leurs modèles installés et FreeMemoryAfterWorkflow. Le catalogue des
+loaders expose quatre LoRA ; leur compatibilité individuelle n’est pas déduite
+de leur présence. Les preuves de déploiement et de rendus supplémentaires sont
+privées dans `work/lora-integration`. Le contrôle visuel du navigateur intégré
+reste soumis à son autorisation d’origine ; les tests de formulaire utilisent
+un DOM simulé et ne constituent pas une vérification visuelle sur téléphone.
+
+
+La passe finale 2.1.1 compte **450 tests réussis**. Les fichiers temporaires des
+tests utilisent le dossier Windows standard : placer ceux du test serveur dans
+le workspace peut créer des liens physiques pendant les instantanés et bloquer
+correctement une modification de fichier jugée non isolée.
+
+Deux prompts ont réellement appelé le modèle Gemma chargé et les outils du
+compagnon déployé : HassakuXL sans LoRA et Krea2 avec
+`KNP_000003000.safetensors` à 0,3. Les PNG 1024 × 1024 ont été récupérés par la
+route authentifiée du compagnon et les réglages LoRA d’origine restaurés. Les
+journaux ComfyUI confirment FreeMemoryAfterWorkflow pour chacun. Le rendu
+Hassaku du prompt français a ajouté un personnage et n’a pas respecté la couleur
+demandée ; l’exécution technique ne prouve donc pas la fidélité du résultat.
+Les consignes finales demandent une description anglaise fidèle en conservant
+les textes à afficher et les prompts exacts fournis par l’utilisateur.

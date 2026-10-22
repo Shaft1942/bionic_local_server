@@ -1,5 +1,25 @@
 # Journal des versions
 
+## 2.1.3 — 22 octobre 2026
+
+- Force maximale des deux LoRA portée à 20 dans les sliders et la validation serveur.
+
+## 2.1.2 — 22 octobre 2026
+
+- Réglage des deux forces LoRA par sliders de −2 à 2, au pas de 0,05, avec valeur affichée en direct et utilisation au clavier.
+
+## 2.1.1 — 22 octobre 2026
+
+- Le sélecteur d’image suit aussi le changement de conversation et la reprise de son brouillon ; il est bloqué pendant les opérations qui verrouillent le formulaire.
+- Les consignes d’outil demandent une description en anglais, adaptée aux modèles locaux, en conservant les textes à afficher et les prompts exacts explicitement fournis.
+
+## 2.1.0 — 22 octobre 2026
+
+- Choix de Krea2 Turbo ou HassakuXL dans les outils du message, conservé avec le brouillon et la conversation.
+- Deux LoRA facultatifs par modèle, avec forces indépendantes et catalogue fourni par les loaders ComfyUI : dossiers ajoutés et fichiers téléchargés reconnus par l’instance.
+- La demande conserve le modèle et les LoRA choisis lors de son envoi ; contrôle des noms avant soumission. La présence dans le catalogue ne garantit pas la compatibilité du LoRA avec le modèle.
+- `FreeMemoryAfterWorkflow` relié après `SaveImage` dans les deux workflows : déchargement des modèles et libération mémoire en fin d’exécution, selon le mécanisme de `/free`.
+
 ## 2.0.0 — 22 octobre 2026
 
 - Paramètres accessibles depuis la barre latérale et les options de conversation, avec fermeture directe et Échap.

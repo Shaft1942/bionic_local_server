@@ -13,7 +13,8 @@ function createImageGenerationView({api,node,getState,redraw}) {
       const download=node('a','file-action','Télécharger l’image');download.href=url(job,chat,message,true);download.download='ComfyUI-'+job.id+'.png';figure.append(download);
     }
     if(job.error)figure.append(node('p','generated-image-error',job.error));
-    figure.append(node('figcaption','generated-image-meta',(job.workflowId==='hassaku_illustrious'?'Hassaku XL Illustrious v34':'Krea2 Turbo')+' · '+job.width+' × '+job.height+' · seed '+job.seed));
+    figure.append(node('figcaption','generated-image-meta',(job.workflowLabel||(job.workflowId==='hassaku_illustrious'?'Hassaku XL Illustrious v34':'Krea2 Turbo'))+' · '+job.width+' × '+job.height+' · seed '+job.seed));
+    if(job.loras?.length)figure.append(node('p','generated-image-meta','LoRA : '+job.loras.map(lora=>lora.name+' ('+lora.strength+')').join(' · ')));
     const details=node('details','generated-image-prompt');details.append(node('summary','','Prompt utilisé'),node('p','',job.prompt));figure.append(details);
     return figure;
   }
