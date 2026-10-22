@@ -19,5 +19,6 @@ jobs:
           node-version: '24'
       - run: npm run check
       - run: npm test
+      - run: python -B test/comfy-memory-node.test.py
       - run: npm run check:export
       - run: npm run release

@@ -1,5 +1,16 @@
 # Journal des versions
 
+## 2.1.0 — préparation
+
+- Paramètres → Sécurité des connexions : préparer HTTPS, télécharger l’autorité publique, créer et télécharger un certificat client chiffré depuis le navigateur, renouveler et révoquer un appareil. L’activation exige une connexion de preuve ; la récupération après perte de tous les accès reste locale au PC.
+- L’assistant Windows configure une fois l’accès au compagnon et un port fixe de vérification HTTPS, sur le réseau privé choisi. Après cette préparation, la gestion des certificats est disponible depuis le téléphone. L’installation d’un certificat et sa confiance restent confirmées dans Android/iOS.
+- Le curseur et la saisie du plafond de réponse restent synchronisés dans Paramètres, de 1 à 5 000 000 tokens ; les préférences par modèle/conversation sont conservées.
+- Après déchargement ou changement de modèle, le budget utilise le contexte effectivement chargé par Bionic. Suppression de la limite artificielle de 4 096 tokens pour un modèle froid ; une capacité inconnue est distinguée d’un contexte réellement plein.
+- Module ComfyUI `FreeMemoryAfterWorkflow` inclus avec ses instructions. Les workflows conservent leur nettoyage final ; après une interruption ou erreur avant ce nœud, une récupération limitée aux nouveaux jobs du compagnon est demandée seulement si la file observée est vide. Aucun gain de vitesse n’est déduit de ces contrôles.
+- Mises à jour : conservation de la PKI et du niveau HTTPS/mTLS, contrôle par un canal de maintenance local séparé, refus d’un retour en HTTP et récupération des sources précédentes en cas d’échec. Les reprises bornées des verrous Windows de la 2.0 sont conservées.
+
+Portée des essais et limites : [validation 2.1](docs/v2.1-validation.md).
+
 ## 2.0.0 — 22 octobre 2026
 
 - Paramètres accessibles depuis la barre latérale et les options de conversation, avec fermeture directe et Échap.
