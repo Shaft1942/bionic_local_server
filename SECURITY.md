@@ -2,7 +2,15 @@
 
 ## Périmètre prévu
 
-Bionic Mobile est un compagnon personnel pour un **réseau local de confiance**. Il utilise HTTP : le code, les messages et les fichiers ne bénéficient pas d’un chiffrement de transport entre le téléphone et le PC. Une personne ayant accès au réseau ou au code peut présenter un risque pour ces données.
+Bionic Mobile est un compagnon personnel pour un **réseau local de confiance**. Le niveau initial utilise HTTP : le code, les messages et les fichiers ne bénéficient pas d’un chiffrement de transport entre le téléphone et le PC. Une personne ayant accès au réseau ou au code peut présenter un risque pour ces données.
+
+L’outil **Certificats.cmd**, exécuté sur le PC serveur, prépare HTTPS puis HTTPS avec certificat client obligatoire (mTLS). Une autorité privée propre à l’installation signe le serveur et une identité par appareil. La clé d’autorité reste sur le PC ; l’export client est une archive PKCS#12 chiffrée, écrite localement avec un mot de passe dans un fichier protégé distinct. Aucune clé privée n’est servie en HTTP. L’import et la confiance de l’autorité se font explicitement dans le système de l’appareil ; il ne faut pas contourner un avertissement de certificat.
+
+Chaque préparation ouvre uniquement une page de preuve sur un port TLS temporaire, avec un ticket à usage unique valable dix minutes. La confirmation ferme l’ancien accès réseau, invalide les sessions et persiste le niveau atteint. Une panne, une expiration ou une clé absente ne réactive jamais HTTP. En mTLS, la chaîne de confiance et le registre de l’appareil sont contrôlés ; les sessions sont liées au certificat présenté. La révocation ferme les connexions concernées ; la reprise TLS ne permet pas de contourner ce contrôle.
+
+Le canal de maintenance HTTP distinct écoute uniquement sur `127.0.0.1`, avec des routes limitées et le secret d’administration local. Il ne sert ni l’application ni des archives privées ; il ne permet aucun reset de l’identité. La récupération totale nécessite l’outil local, serveur arrêté, et une confirmation explicite sur le PC. Elle renouvelle les accès et conserve les conversations, pièces jointes et fichiers projets. Les sauvegardes contenant l’ancienne autorité doivent rester privées. Une restauration manuelle complète d’un ancien dossier peut restaurer une ancienne identité ; les garanties applicatives ne remplacent pas la maîtrise du compte Windows et des sauvegardes.
+
+Voir le [guide certificats](docs/certificats-utilisation.md) et le [choix de signature](docs/certificats-signature.md). Ces mécanismes n’ajoutent pas de rôles ni d’isolation entre les personnes autorisées : tout appareil admis partage toujours le périmètre du compagnon.
 
 N’exposez pas directement le serveur sur Internet, n’ajoutez pas de redirection NAT et n’utilisez pas un Wi-Fi public ou invité non maîtrisé. Cette application ne fournit ni isolation entre utilisateurs, ni rôles, ni comptes séparés. Toute personne qui dispose du code accède au même périmètre du compagnon, avec les possibilités de lecture et d’écriture correspondantes.
 

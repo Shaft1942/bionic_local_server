@@ -1,13 +1,13 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Bionic-mobile-commun.ps1')
 
 # Always use current settings, never the port left by an earlier run.
 $serverPort = Get-BionicPort $PSScriptRoot
 $config = Read-BionicJson (Join-Path $PSScriptRoot 'data\config.json')
 $expectedInstance = [string](Get-BionicField $config 'instanceId')
-$ping = Get-BionicPing $serverPort
+$ping = Get-BionicPing -Port $serverPort -Root $PSScriptRoot
 if (Test-BionicIdentity $ping $expectedInstance) {
-    Write-Output "Le serveur de ce dossier est deja actif : http://127.0.0.1:$serverPort"
+    Write-Output ("Le serveur de ce dossier est deja actif : " + (Get-BionicApplicationUrl -Root $PSScriptRoot -Port $serverPort))
     Write-Output 'Le code et les adresses du telephone sont dans ACCES-PRIVE.txt.'
     exit 0
 }
@@ -24,10 +24,10 @@ for ($attempt = 0; $attempt -lt 30; $attempt++) {
     # On first launch, the server itself creates the identifier and private code.
     $config = Read-BionicJson (Join-Path $PSScriptRoot 'data\config.json')
     $expectedInstance = [string](Get-BionicField $config 'instanceId')
-    $ping = Get-BionicPing $serverPort
+    $ping = Get-BionicPing -Port $serverPort -Root $PSScriptRoot
     if (Test-BionicIdentity $ping $expectedInstance) { $ready = $true; break }
     if ($null -ne $ping) { throw "Le port $serverPort appartient a une autre instance. Aucun processus arrete." }
 }
 if (-not $ready) { throw 'Le serveur n''a pas demarre. Consulte server-error.log dans ce dossier.' }
-Write-Output "Serveur actif : http://127.0.0.1:$serverPort"
+Write-Output ("Serveur actif : " + (Get-BionicApplicationUrl -Root $PSScriptRoot -Port $serverPort))
 Write-Output 'Sur le telephone, utilise l''adresse et le code de ACCES-PRIVE.txt.'

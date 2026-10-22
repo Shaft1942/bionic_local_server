@@ -15,6 +15,7 @@
   <script src="/workspace.js" defer></script>
   <script src="/updates.js" defer></script>
   <script src="/comfy-images.js" defer></script>
+  <script src="/certificates.js" defer></script>
   <script src="/settings.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
@@ -62,7 +63,7 @@
         <button id="updates-open" class="conversation-help" type="button" hidden>Mises à jour du compagnon <span id="updates-badge" class="updates-badge" hidden>Disponible</span></button>
         <div id="diagnostics-result" class="diagnostics-result" hidden></div>
       </section>
-      <section id="info" class="info-panel" aria-labelledby="info-title" hidden><header class="info-panel-header"><h2 id="info-title">Comment fonctionne ce compagnon ?</h2><button id="info-close" class="icon-button" type="button" aria-label="Fermer l’aide" title="Fermer l’aide"></button></header><div id="info-body" class="info-panel-body"><p>Les historiques natifs restent lus sans modification. Les réponses écrites ici forment des conversations web distinctes sur ce PC.</p><p>Lorsque l’option de modification est cochée, le modèle dispose d’outils pour lire, créer et modifier les textes du dossier de travail de ce projet. Les actions sont enregistrées dans le chat. Les remplacements conservent une copie précédente que tu peux rétablir.</p><p>« Importer un fichier » copie les fichiers de ton appareil dans « Imports telephone », au sein du projet. Les formats lisibles sont joints au prochain message, dans la limite de quatre pièces jointes. Pour analyser une image PNG, JPEG ou WebP, choisis un modèle marqué Vision.</p><p>« Fichiers du projet » reste disponible pour consulter et éditer les fichiers manuellement. Cette connexion HTTP est destinée au réseau domestique de confiance.</p></div></section>
+      <section id="info" class="info-panel" aria-labelledby="info-title" hidden><header class="info-panel-header"><h2 id="info-title">Comment fonctionne ce compagnon ?</h2><button id="info-close" class="icon-button" type="button" aria-label="Fermer l’aide" title="Fermer l’aide"></button></header><div id="info-body" class="info-panel-body"><p>Les historiques natifs restent lus sans modification. Les réponses écrites ici forment des conversations web distinctes sur ce PC.</p><p>Lorsque l’option de modification est cochée, le modèle dispose d’outils pour lire, créer et modifier les textes du dossier de travail de ce projet. Les actions sont enregistrées dans le chat. Les remplacements conservent une copie précédente que tu peux rétablir.</p><p>« Importer un fichier » copie les fichiers de ton appareil dans « Imports telephone », au sein du projet. Les formats lisibles sont joints au prochain message, dans la limite de quatre pièces jointes. Pour analyser une image PNG, JPEG ou WebP, choisis un modèle marqué Vision.</p><p>« Fichiers du projet » reste disponible pour consulter et éditer les fichiers manuellement. Le niveau de protection de la connexion est indiqué dans les paramètres.</p></div></section>
       <div id="banner" class="banner" hidden></div>
       <div id="messages" class="messages" tabindex="0" aria-label="Messages de la conversation"><div class="welcome"><img src="/icon.svg" width="48" height="48" alt=""><h2>Le fil de tes idées.</h2><p>Ouvre une conversation Bionic ou commence un nouveau chat dans le projet de ton choix.</p><p class="welcome-detail">Les originaux restent dans Bionic.<br>Les suites web restent sur ce PC.</p></div></div>
       <div id="message-error" class="message-error" role="alert" hidden></div>
@@ -133,6 +134,22 @@
   <section id="settings-view" class="settings-view" aria-labelledby="settings-title" hidden>
     <header class="settings-header"><h1 id="settings-title">Paramètres</h1><button id="settings-close" class="file-action" type="button">Fermer les paramètres</button></header>
     <div class="settings-body">
+      <section aria-labelledby="certificate-title" class="certificate-section">
+        <div class="certificate-heading"><h2 id="certificate-title">Sécurité des connexions</h2><button id="certificate-refresh" class="file-action" type="button">Actualiser l’état</button></div>
+        <p id="certificate-status" role="status" aria-live="polite"></p>
+        <p id="certificate-error" class="error" role="alert" hidden>État de sécurité indisponible. Vérifie la connexion au compagnon, puis utilise « Actualiser l’état ».</p>
+        <div id="certificate-data" hidden>
+          <p class="certificate-current">Niveau actif : <strong id="certificate-mode"></strong></p>
+          <p id="certificate-description"></p>
+          <p id="certificate-pending" class="certificate-pending" role="status" hidden></p>
+          <details class="certificate-technical"><summary>Détails des certificats</summary><dl id="certificate-details" class="settings-capabilities"></dl></details>
+          <h3>Appareils enregistrés</h3>
+          <p id="certificate-devices-empty" hidden>Aucun certificat client enregistré.</p>
+          <ul id="certificate-devices" class="certificate-devices"></ul>
+        </div>
+        <p class="certificate-local-help">Pour activer HTTPS, ajouter un appareil, renouveler ou révoquer un certificat, ouvre <strong>Certificats.cmd</strong> dans le dossier du compagnon sur le PC serveur. Le niveau supérieur devient actif après vérification de la connexion.</p>
+        <p>Certificat perdu ? Retourne sur le PC serveur et ouvre <strong>Certificats.cmd</strong> pour rétablir l’accès. La récupération conserve les conversations et les fichiers.</p>
+      </section>
       <section aria-labelledby="output-title"><h2 id="output-title">Longueur des réponses</h2>
         <form id="output-settings-form">
           <label for="settings-model">Modèle</label><select id="settings-model"></select>

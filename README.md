@@ -61,7 +61,9 @@ L’application n’envoie pas automatiquement toute votre bibliothèque au mod�
 
 Un chat web illisible est préservé et signalé par un **inventaire partiel** ; les autres restent accessibles. Aucune réparation automatique n’est tentée. Le [guide de dépannage](docs/depannage.md) explique la récupération manuelle. Sous Windows, **Diagnostic.cmd** produit un diagnostic borné et **Deconnecter-appareils.cmd** invalide globalement les sessions sans arrêter les travaux ; un appareil connaissant le code peut se reconnecter.
 
-Ce serveur utilise **HTTP** et un code d’accès pour un **réseau local de confiance**. Il ne doit pas être exposé directement sur Internet. N’ouvrez pas de redirection de port sur votre routeur. Lisez [Sécurité](SECURITY.md) avant de partager un accès.
+Le premier démarrage utilise **HTTP** et un code d’accès pour un **réseau local de confiance**. L’outil local **Certificats.cmd** permet ensuite de préparer HTTPS, puis de rendre un certificat individuel obligatoire pour chaque appareil (mTLS). Une connexion de preuve confirme chaque montée avant fermeture de l’ancien accès. La création des archives privées et la récupération restent réservées au PC serveur ; les conversations et fichiers sont conservés. Consultez le [parcours certificats](docs/certificats-utilisation.md).
+
+N’exposez pas directement le compagnon sur Internet et n’ouvrez pas de redirection de port sur votre routeur. Lisez [Sécurité](SECURITY.md) avant de partager un accès.
 
 ## Documentation
 

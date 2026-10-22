@@ -1,4 +1,4 @@
-# Installation helpers. Dot-sourcing never installs, downloads or launches anything.
+﻿# Installation helpers. Dot-sourcing never installs, downloads or launches anything.
 Set-StrictMode -Version 2.0
 . (Join-Path $PSScriptRoot 'Bionic-mobile-commun.ps1')
 
@@ -51,7 +51,7 @@ function Get-BionicInstallFiles {
     $manifest = Read-BionicJson (Join-Path $root 'release-manifest.json')
     $seen = @{}
     foreach ($relative in $manifest.files) {
-        if ($relative -notmatch '^[a-zA-Z0-9_.@/-]+$' -or $relative -match '(^|/)(\.{1,2}|data|runtime|dist|node_modules|\.git)(/|$)' -or $relative -match '(^|/)(config\.local\.json|ACCES-PRIVE\.txt|\.env)' -or $seen.ContainsKey($relative)) { throw 'Inventaire de distribution invalide.' }
+        if ($relative -notmatch '^[a-zA-Z0-9_.@/-]+$' -or $relative -match '(^|/)(\.{1,2}|data|runtime|dist|node_modules|\.git)(/|$)' -or $relative -match '(^|/)(config\.local\.json|ACCES-PRIVE\.txt|\.env)' -or $relative -match '\.(pem|key|pfx|p12|crt|cer|der|zip|bin)$' -or $relative -match '(^|/)(security|certificate-exports)(/|$)' -or $seen.ContainsKey($relative)) { throw 'Inventaire de distribution invalide.' }
         $seen[$relative] = $true
         $file = Join-Path $root $relative
         $cursor = $file
