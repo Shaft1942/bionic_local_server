@@ -128,3 +128,27 @@ test('Windows proof-port provisioning is reported only for this instance and the
   address='192.168.1.31';assert.equal((await service.status(req,session)).web.proofPortProvisioned,false);
   address=marker.localAddress;await fs.writeFile(path.join(root,'runtime/certificate-network.json'),JSON.stringify({...marker,instanceId:'foreign'}));assert.equal((await service.status(req,session)).web.proofPortProvisioned,false);service.clear();
 });
+
+test('access addresses preserve HTTP loopback and refresh every secure host and port without changing authentication',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'bionic-access-addresses-'));
+  let app; t.after(async()=>{await app?.close();await fs.rm(root,{recursive:true,force:true});});
+  const state={mode:'http',epoch:'fixture-epoch',devices:[],server:null};
+  const certificateStore={get state(){return structuredClone(state);},publicStatus:()=>structuredClone(state)};
+  const options={root,certificateStore,settings:{port:40001,apiUrl:'http://127.0.0.1:1235',bionicRoot:root,registryPath:path.join(root,'registry.json'),extraRoots:[],python:'python',comfyEnabled:false},nativeStore:{listProjects:async()=>[],listSessions:async()=>[]},comfyService:{getSettings:()=>({activeJobs:0}),close:async()=>{}},updateService:{start(){},stop(){},status:()=>({enabled:false})}};
+  app=await createCompanion(options);
+  const accessFile=path.join(root,'ACCES-PRIVE.txt'),authFile=path.join(root,'data/config.json');
+  const originalAuth=await fs.readFile(authFile),read=()=>fs.readFile(accessFile,'utf8'),code=text=>/^Code d’accès : (.+)$/m.exec(text)[1].trim(),pc=text=>/^Sur ce PC : (.+)$/m.exec(text)[1].trim();
+  const originalCode=code(await read());assert.equal(pc(await read()),'http://127.0.0.1:40001');
+  // An older installation may already contain a LAN URL on the PC line.
+  await fs.writeFile(accessFile,(await read()).replace(/^Sur ce PC :[^\r\n]*/m,'Sur ce PC : http://192.168.25.10:40001'));
+  state.mode='https';state.server={hosts:['localhost','127.0.0.1','127.0.0.2','::1','192.168.25.10','bionic.test']};
+  await app.refreshSecurityAddresses();let content=await read();assert.equal(pc(content),'https://127.0.0.1:40001');
+  let phone=content.slice(content.indexOf('Sur le téléphone,'),content.indexOf('Code d’accès'));
+  assert.match(phone,/https:\/\/192\.168\.25\.10:40001/);assert.match(phone,/https:\/\/bionic\.test:40001/);assert.doesNotMatch(phone,/127\.|localhost|\[::1\]/);
+  state.server={hosts:['localhost','renewed.test']};await app.refreshSecurityAddresses();assert.equal(pc(await read()),'https://localhost:40001');
+  state.mode='mtls';state.server={hosts:['192.168.26.11','changed.test']};
+  await app.close();app=await createCompanion({...options,settings:{...options.settings,port:40002}});
+  content=await read();assert.equal(pc(content),'https://192.168.26.11:40002');assert(!content.includes(':40001'));assert.equal(code(content),originalCode);assert.deepEqual(await fs.readFile(authFile),originalAuth);
+  state.server={hosts:['localhost','127.0.0.1']};await app.refreshSecurityAddresses();content=await read();phone=content.slice(content.indexOf('Sur le téléphone,'),content.indexOf('Code d’accès'));assert(!phone.includes('://'));assert.equal(pc(content),'https://127.0.0.1:40002');
+  assert.equal(code(content),originalCode);assert.deepEqual(await fs.readFile(authFile),originalAuth);
+});

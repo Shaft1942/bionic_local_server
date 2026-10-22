@@ -77,16 +77,23 @@ const privateAccessFile = path.join(ROOT, 'ACCES-PRIVE.txt');
 
 const sessions = new Map();
 const certificateWeb = createCertificateWeb({ store: certificateStore, transport: () => certificateTransport, suggestedHosts: ['127.0.0.1', 'localhost', ...localIPs], root: ROOT, instanceId: config.instanceId });
+const connectionUrl = (protocol, host) => `${protocol}//${host.includes(':') ? '[' + host + ']' : host}:${PORT}`;
 function connectionUrls() {
   const protocol = certificateStore.state.mode === 'http' ? 'http:' : 'https:';
   const hosts = certificateStore.state.mode === 'http' ? localIPs : certificateStore.state.server?.hosts || [];
-  return hosts.map(host => `${protocol}//${host.includes(':') ? '[' + host + ']' : host}:${PORT}`);
+  return hosts.filter(host => host !== 'localhost' && !/^(?:127\.|::1$|::ffff:127\.)/.test(host)).map(host => connectionUrl(protocol, host));
+}
+function pcConnectionUrl() {
+  if (certificateStore.state.mode === 'http') return connectionUrl('http:', '127.0.0.1');
+  const hosts = certificateStore.state.server?.hosts || [];
+  const host = hosts.includes('127.0.0.1') ? '127.0.0.1' : hosts.includes('localhost') ? 'localhost' : hosts[0];
+  return host ? connectionUrl('https:', host) : 'consulte les paramètres de connexion';
 }
 async function refreshSecurityAddresses() {
   try {
     const content = await fs.readFile(privateAccessFile, 'utf8');
     const note = certificateStore.state.mode === 'http' ? 'Le serveur utilise HTTP sur le réseau de confiance de la maison.' : 'Le serveur exige HTTPS. La gestion des certificats se fait dans Paramètres > Sécurité des connexions.';
-    const updated = content.replace(/Sur le téléphone,[\s\S]*?\r?\n\r?\nCode d’accès/, `Sur le téléphone, connecté au Wi-Fi de la maison :\r\n${connectionUrls().join('\r\n')}\r\n\r\nCode d’accès`).replace(/Sur ce PC : https?:\/\/127\.0\.0\.1:\d+/, `Sur ce PC : ${connectionUrls().find(url => url.includes('127.0.0.1')) || connectionUrls()[0] || 'consulte les paramètres de connexion'}`).replace(/Le serveur (?:utilise HTTP sur le réseau de confiance de la maison\.|exige HTTPS\. La gestion des certificats se fait (?:sur le PC avec Certificats\.cmd|dans Paramètres > Sécurité des connexions)\.)/, note);
+    const updated = content.replace(/Sur le t[ée]l[ée]phone,[\s\S]*?\r?\n\r?\nCode d’accès/, `Sur le téléphone, connecté au Wi-Fi de la maison :\r\n${connectionUrls().join('\r\n')}\r\n\r\nCode d’accès`).replace(/^Sur ce PC[ \t]*:[^\r\n]*/m, `Sur ce PC : ${pcConnectionUrl()}`).replace(/Le serveur (?:utilise HTTP sur le réseau de confiance de la maison\.|exige HTTPS\. La gestion des certificats se fait (?:sur le PC avec Certificats\.cmd|dans Paramètres > Sécurité des connexions)\.)/, note);
     if (content !== updated) await fs.writeFile(privateAccessFile, updated, { mode: 0o600 });
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
 }
