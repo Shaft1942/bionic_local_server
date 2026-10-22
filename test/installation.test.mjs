@@ -33,12 +33,14 @@ test('installer accepts only loopback HTTP APIs and normalizes the Bionic /v1 su
 test('new installation copies only public sources and records a reusable Node path',{skip:!windows},async t=>{
   const {base,source,target}=await fixture(t);
   const result=JSON.parse(ps(`${install(source,target)} | ConvertTo-Json -Compress`));
-  assert.equal(result.Root,target);assert.equal(result.Existing,false);
+  // Windows runners can expose TEMP through an 8.3 alias. Compare the actual
+  // directory identity, since PowerShell expands that alias to its long path.
+  assert.equal(await fs.realpath(result.Root),await fs.realpath(target));assert.equal(result.Existing,false);
   const config=JSON.parse(await fs.readFile(path.join(target,'config.local.json'),'utf8'));
   assert.deepEqual(config,{port:3002,apiUrl:'http://localhost:1235'});
   await assert.rejects(fs.access(path.join(target,'data/private.txt')));
-  assert.equal(JSON.parse(await fs.readFile(path.join(target,'runtime/node-path.json'),'utf8')).path,process.execPath);
-  assert.equal(ps(`Get-BionicNode -Root ${q(target)}`).toLowerCase(),process.execPath.toLowerCase());
+  assert.equal(await fs.realpath(JSON.parse(await fs.readFile(path.join(target,'runtime/node-path.json'),'utf8')).path),await fs.realpath(process.execPath));
+  assert.equal(await fs.realpath(ps(`Get-BionicNode -Root ${q(target)}`)),await fs.realpath(process.execPath));
   assert(!(await fs.readdir(base)).some(n=>n.startsWith('.bionic-install-')));
 });
 test('in-place configuration preserves private bytes and unknown settings and backs up configuration',{skip:!windows},async t=>{
