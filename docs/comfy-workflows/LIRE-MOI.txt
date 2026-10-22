@@ -1,0 +1,143 @@
+WORKFLOWS BIONIC / COMFYUI — 22 octobre 2026
+
+1. UTILISATION DANS COMFYUI
+
+Ouvrir le fichier *.workflow.json souhaité avec Ctrl+O ou le déposer sur le canevas.
+Modifier le prompt, puis cliquer sur Exécuter lorsque tu souhaites lancer le rendu.
+Les *.api.json servent aux appels HTTP ; les *.workflow.json conservent les nœuds
+et leur présentation éditable. Aucun poids de modèle n'est inclus dans ce paquet.
+
+Commencer par 02-Krea2-Turbo.workflow.json pour la photographie ou par
+01-Hassaku-Illustrious.workflow.json pour l'illustration. Le prompt de démonstration
+est un adulte botaniste dans une serre. Il est remplaçable et ne vient pas de tes
+presets privés. Seeds fixes à 42, lot de 1.
+
+01 — HASSAKU ILLUSTRIOUS
+Checkpoint : hassakuXLIllustrious_v34.safetensors, CLIP et VAE intégrés.
+832 x 1216 ; 25 étapes ; CFG 6 ; euler_ancestral / normal ; denoise 1.
+Ces réglages reprennent ton fichier Hassaku WF.json, sans ses LoRA ni assemblages
+de prompts. Ils ne sont pas présentés comme recette officielle de l'auteur.
+Positif et négatif modifiables ; négatif vide par défaut.
+L'édition Pony v13 est également présente sur ton PC mais n'est pas mélangée à
+Illustrious. Un changement vers Pony demanderait un profil et des prompts adaptés.
+
+02 — KREA2 TURBO LOCAL
+Diffusion : krea2_turbo_fp8_scaled.safetensors, weight_dtype=default.
+Texte : qwen3vl_4b_fp8_scaled.safetensors, type=krea2, device=default.
+VAE : qwen_image_vae.safetensors.
+1024 x 1024 ; 8 étapes ; CFG 1 ; euler / simple ; denoise 1.
+Recette du template natif et de ton Krea2WF.app.json. ConditioningZeroOut fournit
+le branchement négatif attendu. CFG 1 désactive le guidage CFG dans ComfyUI ; il ne
+faut pas recopier le --cfg=0 du programme officiel tel quel dans KSampler.
+Pas de ModelSamplingAuraFlow : le support natif Krea2 applique déjà son shift 1.15.
+Pas d'enhancer TextGenerate : Bionic fournit directement le prompt final. Qwen3VL
+reste nécessaire comme encodeur du modèle d'image, distinct du modèle dans Bionic.
+
+03 — HASSAKU VERS KREA2, EXPERIMENTAL
+Deux prompts distincts : composition illustrée Hassaku et description du résultat
+photographique Krea2. L'image Hassaku est décodée avec son VAE, puis ses PIXELS sont
+réencodés par VAEEncode avec le VAE Krea2. Aucun latent SDXL envoyé à Krea2.
+832 x 1216, source sauvegardée et résultat final sauvegardé séparément.
+Denoise Krea2=0.50 est un essai, pas une recette d'édition validée : le sampler
+recalcule une trajectoire différente de celle des 8 étapes Turbo de référence.
+Ne garantit ni conservation exacte de la pose, ni identité, ni photoréalisme.
+Les deux familles dans le même graphe peuvent accroître la pression mémoire.
+Ne pas commencer les vérifications GPU par cette variante.
+
+2. ÉTAT DES VÉRIFICATIONS
+
+Installation réellement interrogée : ComfyUI 0.42.2, frontend 1.55.18,
+PyTorch 2.12.0+rocm7.14.0, RX 7800 XT 16 Go, serveur local 8188.
+Noms de modèles et classes relevés dans /object_info, fichiers inspectés sur disque.
+Les trois graphes API ont été importés dans le frontend sans nœud manquant signalé.
+Les UI 01 et 02 proviennent d'exports réels du frontend. Le troisième UI a été
+assemblé hors ligne à partir de ces exports, avec leurs champs widgets_values_named,
+leurs ports nommés et types réels ; son import final reste à contrôler.
+Précontrôle offline : zéro erreur sur les trois API ; liens UI/API, valeurs nommées,
+types des connexions et absence de cycles vérifiés. Détails : verification.json.
+
+Aucun POST /prompt ni rendu GPU n'a été lancé pendant cette préparation.
+Donc : chargement des poids, mémoire en génération, qualité et durée non testés.
+Un import réussi et un précontrôle ne constituent pas une validation serveur de rendu.
+Le contrôle navigateur s'est interrompu sur un refus d'autorisation de l'origine,
+même après ton accord pour les téléchargements. Aucune capture finale disponible.
+La copie UI03 reste un candidat hors ligne ; aucun contournement du refus navigateur.
+
+3. PRÉPARER UNE REQUÊTE POUR BIONIC OU LE COMPAGNON
+
+manifest.json décrit les profils et lie chaque paramètre à un node_id et au nom
+de son entrée. Les noms de fichier, modèles, sampler, steps, CFG et lot sont fixés.
+Formats proposés : square 1024x1024, portrait 832x1216, landscape 1216x832.
+Ces plafonds sont des choix de passerelle, pas des limites intrinsèques des modèles.
+Seeds limitées à 32 bits pour éviter les pertes de précision entre Python et JS.
+
+Depuis le dossier extrait du paquet, exemple HORS LIGNE :
+
+python preparer_requete.py --workflow krea2_turbo --prompt "A blue ceramic teapot on a limestone table, soft morning light." --seed 42 --format square --output demande.json
+
+Ce programme Python standard (sans installation de dépendances) écrit une enveloppe
+avec les paramètres, l'empreinte du workflow et le corps HTTP. Il ne contacte aucun
+serveur et refuse d'écraser une demande déjà présente.
+Le profil expérimental exige --allow-experimental et --krea-prompt explicitement.
+
+Pour lancer réellement LE RENDU depuis PowerShell, après préparation de demande.json :
+
+$demande = Get-Content -LiteralPath '.\demande.json' -Raw | ConvertFrom-Json
+$corps = $demande.body | ConvertTo-Json -Depth 30 -Compress
+$octets = [System.Text.Encoding]::UTF8.GetBytes($corps)
+$reponse = Invoke-RestMethod -Uri 'http://127.0.0.1:8188/prompt' -Method Post -ContentType 'application/json; charset=utf-8' -Body $octets
+$reponse
+
+Conserver le prompt_id retourné. Puis consulter sans relancer :
+
+Invoke-RestMethod -Uri ('http://127.0.0.1:8188/history/' + $reponse.prompt_id)
+
+Un historique encore vide n'est pas un échec. Attendre l'état terminal. Consulter
+/queue si nécessaire ; ne pas soumettre une deuxième fois après un délai expiré.
+Le POST /prompt ajoute réellement à la file ; il ne faut pas l'utiliser comme dry-run.
+Les sorties SaveImage se trouveront sous le dossier output configuré de ComfyUI,
+dans Bionic/Hassaku, Bionic/Krea2 et Bionic/Hassaku-vers-Krea2.
+
+4. CE QUI RESTE POUR LE COMPAGNON RÉSEAU
+
+Le compagnon courant v1.10.0 possède déjà une boucle d'outils fichiers/web/scripts,
+selon les sources et preuves d'audit relues dans ce workspace. Notre ancienne
+description « il faut créer la boucle d'outils » était donc dépassée.
+Il reste à ajouter un outil ComfyUI dédié et la présentation des images.
+Aucun fichier du compagnon ou de Bionic n'a été modifié dans cette préparation.
+
+Contrat conseillé : submit_comfy_generation(workflow_id, prompt, seed, format), puis
+get_comfy_generation(job_id). Conserver job_id/prompt_id et les états queued,
+running, succeeded, failed, unknown ; pas de relance automatique d'un POST incertain.
+Le compagnon doit recevoir body dans l'enveloppe, pas toute l'enveloppe à la place
+du graphe. La requête POST est {prompt:graphe_API, client_id:identifiant}.
+Récupérer les fichiers via /view avec filename, subfolder et type réellement fournis
+par l'historique. Le compagnon sert ensuite les images au téléphone avec une URL
+relative à son propre serveur : un lien 127.0.0.1:8188 viserait le téléphone.
+Respecter les validations actuelles des scripts du compagnon ; ne pas les contourner.
+
+Ne pas décharger ou reconfigurer Bionic automatiquement. Laisser ComfyUI gérer
+l'offload, garder lot1, puis mesurer la coexistence des deux moteurs en génération.
+Le paquet ne modifie ni les ports, ni le pare-feu, ni les paramètres mémoire.
+Utiliser l'adresse loopback côté passerelle n'a pas modifié l'exposition réseau
+actuelle de ton ComfyUI, qui écoutait déjà sur toutes les interfaces lors du relevé.
+
+5. SOURCES ET MÉTHODE
+
+Trois agents exécutés : expertise modèles, contrat Bionic/compagnon, revue indépendante.
+Le parent a intégré les graphes, réalisé les imports/exports UI accessibles et les
+comparaisons offline. Les méta-prompts et résultats sont dans META-PROMPTS-EXECUTES.txt.
+
+Sources locales : Hassaku WF.json, Krea2WF.app.json et template installé Krea2,
+comfy/supported_models.py (Krea2), comfy/sd.py (CLIPType.KREA2),
+comfy/sample.py (adaptation latent vide), comfy/samplers.py (denoise).
+
+Sources primaires consultées par les agents le 22 octobre 2026 :
+https://github.com/krea-ai/krea-2
+https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_krea2_turbo_t2i.json
+https://docs.comfy.org/development/comfyui-server/comms_routes
+https://github.com/Comfy-Org/ComfyUI/blob/master/server.py
+
+Skill utilisés : comfyui, hassakuxl, krea2 ; computer-use pour imports/exports.
+La fiche auteur de Hassaku Illustrious v34 n'a pas été revalidée : les réglages
+proviennent explicitement de ton workflow existant.

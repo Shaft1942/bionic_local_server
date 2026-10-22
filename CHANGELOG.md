@@ -1,5 +1,23 @@
 # Journal des versions
 
+## 2.0.0 — 22 octobre 2026
+
+- Paramètres accessibles depuis la barre latérale et les options de conversation, avec fermeture directe et Échap.
+- Réponses : plafond automatique de 8 192 tokens ajusté au contexte estimé à chaque appel, outils et résultats compris. Saisie précise et slider synchronisés de 1 à 5 000 000 tokens, par modèle ou conversation. La préférence reste conservée et le budget effectif respecte le contexte disponible. Signalement des réponses coupées.
+- ComfyUI facultatif et configurable dans l’interface : URL locale/LAN, test sans rendu, choix Krea2 Turbo ou HassakuXL Illustrious v34 dans les outils du message, conservé avec le brouillon et la conversation.
+- Deux LoRA facultatifs par modèle, sélectionnés dans le catalogue de l’instance ComfyUI (dossiers supplémentaires et téléchargements reconnus compris). Sliders de force de −2 à 20 par pas de 0,05, valeur affichée en direct ; 0 désactive l’emplacement. La présence dans le catalogue ne garantit pas la compatibilité avec le modèle.
+- Le modèle et les LoRA sont figés à l’envoi. Suivi persistant lié à l’adresse et au workflow d’origine ; images accessibles après désactivation. Le sélecteur suit la conversation et son brouillon. Les consignes d’outil demandent une description en anglais tout en conservant les textes à afficher et les prompts exacts explicitement fournis.
+- `FreeMemoryAfterWorkflow` relié après `SaveImage` dans les deux workflows : déchargement des modèles et libération mémoire en fin d’exécution selon le mécanisme de `/free`. Le nœud doit être installé sur l’instance ComfyUI.
+- Projets et conversations dans un arbre repliable, avec chargement à l’ouverture et affichage progressif.
+- Mémoire courte des reçus d’outils déjà transmis, bornée et dépourvue d’autorisations ; vue des capacités et limites du compagnon.
+- Mise à jour Windows : reprise bornée des renommages temporairement bloqués et retour arrière confirmé par empreintes, avec redémarrage de l’ancienne version lorsque les sources sont restaurées.
+- Assistant Windows conservé ; correction du nom du script d’autorisation du pare-feu facultatif. La mise à jour attend aussi la fin des générations d’images avant tout redémarrage.
+- Métaprompts, décisions, workflows et preuves conservés dans les guides V2. Les itérations locales 2.1.0 à 2.1.3 sont réunies dans cette première release publique 2.0.0 ; la protection contre les retours de version reste active.
+
+## 1.11.0 — 22 octobre 2026
+
+- Génération Krea2 Turbo locale depuis les conversations, avec permission Images indépendante, paramètres bornés, suivi persistant et affichage/téléchargement de l’image. Aucune resoumission automatique après un envoi incertain ; reprise du suivi après redémarrage. Le compagnon sert les images authentifiées au réseau local.
+
 ## 1.10.0 — 22 octobre 2026
 
 - Assistant Windows `Installer.cmd` : choix du dossier, configuration guidée de l’API Bionic et du port, détection de Node.js et téléchargement portable officiel facultatif avec contrôle SHA-256 et signature Windows. Raccourci et démarrage proposés ; accès au téléphone facultatif avec accord Windows pour le pare-feu privé. Préservation des données et sauvegarde des réglages pour une reconfiguration sur place ; aucune migration automatique entre installations.

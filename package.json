@@ -1,6 +1,6 @@
 {
   "name": "bionic-mobile-local",
-  "version": "1.10.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "description": "Compagnon local pour consulter les projets et chats Bionic et continuer par API",
@@ -19,7 +19,9 @@
     "check:export": "node scripts/check-export.mjs",
     "release": "node scripts/build-release.mjs",
     "test:browser": "node scripts/browser-smoke.mjs",
-    "benchmark:chats": "node scripts/benchmark-chats.mjs"
+    "benchmark:chats": "node scripts/benchmark-chats.mjs",
+    "test:browser:v2": "node scripts/browser-v2.mjs",
+    "test:browser:tree": "node scripts/browser-project-tree.mjs"
   },
   "engines": {
     "node": ">=24"

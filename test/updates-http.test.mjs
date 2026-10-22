@@ -22,7 +22,7 @@ async function fixture(t, overrides={}) {
   const candidate={version:'1.10.0',url:'https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.10.0',notes:'Synthetic'};
   const service={status:()=>({currentVersion:'1.9.0',enabled,checking,ignoredVersion:ignored,candidate:ignored?null:candidate}),start(){calls.push('start');},stop(){calls.push('stop');},async check(){calls.push('check');},async ignore(v){assert.equal(v,candidate.version);ignored=v;calls.push('ignore');},async setEnabled(v){enabled=v;calls.push('preferences');},async prepareInstall(version){calls.push('download');assert.equal(version,candidate.version);return{archive:Buffer.from('synthetic'),metadata:{version}};},...overrides.service};
   const installer={async prepareUpdate(){calls.push('prepare');return{version:candidate.version};},async launchUpdate(){calls.push('launch');},...overrides.installer};
-  const app=await createCompanion({root,settings:{port:8769,apiUrl:'http://127.0.0.1:1235',bionicRoot:root,registryPath:path.join(root,'registry.json'),extraRoots:[],python:'python'},nativeStore:{listProjects:async()=>[],listSessions:async()=>[]},updateService:service,updateInstaller:installer,updatePlatform:'win32',enableUpdateScheduling:true,onUpdateRestart:()=>{restarts++;}});
+  const app=await createCompanion({root,settings:{port:8769,apiUrl:'http://127.0.0.1:1235',bionicRoot:root,registryPath:path.join(root,'registry.json'),extraRoots:[],python:'python'},nativeStore:{listProjects:async()=>[],listSessions:async()=>[]},comfyService:overrides.comfyService,updateService:service,updateInstaller:installer,updatePlatform:'win32',enableUpdateScheduling:true,onUpdateRestart:()=>{restarts++;}});
   async function request(url,input,options={}) {
     const source=options.source||Readable.from(input===undefined?[]:[Buffer.from(JSON.stringify(input))]);
     Object.assign(source,{url,method:input===undefined&&!options.source?'GET':'POST',headers:{host:'127.0.0.1:8769',...(cookie?{cookie}:{}),...options.headers},socket:{remoteAddress:'127.0.0.1'}});
@@ -60,6 +60,28 @@ test('active work prevents installation before any download',async t=>{
   f.app.chatStates.set('synthetic',{chat:{generation:{status:'running'}},writes:Promise.resolve()});
   assert.equal((await f.request('/api/updates/install',{version:'1.10.0',confirm:true})).statusCode,409);
   assert.deepEqual(f.calls,[]);
+});
+
+test('active ComfyUI generations prevent installation before any download, even after the chat ends',async t=>{
+  let activeJobs=1;
+  const comfyService={getSettings:()=>({enabled:true,activeJobs}),async close(){}};
+  const f=await fixture(t,{comfyService});await f.login();
+  const status=(await f.request('/api/updates')).json();
+  assert.equal(status.canInstall,false);assert.match(status.unavailableReason,/Attends/);
+  assert.equal((await f.request('/api/updates/install',{version:'1.10.0',confirm:true})).statusCode,409);
+  assert.deepEqual(f.calls,[]);
+  activeJobs=0;
+  assert.equal((await f.request('/api/updates')).json().canInstall,true);
+});
+
+test('a ComfyUI generation appearing during preparation prevents the update worker from starting',async t=>{
+  let activeJobs=0;
+  const comfyService={getSettings:()=>({enabled:true,activeJobs}),async close(){}};
+  const f=await fixture(t,{comfyService,installer:{async prepareUpdate(){activeJobs=1;return{};}}});await f.login();
+  assert.equal((await f.request('/api/updates/install',{version:'1.10.0',confirm:true})).statusCode,409);
+  assert.deepEqual(f.calls,['download']);
+  assert.equal((await f.request('/api/updates')).json().installation.status,'error');
+  assert.equal(f.restarts,0);
 });
 
 test('another accepted mutation prevents an update while its request body is arriving',async t=>{

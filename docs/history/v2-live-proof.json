@@ -1,0 +1,202 @@
+{
+  "date": "2026-10-22T18:44:30.983Z",
+  "model": "google/gemma-4-12b-qat",
+  "contextLength": 262144,
+  "isolated": true,
+  "upstream": [
+    {
+      "maxTokens": 8192,
+      "messageCount": 2,
+      "tools": []
+    },
+    {
+      "maxTokens": 512,
+      "messageCount": 4,
+      "tools": []
+    },
+    {
+      "maxTokens": 8192,
+      "messageCount": 2,
+      "tools": [
+        "generate_krea2_image",
+        "generate_comfy_image"
+      ]
+    },
+    {
+      "maxTokens": 8192,
+      "messageCount": 4,
+      "tools": [
+        "generate_krea2_image",
+        "generate_comfy_image"
+      ]
+    }
+  ],
+  "comfyCheck": {
+    "ok": true,
+    "url": "http://127.0.0.1:8188",
+    "workflows": [
+      {
+        "id": "krea2_turbo",
+        "label": "Krea 2 Turbo",
+        "compatible": true,
+        "errors": [],
+        "models": [
+          {
+            "node": "UNETLoader",
+            "input": "unet_name",
+            "name": "krea2_turbo_fp8_scaled.safetensors",
+            "available": true
+          },
+          {
+            "node": "CLIPLoader",
+            "input": "clip_name",
+            "name": "qwen3vl_4b_fp8_scaled.safetensors",
+            "available": true
+          },
+          {
+            "node": "VAELoader",
+            "input": "vae_name",
+            "name": "qwen_image_vae.safetensors",
+            "available": true
+          }
+        ]
+      },
+      {
+        "id": "hassaku_illustrious",
+        "label": "Hassaku XL Illustrious v34",
+        "compatible": true,
+        "errors": [],
+        "models": [
+          {
+            "node": "CheckpointLoaderSimple",
+            "input": "ckpt_name",
+            "name": "hassakuXLIllustrious_v34.safetensors",
+            "available": true
+          }
+        ]
+      }
+    ]
+  },
+  "auto": {
+    "maxTokens": 8192,
+    "done": {
+      "type": "done",
+      "id": "web-71e16aab-03c1-4041-b782-70ede4e398e4",
+      "replyId": "42f24fd1-334c-4d4e-9440-6c76f16ef753",
+      "finishedAt": 1792694684822,
+      "outcome": "completed",
+      "limited": false,
+      "truncated": false,
+      "finishReason": "stop",
+      "outputBudget": {
+        "requestedMaxOutputTokens": 8192,
+        "maxOutputTokens": 8192,
+        "source": "auto",
+        "contextLength": 262144,
+        "estimatedInputTokens": 241,
+        "reserveTokens": 256,
+        "adjusted": false,
+        "estimate": true
+      },
+      "metrics": {
+        "inputTokens": 140,
+        "outputTokens": 5,
+        "reasoningTokens": 0,
+        "tokensPerSecond": 10.420450592788185,
+        "rateSource": "observed",
+        "firstFragmentSeconds": 13.131296200000001,
+        "responseSeconds": 13.6111219
+      },
+      "contextReceipt": {
+        "version": 1,
+        "createdAt": 1792694671211,
+        "initialTransmitted": true,
+        "history": {
+          "availableCount": 0,
+          "selectedCount": 0,
+          "omittedCount": 0,
+          "importedTruncated": false,
+          "messages": []
+        },
+        "current": {
+          "messageId": "5934696a-8981-4f02-9ff2-2f360843de6d",
+          "characters": 30
+        },
+        "attachments": [],
+        "toolsEnabled": false,
+        "vision": true,
+        "toolReads": [],
+        "toolReadCharacters": 0,
+        "toolReadLimit": 12000,
+        "external": [],
+        "externalCharacters": 0,
+        "permissions": {
+          "fileAccess": false,
+          "webAccess": false,
+          "scriptAccess": false,
+          "imageAccess": false,
+          "fileProfile": "none",
+          "webApproval": false
+        },
+        "outputBudget": {
+          "requestedMaxOutputTokens": 8192,
+          "maxOutputTokens": 8192,
+          "source": "auto",
+          "contextLength": 262144,
+          "estimatedInputTokens": 241,
+          "reserveTokens": 256,
+          "adjusted": false,
+          "estimate": true
+        },
+        "toolMemory": {
+          "count": 0,
+          "characters": 0,
+          "truncated": false,
+          "omittedCount": 0
+        },
+        "outputBudgets": [
+          {
+            "requestedMaxOutputTokens": 8192,
+            "maxOutputTokens": 8192,
+            "source": "auto",
+            "contextLength": 262144,
+            "estimatedInputTokens": 241,
+            "reserveTokens": 256,
+            "adjusted": false,
+            "estimate": true,
+            "call": 1
+          }
+        ]
+      }
+    },
+    "text": "V2 prête."
+  },
+  "manual": {
+    "maxTokens": 512,
+    "text": "préférence locale vérifiée."
+  },
+  "image": {
+    "jobId": "8753a4e1-79bc-4513-9918-a44b7180fc12",
+    "promptId": "38d019b6-b6ff-4bb5-a06d-445595cff453",
+    "tool": "generate_comfy_image",
+    "status": "succeeded",
+    "id": "8753a4e1-79bc-4513-9918-a44b7180fc12",
+    "prompt": "Une tasse en céramique verte sur une table de bois clair, éclairée par une fenêtre.",
+    "seed": 43,
+    "format": "square",
+    "width": 1024,
+    "height": 1024,
+    "workflowId": "krea2_turbo",
+    "workflowLabel": "Krea 2 Turbo",
+    "comfyUrl": "http://127.0.0.1:8188",
+    "createdAt": 1792694693497,
+    "updatedAt": 1792694749771,
+    "image": {
+      "width": 1024,
+      "height": 1024,
+      "sha256": "14e53ab53b25cf97b6483b559a7383a0e13ca528c00d5a5e2a374a5ec32e0861",
+      "size": 916993
+    }
+  },
+  "success": true
+}

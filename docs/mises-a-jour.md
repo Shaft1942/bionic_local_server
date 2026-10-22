@@ -48,3 +48,7 @@ Le retour de version du programme n'annule jamais les modifications déjà effec
 ## Premier déploiement
 
 La Release 1.8.0 ne possède pas ce mécanisme. Installez manuellement la première version qui le contient en suivant [Sauvegarde et mise à jour](sauvegarde-mise-a-jour.md). Les publications suivantes doivent joindre `update-manifest.json`, le ZIP et `SHA256SUMS.txt`. Une archive construite localement ou une branche de développement n'est pas une Release publiée.
+
+## Numérotation des versions de développement V2
+
+Les essais locaux 2.1.0 à 2.1.3 ont précédé la première release publique 2.0.0 ; leurs ajouts ComfyUI/LoRA sont réunis dans cette release. Ces numéros locaux restent supérieurs à 2.0.0 : une installation de développement 2.1.x ne recevra donc pas automatiquement cette release. La protection contre les retours de version est conservée. Pour passer d’une telle copie à la distribution publique, suivre la procédure manuelle de [sauvegarde et mise à jour](sauvegarde-mise-a-jour.md), dans un dossier propre, en préservant les données et les accès. Ne pas modifier simplement le numéro d’une installation active.
