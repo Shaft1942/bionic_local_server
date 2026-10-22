@@ -29,7 +29,8 @@ const schema = {
   EmptyLatentImage: { input: { required: { width: ['INT'], height: ['INT'], batch_size: ['INT'] } }, output: ['LATENT'] },
   KSampler: { input: { required: { model: ['MODEL'], positive: ['CONDITIONING'], negative: ['CONDITIONING'], latent_image: ['LATENT'], seed: ['INT'], steps: ['INT'], cfg: ['FLOAT'], sampler_name: [['euler', 'euler_ancestral']], scheduler: [['simple', 'normal']], denoise: ['FLOAT'] } }, output: ['LATENT'] },
   VAEDecode: { input: { required: { samples: ['LATENT'], vae: ['VAE'] } }, output: ['IMAGE'] },
-  SaveImage: { input: { required: { images: ['IMAGE'], filename_prefix: ['STRING'] } }, output: [] }
+  SaveImage: { input: { required: { images: ['IMAGE'], filename_prefix: ['STRING'] } }, output: ['IMAGE'] },
+  FreeMemoryAfterWorkflow: { input: { required: {}, optional: { trigger:['*'] } }, output:[], output_node:true }
 };
 async function fixture(t) {
   const parent = path.resolve(fileURLToPath(new URL('../work/v2-http-fixtures/', import.meta.url)));
@@ -83,9 +84,9 @@ test('V2 settings and capabilities require authentication and mutations reject f
   const f = await fixture(t);
   for (const [url, body] of [
     ['/api/comfy/settings', undefined], ['/api/comfy/settings', { enabled: true }],
-    ['/api/comfy/check', {}], ['/api/capabilities', undefined]
+    ['/api/comfy/check', {}], ['/api/comfy/loras', {}], ['/api/capabilities', undefined]
   ]) assert.equal((await f.request(url, { body, authenticated: false })).statusCode, 401, url);
-  for (const url of ['/api/comfy/settings', '/api/comfy/check']) assert.equal((await f.request(url, { body: { enabled: true }, origin: 'https://foreign.example' })).statusCode, 403, url);
+  for (const url of ['/api/comfy/settings', '/api/comfy/check', '/api/comfy/loras']) assert.equal((await f.request(url, { body: { enabled: true }, origin: 'https://foreign.example' })).statusCode, 403, url);
   assert.equal((await f.request('/api/comfy/settings')).json().enabled, false);
   assert.equal(f.requests.length, 0); assert.equal(f.modelCalls, 0);
 });

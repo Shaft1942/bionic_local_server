@@ -103,5 +103,17 @@
     "_meta": {
       "title": "Sortie Hassaku"
     }
+  },
+  "99": {
+    "class_type": "FreeMemoryAfterWorkflow",
+    "inputs": {
+      "trigger": [
+        "19",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Free Memory after Workflow (/free)"
+    }
   }
 }
