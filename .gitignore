@@ -19,6 +19,9 @@ __pycache__/
 *.key
 *.pfx
 *.p12
+*.crt
+*.cer
+*.der
 /apercu-*
 /verification*.json
 /store-verification.json

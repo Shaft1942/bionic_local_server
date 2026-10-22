@@ -94,6 +94,22 @@ npm start
 
 Si votre API Bionic requiert un jeton, définissez `BIONIC_API_TOKEN` dans votre environnement privé, sans le copier dans une issue, une capture ou une commande publiée. Consultez [Sécurité](../SECURITY.md) pour les données à conserver privées.
 
+## Certificats et transport du compagnon
+
+Le niveau HTTP/HTTPS/mTLS se gère localement avec **Certificats.cmd**, et non par
+un champ de `config.local.json` ou un retour automatique en HTTP. L’état privé
+est dans `data/security/` et son plancher dans `data/security-floor.json`.
+Ne pas copier ces fichiers depuis une autre installation ni les supprimer pour
+contourner un verrouillage. Le [guide certificats](certificats-utilisation.md)
+décrit la confiance initiale, la preuve TLS, les appareils et la récupération.
+
+Le port `port` reste celui de l’application après chaque confirmation. Une page
+de preuve temporaire utilise un autre port TLS pendant dix minutes maximum.
+La maintenance a son propre port HTTP éphémère, lié uniquement à `127.0.0.1`,
+décrit sans secret dans `runtime/transport.json`. Ce canal ne sert pas l’application.
+Les API Bionic et ComfyUI gardent leur configuration indépendante ; HTTPS du
+compagnon ne change pas leur transport.
+
 ## Moteur de recherche des agents
 
 Le web est désactivé par défaut dans le chat. Lorsqu’il est autorisé pour un message, le choix du moteur suit cet ordre :
