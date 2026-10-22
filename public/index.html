@@ -136,7 +136,11 @@
         <form id="output-settings-form">
           <label for="settings-model">Modèle</label><select id="settings-model"></select>
           <label for="output-mode">Plafond par appel</label><select id="output-mode"><option value="auto">Automatique · jusqu’à 8 192 tokens</option><option value="manual">Valeur personnalisée</option></select>
-          <div id="output-manual" hidden><label for="output-tokens">Nombre maximal de tokens</label><input id="output-tokens" type="number" min="1" max="1000000" step="1" value="8192" inputmode="numeric" aria-describedby="output-help"></div>
+          <div id="output-manual" hidden>
+            <label for="output-tokens">Nombre maximal de tokens</label><input id="output-tokens" type="number" min="1" max="5000000" step="1" value="8192" inputmode="numeric" aria-describedby="output-help" disabled>
+            <label for="output-tokens-slider" class="output-slider-label">Ajuster avec le curseur</label><input id="output-tokens-slider" class="output-tokens-slider" type="range" min="1" max="5000000" step="1" value="8192" aria-valuetext="8 192 tokens" aria-describedby="output-help" disabled>
+            <div class="output-slider-bounds" aria-hidden="true"><span>1</span><span>5 000 000 tokens</span></div>
+          </div>
           <p id="output-help">Le plafond est réduit si nécessaire pour laisser la place au contexte. L’estimation inclut l’historique, les fichiers et les outils.</p>
           <label class="settings-check"><input id="output-all-sessions" type="checkbox"><span>Appliquer à chaque session de ce modèle</span></label>
           <p>Décoché : uniquement cette conversation, y compris après réouverture. Coché : valeur par défaut pour les conversations de ce modèle. Un réglage propre à une autre conversation reste prioritaire.</p>

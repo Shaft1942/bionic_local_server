@@ -5,7 +5,17 @@ function createCompanionSettings({api,getState,node,onChange}) {
   const key=(model,view=getState().viewKey)=>JSON.stringify([view,model]);
   const number=n=>new Intl.NumberFormat('fr-FR').format(n);
   function message(id,value,error=false){el(id).textContent=value;el(id).hidden=!value;if(error)el(id).setAttribute('role','alert');}
-  function outputMode(){el('output-manual').hidden=el('output-mode').value!=='manual';el('output-tokens').required=!el('output-manual').hidden;}
+  const validOutputTokens=value=>Number.isSafeInteger(value)&&value>=1&&value<=5000000;
+  function syncOutputSlider(){
+    const value=Number(el('output-tokens').value);
+    if(validOutputTokens(value))el('output-tokens-slider').value=value;
+    el('output-tokens-slider').setAttribute('aria-valuetext',number(Number(el('output-tokens-slider').value))+' tokens');
+  }
+  function outputMode(){
+    const manual=el('output-mode').value==='manual';
+    el('output-manual').hidden=!manual;el('output-tokens').required=manual;
+    el('output-tokens').disabled=!manual;el('output-tokens-slider').disabled=!manual;syncOutputSlider();
+  }
   function imagePermission(){
     const enabled=comfy?.enabled===true;
     if(!enabled)el('agent-images').disabled=true;
@@ -48,7 +58,7 @@ function createCompanionSettings({api,getState,node,onChange}) {
     event.preventDefault();if(savingRevision===viewRevision)return;savingRevision=viewRevision;el('output-save').disabled=true;message('output-error','');
     const model=el('settings-model').value,value=el('output-mode').value==='auto'?null:Number(el('output-tokens').value),all=el('output-all-sessions').checked,target={...scope},revision=viewRevision,epoch=getState().authEpoch;
     try{
-      if(value!==null&&(!Number.isSafeInteger(value)||value<1||value>1000000))throw Error('Choisis un nombre entier entre 1 et 1 000 000.');
+      if(value!==null&&!validOutputTokens(value))throw Error('Choisis un nombre entier entre 1 et 5 000 000.');
       const preference={maxOutputTokens:value,applyToAllSessions:all};
       if(target.id||all)await api('/api/model-preferences',{method:'POST',body:JSON.stringify({model,projectId:target.projectId,...(target.id?{id:target.id}:{}),...preference})});
       if(epoch!==getState().authEpoch||!getState().authenticated)return;
@@ -68,6 +78,8 @@ function createCompanionSettings({api,getState,node,onChange}) {
     catch(e){if(current(revision)){message('comfy-error',e.message,true);message('comfy-result','');}}finally{if(current(revision))el('comfy-test').disabled=false;}
   });
   el('settings-model').addEventListener('change',loadOutput);el('output-mode').addEventListener('change',outputMode);
+  el('output-tokens').addEventListener('input',syncOutputSlider);
+  el('output-tokens-slider').addEventListener('input',()=>{el('output-tokens').value=el('output-tokens-slider').value;syncOutputSlider();});
   el('settings-close').addEventListener('click',()=>close());el('settings-view').addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();close();}});
   for(const id of ['settings-open','settings-open-sidebar'])el(id).addEventListener('click',open);
   return {refresh,close,imagePermission,enabled:()=>comfy?.enabled===true,decorate(data){const preference=pending.get(key(data.model));return preference?{...data,outputPreferences:preference}:data;},accepted(data,viewKey){const k=key(data.model,viewKey),value=pending.get(k);if(value&&JSON.stringify(value)===JSON.stringify(data.outputPreferences))pending.delete(k);},reset(){pending.clear();comfy=null;close(false);}};

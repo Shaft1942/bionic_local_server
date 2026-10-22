@@ -53,6 +53,50 @@ test('a session-only draft preference is consumed after acceptance and does not 
   f.state.chat=null;f.state.viewKey=initialView;
   assert.equal(f.settings.decorate({model:'m'}).outputPreferences,undefined);
 });
+
+test('token slider and precise input stay synchronized without replacing invalid manual text',async()=>{
+  const f=fixture();await f.open();
+  assert.equal(f.element('output-tokens-slider').value,'8192');
+  assert.equal(f.element('output-tokens-slider').disabled,true);
+  assert.equal(f.element('output-tokens').disabled,true);
+  f.element('output-mode').value='manual';await f.fire('output-mode','change');
+  assert.equal(f.element('output-tokens-slider').disabled,false);
+  f.element('output-tokens').value='12345';await f.fire('output-tokens','input');
+  assert.equal(f.element('output-tokens-slider').value,'12345');
+  f.element('output-tokens-slider').value='4999999';await f.fire('output-tokens-slider','input');
+  assert.equal(f.element('output-tokens').value,'4999999');
+  assert.equal(f.element('output-tokens-slider').attributes['aria-valuetext'].replace(/\s/g,''),'4999999tokens');
+  for(const value of ['', '0', '1.5', '5000001']){
+    f.element('output-tokens').value=value;await f.fire('output-tokens','input');
+    assert.equal(f.element('output-tokens').value,value);
+    assert.equal(f.element('output-tokens-slider').value,'4999999');
+    await f.fire('output-settings-form','submit');
+    assert.equal(f.element('output-error').hidden,false);
+    assert.match(f.element('output-error').textContent,/5 000 000/);
+  }
+  assert.equal(f.settings.decorate({model:'m'}).outputPreferences,undefined);
+  f.element('output-mode').value='auto';await f.fire('output-mode','change');
+  assert.equal(f.element('output-manual').hidden,true);
+  assert.equal(f.element('output-tokens').disabled,true);
+  assert.equal(f.element('output-tokens-slider').disabled,true);
+  await f.fire('output-settings-form','submit');
+  assert.equal(f.settings.decorate({model:'m'}).outputPreferences.maxOutputTokens,null);
+});
+
+test('large loaded and pending preferences restore both controls with exact values',async()=>{
+  const f=fixture(route=>route.startsWith('/api/model-preferences?')?{source:'model',automatic:false,maxOutputTokens:5000000,contextLength:16000,applyToAllSessions:true}:undefined);
+  await f.open();
+  assert.equal(f.element('output-mode').value,'manual');
+  assert.equal(f.element('output-tokens').value,'5000000');
+  assert.equal(f.element('output-tokens-slider').value,'5000000');
+  await f.saveOutput(4999999,false);f.settings.close();await f.open();
+  assert.equal(f.element('output-tokens').value,'4999999');
+  assert.equal(f.element('output-tokens-slider').value,'4999999');
+  assert.equal(f.element('output-all-sessions').checked,false);
+  await f.saveOutput(5000000,true);
+  assert.equal(f.writes.at(-1).body.maxOutputTokens,5000000);
+  assert.equal(f.writes.at(-1).body.applyToAllSessions,true);
+});
 test('acceptance preserves a newer draft preference and global defaults are not replayed from a stale draft',async()=>{
   const f=fixture();await f.open();await f.saveOutput(777);
   const request=f.settings.decorate({model:'m'}),view=f.state.viewKey;
