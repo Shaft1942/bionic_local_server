@@ -1,4 +1,4 @@
-# Optional. Running this file explicitly requests Windows administrator approval.
+﻿# Optional. Running this file explicitly requests Windows administrator approval.
 # It never changes the network profile or router configuration.
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Bionic-mobile-commun.ps1')
@@ -31,7 +31,7 @@ try {
     New-NetFirewallRule -Name $name -DisplayName ('Bionic Mobile - ' + (Split-Path $PSScriptRoot -Leaf)) -Direction Inbound -Action Allow -Protocol TCP -LocalPort $runtime.port -Program $nodePath -LocalAddress $address.IPAddress -RemoteAddress $subnet -InterfaceAlias $address.InterfaceAlias -Profile Private | Out-Null
     $report = @(
         'Autorisation du pare-feu creee pour ce dossier et ce reseau prive.'
-        ('Adresse : http://' + $address.IPAddress + ':' + $runtime.port)
+        ('Adresse : ' + (Get-BionicTransport -Root $PSScriptRoot -Port ([int]$runtime.port)).appProtocol + '//' + $address.IPAddress + ':' + $runtime.port)
         ('Port TCP : ' + $runtime.port)
         ('Appareils autorises : ' + $subnet)
         ('Interface : ' + $address.InterfaceAlias)

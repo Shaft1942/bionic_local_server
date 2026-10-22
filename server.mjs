@@ -26,6 +26,8 @@ import { createWorkspaceFeatures } from './lib/workspace-features.mjs';
 import { createConversationOrganizer, conversationName } from './lib/conversation-organizer.mjs';
 import { createUpdateService } from './lib/update-service.mjs';
 import { prepareUpdate, launchUpdate } from './lib/update-installer.mjs';
+import { openCertificateStore } from './lib/certificate-store.mjs';
+import { clientFingerprint, requireCertificateTransport, startCertificateTransport } from './lib/certificate-transport.mjs';
 
 const APP_VERSION = JSON.parse(await defaultFS.readFile(new URL('./package.json', import.meta.url), 'utf8')).version;
 
@@ -51,6 +53,8 @@ const configPath = path.join(DATA, 'config.json');
 await fs.mkdir(DATA, { recursive: true });
 await fs.mkdir(path.join(DATA, 'chats'), { recursive: true });
 await fs.mkdir(RUNTIME, { recursive: true });
+const certificateStore = options.certificateStore || await openCertificateStore(DATA, { allowExpired: true });
+let certificateTransport;
 const modelPreferences = await createModelPreferences({ filename: path.join(DATA, 'model-preferences.json'), fs });
 const localIPs = Object.entries(os.networkInterfaces()).filter(([name]) => !/vEthernet|WSL|Docker|VirtualBox|VMware/i.test(name)).flatMap(([, addresses]) => addresses || []).filter(x => x.family === 'IPv4' && !x.internal && privateIP(x.address)).map(x => x.address);
 let config;
@@ -69,13 +73,22 @@ if (!config.instanceId) {
 }
 // Refresh connection addresses without storing the clear access code in config.
 const privateAccessFile = path.join(ROOT, 'ACCES-PRIVE.txt');
-try {
-  const content = await fs.readFile(privateAccessFile, 'utf8');
-  const updated = content.replace(/Sur le téléphone,[\s\S]*?\r?\n\r?\nCode d’accès/, `Sur le téléphone, connecté au Wi-Fi de la maison :\r\n${localIPs.map(ip => `http://${ip}:${PORT}`).join('\r\n')}\r\n\r\nCode d’accès`);
-  if (updated !== content) await fs.writeFile(privateAccessFile, updated, { mode: 0o600 });
-} catch (e) { if (e.code !== 'ENOENT') throw e; }
 
 const sessions = new Map();
+function connectionUrls() {
+  const protocol = certificateStore.state.mode === 'http' ? 'http:' : 'https:';
+  const hosts = certificateStore.state.mode === 'http' ? localIPs : certificateStore.state.server?.hosts || [];
+  return hosts.map(host => `${protocol}//${host.includes(':') ? '[' + host + ']' : host}:${PORT}`);
+}
+async function refreshSecurityAddresses() {
+  try {
+    const content = await fs.readFile(privateAccessFile, 'utf8');
+    const note = certificateStore.state.mode === 'http' ? 'Le serveur utilise HTTP sur le réseau de confiance de la maison.' : 'Le serveur exige HTTPS. La gestion des certificats se fait sur le PC avec Certificats.cmd.';
+    const updated = content.replace(/Sur le téléphone,[\s\S]*?\r?\n\r?\nCode d’accès/, `Sur le téléphone, connecté au Wi-Fi de la maison :\r\n${connectionUrls().join('\r\n')}\r\n\r\nCode d’accès`).replace(/Sur ce PC : https?:\/\/127\.0\.0\.1:\d+/, `Sur ce PC : ${connectionUrls().find(url => url.includes('127.0.0.1')) || connectionUrls()[0] || 'consulte Certificats.cmd'}`).replace(/Le serveur (?:utilise HTTP sur le réseau de confiance de la maison\.|exige HTTPS\. La gestion des certificats se fait sur le PC avec Certificats\.cmd\.)/, note);
+    if (content !== updated) await fs.writeFile(privateAccessFile, updated, { mode: 0o600 });
+  } catch (error) { if (error.code !== 'ENOENT') throw error; }
+}
+await refreshSecurityAddresses();
 const failures = new Map();
 const busy = new Set();
 const active = new Map();
@@ -93,7 +106,7 @@ const updatePlatform = options.updatePlatform || process.platform;
 let updatePreparing = false, updateMaintenance = false, inFlightMutations = 0;
 let installation = { status: 'idle', message: '' };
 function updateHasWork() {
-  return busy.size > 0 || active.size > 0 || modelManagementBusy || acceptanceLocks.size > 0 ||
+  return !!certificateTransport?.status().candidate || busy.size > 0 || active.size > 0 || modelManagementBusy || acceptanceLocks.size > 0 ||
     [...chatRequests.values()].some(request => ['starting', 'queued', 'running'].includes(request.status)) ||
     [...chatStates.values()].some(({ chat }) => chat.generation?.status === 'running' || chat.queue?.some(item => item.status === 'queued'));
 }
@@ -132,10 +145,11 @@ function privateIP(ip) {
 }
 function fail(status, message) { return Object.assign(new Error(message), { status }); }
 function json(res, status, obj) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); }
-function cookie(req) { return (req.headers.cookie || '').split(';').map(x => x.trim()).find(x => x.startsWith('bm_session='))?.slice(11); }
+function sessionCookieName() { return (certificateStore.state.mode === 'http' ? 'bm_session_' : '__Host-bm_session_') + certificateStore.state.epoch.replaceAll('-', ''); }
+function cookie(req) { const prefix = sessionCookieName() + '='; return (req.headers.cookie || '').split(';').map(x => x.trim()).find(x => x.startsWith(prefix))?.slice(prefix.length); }
 function auth(req) {
-  const token = cookie(req), expiry = sessions.get(token);
-  if (!expiry || expiry < Date.now()) { if (token) sessions.delete(token); return false; }
+  const token = cookie(req), session = sessions.get(token);
+  if (!session || session.expiry < Date.now() || session.epoch !== certificateStore.state.epoch || session.fingerprint !== (certificateStore.state.mode === 'mtls' ? clientFingerprint(req.socket) : '')) { if (token) sessions.delete(token); return false; }
   return true;
 }
 async function body(req, limit = 262144) {
@@ -654,7 +668,7 @@ async function generateChat(res, chat, item, request) {
   }
 }
 
-const STATIC = { '/': 'index.html', '/app.js': 'app.js', '/settings.js':'settings.js', '/project-tree.js':'project-tree.js', '/project-tree.css':'project-tree.css', '/comfy-images.js':'comfy-images.js', '/updates.js': 'updates.js', '/message-drafts.js': 'message-drafts.js', '/files.js': 'files.js', '/workspace.js': 'workspace.js', '/style.css': 'style.css', '/manifest.webmanifest': 'manifest.webmanifest', '/icon.svg': 'icon.svg' };
+const STATIC = { '/': 'index.html', '/app.js': 'app.js', '/settings.js':'settings.js', '/certificates.js':'certificates.js', '/project-tree.js':'project-tree.js', '/project-tree.css':'project-tree.css', '/comfy-images.js':'comfy-images.js', '/updates.js': 'updates.js', '/message-drafts.js': 'message-drafts.js', '/files.js': 'files.js', '/workspace.js': 'workspace.js', '/style.css': 'style.css', '/manifest.webmanifest': 'manifest.webmanifest', '/icon.svg': 'icon.svg' };
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml' };
 function handle(req, res) { return scanCycles.run({}, () => handleRequest(req, res)); }
 async function handleRequest(req, res) {
@@ -666,11 +680,15 @@ async function handleRequest(req, res) {
   let countedMutation = false;
   try {
     if (!privateIP(req.socket.remoteAddress || '')) throw fail(403, 'Accès réservé au réseau local.');
-    const host = new URL('http://' + (req.headers.host || '')).hostname;
-    if (!allowedHosts.has(host)) throw fail(403, 'Adresse du serveur non reconnue.');
-    const url = new URL(req.url, 'http://' + req.headers.host);
+    requireCertificateTransport(req, certificateStore);
+    const protocol = req.socket.encrypted ? 'https:' : 'http:';
+    const host = new URL(protocol + '//' + (req.headers.host || '')).hostname;
+    if (!allowedHosts.has(host) && !certificateStore.state.server?.hosts?.includes(host)) throw fail(403, 'Adresse du serveur non reconnue.');
+    const url = new URL(req.url, protocol + '//' + req.headers.host);
+    if (req.companionMaintenance && !['/api/ping','/api/admin/stop','/api/admin/revoke-sessions','/api/admin/certificates/action'].includes(url.pathname)) throw fail(404, 'Page introuvable.');
+    if (url.pathname.startsWith('/api/admin/') && certificateStore.state.mode !== 'http' && !req.companionMaintenance) throw fail(403, 'Utilise Certificats.cmd sur le PC.');
     if (req.method !== 'GET' && req.method !== 'HEAD') {
-      if (req.headers.origin && req.headers.origin !== 'http://' + req.headers.host) throw fail(403, 'Origine refusée.');
+      if (req.headers.origin && req.headers.origin !== protocol + '//' + req.headers.host) throw fail(403, 'Origine refusée.');
       if (req.headers['sec-fetch-site'] === 'cross-site') throw fail(403, 'Origine refusée.');
     }
     if (req.method === 'POST' && url.pathname === '/api/admin/stop') {
@@ -681,7 +699,13 @@ async function handleRequest(req, res) {
     if (req.method === 'POST' && url.pathname === '/api/admin/revoke-sessions') {
       const d = await body(req, 1024);
       if (!/^127\.|^::1$|^::ffff:127\./.test(req.socket.remoteAddress) || d.token !== config.adminToken) throw fail(403, 'Accès refusé.');
-      const revoked = sessions.size; sessions.clear(); json(res, 200, { revoked, canReconnectWithCode: true }); return;
+      const revoked = sessions.size; sessions.clear(); json(res, 200, { revoked, canReconnectWithCode: certificateStore.state.mode !== 'mtls', requiresClientCertificate: certificateStore.state.mode === 'mtls' }); return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/admin/certificates/action') {
+      const d = await body(req, 8192);
+      if (!/^127\.|^::1$|^::ffff:127\./.test(req.socket.remoteAddress) || d.token !== config.adminToken || !req.companionMaintenance || !certificateTransport) throw fail(403, 'Administration locale refusée.');
+      if (updatePreparing || updateMaintenance) throw fail(409, 'Attends la fin de la mise à jour.');
+      json(res, 200, await certificateTransport.action(d)); return;
     }
     if (req.method === 'GET' && url.pathname === '/api/ping') { json(res, 200, { app: 'bionic-mobile-local', version: APP_VERSION, instanceId: config.instanceId }); return; }
     if (req.method === 'POST' && url.pathname === '/api/login') {
@@ -696,15 +720,16 @@ async function handleRequest(req, res) {
         throw fail(401, 'Code d’accès incorrect. Consulte ACCES-PRIVE.txt sur le PC.');
       }
       failures.delete(ip);
-      const token = randomBytes(32).toString('base64url'); sessions.set(token, Date.now() + 43200000);
-      res.setHeader('Set-Cookie', `bm_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`);
+      const token = randomBytes(32).toString('base64url'); sessions.set(token, { expiry: Date.now() + 43200000, epoch: certificateStore.state.epoch, fingerprint: certificateStore.state.mode === 'mtls' ? clientFingerprint(req.socket) : '' });
+      res.setHeader('Set-Cookie', `${sessionCookieName()}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${req.socket.encrypted ? '; Secure' : ''}`);
       json(res, 200, { ok: true }); return;
     }
     if (url.pathname === '/api/logout' && req.method === 'POST') {
-      sessions.delete(cookie(req)); res.setHeader('Set-Cookie', 'bm_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'); json(res, 200, { ok: true }); return;
+      sessions.delete(cookie(req)); res.setHeader('Set-Cookie', sessionCookieName() + '=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' + (req.socket.encrypted ? '; Secure' : '')); json(res, 200, { ok: true }); return;
     }
     if (url.pathname.startsWith('/api/')) {
       if (!auth(req)) throw fail(401, 'Connecte-toi avec le code du PC.');
+      if (req.method === 'GET' && url.pathname === '/api/security/status') { json(res, 200, certificateTransport ? certificateTransport.status() : certificateStore.publicStatus()); return; }
       if (!['GET', 'HEAD'].includes(req.method) && url.pathname !== '/api/updates/install') {
         if (updateMaintenance) throw fail(503, 'Le serveur redémarre pour une mise à jour. Réessaie après reconnexion.');
         if (!url.pathname.startsWith('/api/updates/')) { inFlightMutations++; countedMutation = true; }
@@ -768,7 +793,7 @@ async function handleRequest(req, res) {
       if (req.method === 'GET' && url.pathname === '/api/status') {
         let modelList = [], apiError = null;
         try { modelList = await models(); } catch { apiError = 'API Bionic injoignable. Ouvre Bionic, active son API locale et vérifie apiUrl dans config.local.json.'; }
-        json(res, 200, { ok: !apiError, apiError, models: modelList, addresses: localIPs.map(ip => `http://${ip}:${PORT}`), capabilities: { nativeProjects: 'read-only', nativeSessions: 'read-only', reply: 'web-branch', nativeAgentTools: false, projectFiles: 'read-write-text' } }); return;
+        json(res, 200, { ok: !apiError, apiError, models: modelList, addresses: connectionUrls(), capabilities: { nativeProjects: 'read-only', nativeSessions: 'read-only', reply: 'web-branch', nativeAgentTools: false, projectFiles: 'read-write-text' } }); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/model-preferences') {
         json(res, 200, await preferenceDTO({ model: url.searchParams.get('model'), projectId: url.searchParams.get('projectId'), id: url.searchParams.get('id') })); return;
@@ -938,17 +963,21 @@ async function handleRequest(req, res) {
 const server = http.createServer(handle);
 server.requestTimeout = settings.requestTimeoutMs || 180000;
 server.headersTimeout = 15000;
-async function close() { updater.stop(); await comfyImages.close(); for (const job of active.values()) job.controller.abort(); await Promise.allSettled([...chatStates.values()].map(state => state.writes)); if (server.listening) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); } }
+async function close() { await certificateTransport?.close(); updater.stop(); await comfyImages.close(); for (const job of active.values()) job.controller.abort(); await Promise.allSettled([...chatStates.values()].map(state => state.writes)); if (server.listening) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); } }
 if (options.enableUpdateScheduling) server.once('listening', () => updater.start());
-return { server, handle, close, config, settings, readWeb, webChats, chatSnapshot, conversationModelContext, sendChat, chatStates, persistChat, measurements, inferenceGate, updater, addresses:localIPs, withScanCycle: work => scanCycles.run({},work) };
+return { server, handle, close, config, settings, certificateStore, attachCertificateTransport: controller => { certificateTransport = controller; }, clearSecuritySessions: () => sessions.clear(), refreshSecurityAddresses, readWeb, webChats, chatSnapshot, conversationModelContext, sendChat, chatStates, persistChat, measurements, inferenceGate, updater, addresses:localIPs, withScanCycle: work => scanCycles.run({},work) };
 }
 
 if (process.argv[1] && (process.platform === 'win32' ? path.resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase() : path.resolve(process.argv[1]) === fileURLToPath(import.meta.url))) {
   const app = await createCompanion({ enableUpdateScheduling: true, exitOnUpdate: true });
-  app.server.on('error', error => { console.error('Serveur non démarré : ' + error.code); process.exit(1); });
-  app.server.listen(app.settings.port, '0.0.0.0', async () => {
-    const root = path.dirname(fileURLToPath(import.meta.url));
-    await defaultFS.writeFile(path.join(root, 'runtime', 'server.json'), JSON.stringify({ pid: process.pid, port: app.settings.port, node: process.execPath, root, instanceId: app.config.instanceId, startedAt: new Date().toISOString(), addresses: app.addresses }));
-    console.log('Bionic Mobile actif sur http://127.0.0.1:' + app.settings.port + '. Accès privé : ACCES-PRIVE.txt');
-  });
+  const root = path.dirname(fileURLToPath(import.meta.url));
+  try {
+    const transport = await startCertificateTransport({ app, root });
+    await defaultFS.writeFile(path.join(root, 'runtime', 'server.json'), JSON.stringify({ pid: process.pid, port: transport.appPort, node: process.execPath, root, instanceId: app.config.instanceId, startedAt: new Date().toISOString(), addresses: app.addresses }));
+    console.log('Bionic Mobile actif en ' + app.certificateStore.state.mode.toUpperCase() + ' sur le port ' + transport.appPort + '. Accès privé : ACCES-PRIVE.txt ; gestion locale : Certificats.cmd');
+  } catch (error) {
+    await app.close();
+    console.error('Serveur non démarré : ' + (error.code || 'configuration de sécurité invalide') + '. Consulte Certificats.cmd sur le PC.');
+    process.exitCode = 1;
+  }
 }

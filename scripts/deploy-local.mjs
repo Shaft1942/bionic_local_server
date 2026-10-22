@@ -7,6 +7,8 @@ import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import {prepareUpdate,launchUpdate,validateUpdateMetadata,inspectUpdateArchive} from '../lib/update-installer.mjs';
 import {collectReleaseFiles} from './release-files.mjs';
+import {readLocalControl,pingLocalControl,requestLocalAdmin} from '../lib/maintenance-client.mjs';
+import {protectPrivatePath} from '../lib/certificate-store.mjs';
 const args=process.argv.slice(2),option=name=>args.includes(name)?args[args.indexOf(name)+1]:null;
 if(!option('--target')||!path.isAbsolute(option('--target')))throw Error('Indique --target avec le dossier absolu autorisé.');
 const repo=fileURLToPath(new URL('../',import.meta.url)),target=await fs.realpath(option('--target'));
@@ -15,7 +17,8 @@ const relation=path.relative(target,await fs.realpath(repo));if(!relation.starts
 const pkg=JSON.parse(await fs.readFile(path.join(target,'package.json'))),runtime=JSON.parse(await fs.readFile(path.join(target,'runtime/server.json'))),config=JSON.parse(await fs.readFile(path.join(target,'data/config.json')));
 assert.equal(path.resolve(runtime.root),target);assert.equal(runtime.instanceId,config.instanceId);
 assert(Number.isInteger(runtime.port)&&runtime.port>0&&runtime.port<65536);assert(Number.isInteger(runtime.pid)&&runtime.pid>0);assert(path.isAbsolute(runtime.node));
-const base='http://127.0.0.1:'+runtime.port,ping=await(await fetch(base+'/api/ping',{signal:AbortSignal.timeout(7000)})).json();assert.equal(ping.version,pkg.version);assert.equal(ping.instanceId,config.instanceId);
+const control=await readLocalControl({root:target,port:runtime.port}),ping=await pingLocalControl(control);assert.equal(ping.version,pkg.version);assert.equal(ping.instanceId,config.instanceId);
+if(args.includes('--enable-comfy')&&control.metadata.mode!=='http')throw Error('Configurer ComfyUI depuis l’application HTTPS autorisee apres mise a jour. Aucun acces applicatif via maintenance HTTP.');
 const metadata=JSON.parse(await fs.readFile(path.join(repo,'dist/update-manifest.json'))),hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 validateUpdateMetadata(metadata,{currentVersion:pkg.version});
 const archive=await fs.readFile(path.join(repo,'dist',metadata.archive)),incoming=inspectUpdateArchive(archive,metadata),currentSources=await collectReleaseFiles(repo);
@@ -38,8 +41,12 @@ if(baseline&&baseline.version!==pkg.version){
   verifiedSourceCount=files.length;repairedBaseline={schemaVersion:1,version:pkg.version,files:activeHashes};
 }
 const stamp=new Date().toISOString().replace(/[:.]/g,'-'),backup=path.join(repo,'work/private-backups',stamp+'-before-'+metadata.version);
-await fs.mkdir(path.dirname(backup),{recursive:true});await fs.cp(target,backup,{recursive:true,errorOnExist:true,force:false});
-const protectedFiles=['data/config.json','config.local.json',...(await fs.readdir(path.join(target,'data/chats'))).filter(f=>f.endsWith('.json')).map(f=>'data/chats/'+f)];
+await fs.mkdir(path.dirname(backup),{recursive:true});await fs.mkdir(backup,{mode:0o700});await protectPrivatePath(backup,{directory:true});await fs.cp(target,backup,{recursive:true,errorOnExist:true,force:false,filter:source=>{const relative=path.relative(target,source).replaceAll('\\','/');return relative!=='data/security'&&relative!=='data/security-floor.json'&&relative!=='runtime/certificate-exports'&&!/\.(?:p12|pfx|pem|key|crt|cer|der)$/i.test(relative);}});
+async function identityFiles(directory, relative='data/security') {
+  const items=await fs.readdir(path.join(directory,relative),{withFileTypes:true}).catch(error=>{if(error.code==='ENOENT')return [];throw error;});
+  const files=[];for(const entry of items){const child=relative+'/'+entry.name;if(entry.isDirectory())files.push(...await identityFiles(directory,child));else files.push(child);}return files;
+}
+const protectedFiles=['data/security-floor.json',...await identityFiles(target),'data/config.json','config.local.json',...(await fs.readdir(path.join(target,'data/chats'))).filter(f=>f.endsWith('.json')).map(f=>'data/chats/'+f)];
 const protectedHashes=new Map();for(const file of protectedFiles){const bytes=await optional(path.join(target,file));protectedHashes.set(file,bytes?hash(bytes):null);}
 let launched=false,plan;
 const proof={date:new Date().toISOString(),target,from:pkg.version,to:metadata.version,backup,instanceId:config.instanceId,port:runtime.port,baselineReconciled:!!repairedBaseline,verifiedSourceCount,lineEndingDifferences};
@@ -47,16 +54,17 @@ try{
   if(repairedBaseline)await fs.writeFile(baselineFile,JSON.stringify(repairedBaseline));
   plan=await prepareUpdate({root:target,archive,metadata,currentVersion:pkg.version,instanceId:config.instanceId,port:runtime.port,nodePath:runtime.node,parentPid:runtime.pid});
   await idle();await launchUpdate(plan);launched=true;
-  const stop=await fetch(base+'/api/admin/stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:config.adminToken}),signal:AbortSignal.timeout(7000)});assert(stop.ok);
+  await requestLocalAdmin(control,'/api/admin/stop');
   const deadline=Date.now()+90000;let state;
   while(Date.now()<deadline){const bytes=await optional(path.join(plan.jobRoot,'status.json'));if(bytes){state=JSON.parse(bytes);if(['completed','cancelled','rolled-back','rollback-failed'].includes(state.state))break;}await new Promise(resolve=>setTimeout(resolve,500));}
   assert.equal(state?.state,'completed','La mise à jour n’est pas terminée : consulter runtime/update-jobs avant toute relance.');proof.jobId=plan.jobId;proof.pid=state.pid;
-  const live=await(await fetch(base+'/api/ping')).json(),liveRuntime=JSON.parse(await fs.readFile(path.join(target,'runtime/server.json')));assert.equal(live.version,metadata.version);assert.equal(live.instanceId,config.instanceId);assert.equal(liveRuntime.pid,state.pid);
-  for(const [file,expected]of protectedHashes){const bytes=await optional(path.join(target,file));assert.equal(bytes?hash(bytes):null,expected,'Fichier privé modifié : '+file);}proof.conversationsAndAuthUnchanged=true;
+  const live=await pingLocalControl(await readLocalControl({root:target,port:runtime.port})),liveRuntime=JSON.parse(await fs.readFile(path.join(target,'runtime/server.json')));assert.equal(live.version,metadata.version);assert.equal(live.instanceId,config.instanceId);assert.equal(liveRuntime.pid,state.pid);
+  for(const [file,expected]of protectedHashes){const bytes=await optional(path.join(target,file));assert.equal(bytes?hash(bytes):null,expected,'Fichier privé modifié : '+file);}proof.conversationsAndAuthUnchanged=true;proof.certificateIdentityPreserved=true;proof.backupExcludesCertificateIdentity=true;
   if(args.includes('--enable-comfy')){
+    const appBase=(await readLocalControl({root:target,port:runtime.port})).applicationUrl;
     const code=/Code d’accès : (.+)/.exec(await fs.readFile(path.join(target,'ACCES-PRIVE.txt'),'utf8'))[1].trim();
-    const login=await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});assert(login.ok);const cookie=login.headers.get('set-cookie').split(';')[0];
-    const saved=await fetch(base+'/api/comfy/settings',{method:'POST',headers:{cookie,'Content-Type':'application/json'},body:JSON.stringify({enabled:true,url:'http://127.0.0.1:8188',workflowId:'krea2_turbo'})});assert(saved.ok);proof.comfy=await saved.json();proof.authorizedConfigurationChange='ComfyUI activé, URL locale, profil Krea2 Turbo';
+    const login=await fetch(appBase+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});assert(login.ok);const cookie=login.headers.get('set-cookie').split(';')[0];
+    const saved=await fetch(appBase+'/api/comfy/settings',{method:'POST',headers:{cookie,'Content-Type':'application/json'},body:JSON.stringify({enabled:true,url:'http://127.0.0.1:8188',workflowId:'krea2_turbo'})});assert(saved.ok);proof.comfy=await saved.json();proof.authorizedConfigurationChange='ComfyUI activé, URL locale, profil Krea2 Turbo';
   }
   proof.success=true;
 }catch(error){proof.error=error.message;if(!launched&&repairedBaseline&&oldBaseline)await fs.writeFile(baselineFile,oldBaseline);throw error;}

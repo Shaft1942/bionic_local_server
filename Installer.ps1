@@ -91,11 +91,24 @@ $firewall.Add_CheckedChanged({if($firewall.Checked){$launch.Checked=$true}})
 $launch.Add_CheckedChanged({if(-not $launch.Checked){$firewall.Checked=$false}})
 $complete=Add-Info $pages[4] '' 145
 $openApp=New-ActionButton 'Ouvrir l application'; $openApp.Width=190; $pages[4].Controls.Add($openApp)
-$openApp.Add_Click({$config=Read-BionicJson (Join-Path $script:state.Result.Root 'data/config.json');if(Test-BionicIdentity (Get-BionicPing $script:state.Result.Port) ([string](Get-BionicField $config 'instanceId'))){Start-Process ('http://127.0.0.1:'+ $script:state.Result.Port)}else{$feedback.Text='Le serveur de ce dossier ne repond pas. Lance Demarrer.cmd.'}})
+$openApp.Add_Click({$config=Read-BionicJson (Join-Path $script:state.Result.Root 'data/config.json');if(Test-BionicIdentity (Get-BionicPing -Port $script:state.Result.Port -Root $script:state.Result.Root) ([string](Get-BionicField $config 'instanceId'))){Start-Process (Get-BionicApplicationUrl -Root $script:state.Result.Root -Port $script:state.Result.Port)}else{$feedback.Text='Le serveur de ce dossier ne repond pas. Lance Demarrer.cmd.'}})
 $openAccess=New-ActionButton 'Code et adresses'; $openAccess.Width=175; $pages[4].Controls.Add($openAccess)
 $openAccess.Add_Click({ $file=Join-Path $script:state.Result.Root 'ACCES-PRIVE.txt'; if(Test-Path -LiteralPath $file){Start-Process -FilePath 'notepad.exe' -ArgumentList ('"'+$file+'"')}else{$feedback.Text='Lance Demarrer.cmd pour générér ACCES-PRIVE.txt.'} })
 $openFolder=New-ActionButton 'Ouvrir le dossier'; $openFolder.Width=175; $pages[4].Controls.Add($openFolder)
 $openFolder.Add_Click({Start-Process -FilePath 'explorer.exe' -ArgumentList ('"'+$script:state.Result.Root+'"')})
+$manageCertificates=New-ActionButton 'Acces securises'; $manageCertificates.Width=190
+$pages[0].Controls.Add($manageCertificates)
+$manageCertificates.Add_Click({
+    try {
+        $selected=Assert-BionicInstallPath $destination.Text
+        $wizard=Join-Path $selected 'Certificats.cmd'
+        if (-not (Test-Path -LiteralPath (Join-Path $selected 'data/config.json')) -or -not (Test-Path -LiteralPath $wizard -PathType Leaf)) { throw 'Choisis une installation existante pour gerer ses certificats.' }
+        # Interactive local wizard: visible console is required for this action.
+        Start-Process -FilePath $wizard -WorkingDirectory $selected
+    } catch { $feedback.Text=$_.Exception.Message }
+})
+$null=Add-Info $pages[0] 'Acces securises ouvre le parcours local HTTP, HTTPS et certificat client. La reinitialisation explicite exige un serveur arrete et conserve conversations et fichiers.' 65
+
 
 function Show-Step([int]$Index) {
     $script:state.Step=$Index; $hostPanel.Controls.Clear(); $hostPanel.Controls.Add($pages[$Index])
@@ -104,7 +117,7 @@ function Show-Step([int]$Index) {
     $previous.Visible=$Index -gt 0 -and $Index -lt 4; $cancel.Visible=$Index -lt 4
     $next.Text=if($Index -eq 3){'Installer'}elseif($Index -eq 4){'Fermer'}else{'Suivant'}
     $feedback.Text=''; $pages[$Index].SelectNextControl($null,$true,$true,$true,$false) | Out-Null
-    if($Index -eq 3){$review.Text="Dossier : $($destination.Text)`r`nNode.js : $(if($download.Checked){'copie portable à télécharger'}else{'exécutable déjà disponible'})`r`nBionic : $($api.Text)`r`nCompagnon : http://127.0.0.1:$($port.Text)`r`n`r`nLes conversations d un autre dossier ne sont pas transférées."}
+    if($Index -eq 3){$review.Text="Dossier : $($destination.Text)`r`nNode.js : $(if($download.Checked){'copie portable à télécharger'}else{'exécutable déjà disponible'})`r`nBionic : $($api.Text)`r`nCompagnon : port $($port.Text) (niveau de securite existant conserve)`r`n`r`nLes conversations d un autre dossier ne sont pas transférées."}
 }
 
 $timer=New-Object Windows.Forms.Timer; $timer.Interval=150
