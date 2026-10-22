@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 
-const source=await fs.readFile(new URL('../public/settings.js',import.meta.url),'utf8');
+const source=(await Promise.all(['certificates.js','settings.js'].map(file=>fs.readFile(new URL('../public/'+file,import.meta.url),'utf8')))).join('\n');
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const defaultComfy={enabled:false,url:'http://127.0.0.1:8188',workflowId:'krea2_turbo',activeJobs:0,workflows:[{id:'krea2_turbo',label:'Krea 2 Turbo'}]};
@@ -32,6 +32,7 @@ function fixture(intercept=()=>undefined) {
     if(route.startsWith('/api/model-preferences?'))return {source:'auto',automatic:true,maxOutputTokens:8192,contextLength:16000,applyToAllSessions:false};
     if(route==='/api/model-preferences')return {};
     if(route==='/api/comfy/settings')return structuredClone(defaultComfy);
+    if(route==='/api/security/status')return {mode:'http',epoch:1,server:null,authority:null,devices:[]};
     if(route==='/api/capabilities')return {items:[{name:'Capacité actuelle',description:'Description actuelle.'}]};
     throw Error('Unexpected API route '+route);
   };

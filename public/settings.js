@@ -1,6 +1,7 @@
 /* Settings stay server-owned; unsent conversation overrides stay in this tab. */
 function createCompanionSettings({api,getState,node,onChange}) {
   const el=id=>document.getElementById(id), pending=new Map();
+  const certificates=createCompanionCertificates({api,getState,node});
   let opener, scope, generation=0, viewRevision=0, comfyRevision=0, comfy=null, savingRevision=null;
   const key=(model,view=getState().viewKey)=>JSON.stringify([view,model]);
   const number=n=>new Intl.NumberFormat('fr-FR').format(n);
@@ -13,7 +14,7 @@ function createCompanionSettings({api,getState,node,onChange}) {
   }
   async function refresh(){const epoch=getState().authEpoch,ticket=++comfyRevision;try{const data=await api('/api/comfy/settings');if(ticket!==comfyRevision||epoch!==getState().authEpoch||!getState().authenticated)return;comfy=data;onChange?.();imagePermission();}catch{if(ticket===comfyRevision&&epoch===getState().authEpoch){comfy=null;imagePermission();}}}
   const current=revision=>revision===viewRevision&&!el('settings-view').hidden&&getState().authenticated;
-  function close(restore=true){if(el('settings-view').hidden)return;++generation;++viewRevision;el('settings-view').hidden=true;el('app').hidden=!getState().authenticated;if(restore&&opener?.isConnected)opener.focus({preventScroll:true});}
+  function close(restore=true){certificates.reset();if(el('settings-view').hidden)return;++generation;++viewRevision;el('settings-view').hidden=true;el('app').hidden=!getState().authenticated;if(restore&&opener?.isConnected)opener.focus({preventScroll:true});}
   async function loadOutput(){
     const ticket=++generation,model=el('settings-model').value;if(!model)return;
     message('output-current','Chargement du réglage…');message('output-error','');message('output-result','');el('output-save').disabled=true;
@@ -36,7 +37,7 @@ function createCompanionSettings({api,getState,node,onChange}) {
     el('settings-view').hidden=false;el('app').hidden=true;el('settings-close').focus({preventScroll:true});
     el('settings-model').replaceChildren(...(state.status?.models||[]).map(m=>{const option=node('option','',m.name);option.value=m.id;return option;}));
     el('settings-model').value=el('model').value;message('comfy-error','');message('comfy-result','Chargement…');
-    await Promise.allSettled([loadOutput(),(async()=>{
+    await Promise.allSettled([certificates.load(),loadOutput(),(async()=>{
       try{const ticket=++comfyRevision,data=await api('/api/comfy/settings');if(ticket!==comfyRevision||!current(revision))return;comfy=data;el('comfy-enabled').checked=data.enabled;el('comfy-url').value=data.url;
         el('comfy-workflow').replaceChildren(...data.workflows.map(w=>{const option=node('option','',w.label);option.value=w.id;return option;}));el('comfy-workflow').value=data.workflowId;message('comfy-result',data.activeJobs?data.activeJobs+' génération(s) en cours. Attends leur fin pour modifier la configuration.':'');onChange?.();imagePermission();
       }catch(e){if(current(revision)){message('comfy-error',e.message,true);message('comfy-result','');}}
