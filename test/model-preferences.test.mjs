@@ -8,6 +8,7 @@ import { EventEmitter } from 'node:events';
 import { Readable } from 'node:stream';
 import { createModelPreferences, outputBudget, estimateRequestTokens, validateOutputPreferences } from '../lib/model-preferences.mjs';
 import { createCompanion } from '../server.mjs';
+import { createModelService } from '../lib/model-service.mjs';
 
 async function directory(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bionic-output-test-'));
@@ -56,6 +57,7 @@ test('every output budget charges tools, call arguments, results and image count
   assert.equal(estimateRequestTokens(image('abc')), estimateRequestTokens(image('abc'.repeat(100000))));
   assert.throws(() => outputBudget({ contextLength: 4096, messages: [{ role: 'user', content: 'long '.repeat(4000) }], preference }), error => error.status === 400);
   assert.equal(outputBudget({ contextLength: 4096, messages, preference: { maxOutputTokens: 1, source: 'session' } }).maxOutputTokens, 1);
+  for (const contextLength of [undefined, null, 0, NaN, '32768']) assert.throws(() => outputBudget({ contextLength, messages, preference }), error => error.status === 409 && !/est plein/.test(error.message));
 });
 
 test('manual bounds persist exactly while the effective budget stays within the loaded context', async t => {
@@ -198,4 +200,94 @@ test('queued requests retain their accepted preference after the model default c
   await f.request('/api/model-preferences', { projectId: 'p1', id, model: 'a', maxOutputTokens: 640, applyToAllSessions: true });
   release(); await running;
   assert.equal(observed.at(-1).messages.at(-1).content, 'Après attente'); assert.equal(observed.at(-1).max_tokens, 320);
+});
+
+test('switching from unloaded A to cold B uses B’s real loaded context in new and existing chats', async t => {
+  const bodies = [], loads = [];
+  const instances = { a: [{ id: 'instance-a', config: { context_length: 32768 } }], b: [] };
+  const modelService = createModelService({ baseUrl: 'http://127.0.0.1:9999', fetchImpl: async (url, options) => {
+    if (url.endsWith('/unload')) {
+      const { instance_id } = JSON.parse(options.body);
+      for (const id of Object.keys(instances)) instances[id] = instances[id].filter(instance => instance.id !== instance_id);
+      return Response.json({ instance_id });
+    }
+    if (url.endsWith('/load')) {
+      const input = JSON.parse(options.body); loads.push(input);
+      const instance_id = 'instance-' + input.model;
+      instances[input.model] = [{ id: instance_id, config: { context_length: 16384 } }];
+      return Response.json({ status: 'loaded', instance_id, load_config: { context_length: 16384 } });
+    }
+    return Response.json({ models: Object.entries(instances).map(([key, loaded_instances]) => ({ key, type: 'llm', max_context_length: 262144, loaded_instances })) });
+  } });
+  const f = await fixture(t, async (_url, options) => { bodies.push(JSON.parse(options.body)); return stream({ delta: { content: 'Réponse conservée.' } }); }, { modelService });
+  await f.request('/api/model-preferences', { projectId: 'p1', model: 'a', maxOutputTokens: 111, applyToAllSessions: true });
+  await f.request('/api/model-preferences', { projectId: 'p1', model: 'b', maxOutputTokens: 2222, applyToAllSessions: true });
+  const first = (await f.send('Première question avec A', { outputPreferences: { maxOutputTokens: 321, applyToAllSessions: false } })).events();
+  const id = first.find(event => event.type === 'start').id;
+  assert.equal(bodies.at(-1).model, 'instance-a');
+  assert.equal(bodies.at(-1).max_tokens, 321);
+  await modelService.unload('instance-a');
+  // A completely new chat must get past the old 4096-token preflight before
+  // B can be loaded. Its runtime settings, not max_context_length, are used.
+  const prompt = 'B'.repeat(13000);
+  for (const extra of [{}, { sessionId: id }]) {
+    if (instances.b.length) await modelService.unload('instance-b');
+    const events = (await f.send(prompt, { model: 'b', ...extra })).events();
+    assert.equal(events.at(-1).type, 'done', JSON.stringify(events));
+    assert.equal(events.at(-1).outputBudget.contextLength, 16384);
+    assert(events.at(-1).outputBudget.estimatedInputTokens > 4096);
+    assert.equal(bodies.at(-1).model, 'instance-b');
+    assert.equal(bodies.at(-1).max_tokens, 2222);
+    assert.equal(events.at(-1).outputBudget.source, 'model');
+  }
+  assert.equal(loads.length, 2);
+  assert(loads.every(input => input.model === 'b' && input.context_length === undefined));
+  const saved = (await f.request('/api/conversation?' + new URLSearchParams({ projectId: 'p1', id }))).json();
+  assert.equal(saved.outputPreferencesByModel.a, 321);
+  assert.equal(saved.messages.filter(message => message.role === 'user').length, 2);
+  assert(bodies.at(-1).messages.some(message => message.content === 'Première question avec A'));
+});
+
+test('queued turns refresh their selected model context and retain the accepted per-model preference', async t => {
+  let length = 32768, release;
+  const bodies = [];
+  const f = await fixture(t, async (_url, options) => {
+    const body = JSON.parse(options.body); bodies.push(body);
+    if (body.messages.at(-1).content === 'Hold') await new Promise(resolve => { release = resolve; });
+    return stream({ delta: { content: 'Réponse.' } });
+  }, { modelService: { list: async () => [model('a'), { ...model('b'), contextLength: length }] } });
+  const runningReply = new ResponseRecorder(), running = f.send('Hold', {}, runningReply);
+  for (let n = 0; n < 100 && !release; n++) await new Promise(resolve => setTimeout(resolve, 5));
+  assert(release);
+  const id = runningReply.events().find(event => event.type === 'start').id;
+  assert.equal((await f.send('Après changement du contexte B', { sessionId: id, model: 'b', outputPreferences: { maxOutputTokens: 5000, applyToAllSessions: false } })).events()[0].type, 'queued');
+  length = 2048;
+  release(); await running;
+  const saved = (await f.request('/api/conversation?' + new URLSearchParams({ projectId: 'p1', id }))).json();
+  assert.equal(saved.messages.at(-1).outputBudget.contextLength, 2048);
+  assert.equal(saved.messages.at(-1).outputBudget.requestedMaxOutputTokens, 5000);
+  assert(bodies.at(-1).max_tokens < 2048);
+  assert.equal(f.app.inferenceGate.snapshot().active, 0);
+});
+
+test('genuinely full and unknown loaded contexts stop before inference without losing prior conversation messages', async t => {
+  let contextLength = 16384;
+  const bodies = [];
+  const f = await fixture(t, async (_url, options) => { bodies.push(JSON.parse(options.body)); return stream({ delta: { content: 'Conservée.' } }); }, { modelService: { list: async () => [{ ...model('a'), contextLength }] } });
+  const first = (await f.send('Texte à conserver')).events();
+  const id = first.find(event => event.type === 'start').id;
+  contextLength = 4096;
+  const full = await f.send('X'.repeat(13000), { sessionId: id });
+  assert.equal(full.statusCode, 400);
+  assert.match(full.json().error, /contexte du modèle est plein/);
+  contextLength = null;
+  const unknown = await f.send('Réessaie', { sessionId: id });
+  assert.equal(unknown.statusCode, 409);
+  assert.match(unknown.json().error, /n’est pas connue/);
+  assert.equal(bodies.length, 1);
+  const saved = (await f.request('/api/conversation?' + new URLSearchParams({ projectId: 'p1', id }))).json();
+  assert.equal(saved.messages[0].text, 'Texte à conserver');
+  assert.equal(saved.messages[1].text, 'Conservée.');
+  assert.equal(saved.messages.length, 2);
+  assert.equal(f.app.inferenceGate.snapshot().active, 0);
 });

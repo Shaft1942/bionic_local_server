@@ -374,7 +374,7 @@ async function messageContent(message, vision, materialize = true) {
   return [{ type: 'text', text }, ...await Promise.all(images.map(async file => ({ type: 'image_url', image_url: { url: materialize ? await projectFiles.imageData(file) : '' } })))];
 }
 function contentCost(content) { return typeof content === 'string' ? content.length : content.reduce((n, part) => n + (part.type === 'text' ? part.text.length : 3000), 0); }
-async function conversationModelContext(chat, prompt, contextLength = 4096, attachments = [], vision = false, fileAccess = false, messageId, permissions = {}, outputPreference) {
+async function conversationModelContext(chat, prompt, contextLength, attachments = [], vision = false, fileAccess = false, messageId, permissions = {}, outputPreference) {
   // The companion does not inherit native system prompts, credentials, or tool authority.
   const candidates = await Promise.all(chat.messages.map((source, index) => ({ source, index })).filter(({ source }) => (source.role === 'user' || source.role === 'assistant') && source.text?.trim()).map(async candidate => ({ ...candidate, modelMessage: { role: candidate.source.role, content: await messageContent(candidate.source, vision, false) } })));
   const input = await messageContent({ text: prompt, attachments }, vision);
@@ -467,8 +467,8 @@ async function sendChat(req, res, data) {
     if (project.isUnassigned && data.attachments?.length) throw fail(400, 'Choisis un projet pour joindre ses fichiers.');
     const attachments = (await projectFiles.attachments(data.projectId, data.attachments, { allowImages: !!selectedModel.vision })).map(file => ({ ...file, projectId: data.projectId }));
     const attachmentReferences = attachments.map((file, index) => ({ rootId: file.rootId, path: file.path, hash: file.hash, ...(file.excerpt ? { selection: { start: data.attachments[index].selection.start, end: data.attachments[index].selection.end } } : {}) }));
-    // Resolve file bytes and options now, but build history only when this turn starts.
-    await conversationModelContext({ messages: [] }, text, selectedModel.contextLength, attachments, selectedModel.vision, fileAccess, undefined, {webAccess,scriptAccess,imageAccess,fileProfile,webApproval});
+    // Resolve file bytes and options now. Context validation belongs to execution:
+    // an unloaded model has no confirmed context, and a queued snapshot may expire.
     const key = data.sessionId ? data.projectId + ':' + data.sessionId : 'new:' + requestId;
     let execute;
     await withAcceptanceLock(key, async () => {
@@ -547,7 +547,8 @@ async function drainChat(state, first, response) {
   }
 }
 async function generateChat(res, chat, item, request) {
-  const { text, selectedModel, fileAccess, attachments } = item;
+  const { text, fileAccess, attachments } = item;
+  let selectedModel;
   const webAccess=item.webAccess===true,webApproval=item.webApproval===true,scriptAccess=item.scriptAccess===true,fileProfile=normalizeFileProfile(item);
   const imageAccess=item.imageAccess===true;
   const availableTools=toolsFor({fileAccess,fileProfile,webAccess,scriptAccess,imageAccess});
@@ -559,6 +560,17 @@ async function generateChat(res, chat, item, request) {
   if (request) { request.controller = controller; if (request.cancelRequested) controller.abort(); }
   const timeout = setTimeout(() => controller.abort(), 1800000); // Includes admission and human approval, preserving the existing total deadline.
   let releaseUpstream = () => {};
+  let admitted = false;
+  const admitModel = async () => {
+    const release = await inferenceGate.acquire(controller.signal);
+    admitted = true;
+    releaseUpstream = () => { admitted = false; release(); };
+    try {
+      // Refresh after admission, including queued turns and tool continuations.
+      selectedModel = modelService.forInference ? await modelService.forInference(item.model, { signal: controller.signal }) : (await models()).find(model => model.id === item.model);
+      if (!selectedModel) throw fail(400, 'Sélectionne un modèle local disponible.');
+    } catch (error) { releaseUpstream(); throw error; }
+  };
   // A phone may suspend or close the HTTP stream. Only explicit Stop/timeout cancels the job.
   let detached = false;
   res.on('close', () => { detached = true; });
@@ -569,19 +581,19 @@ async function generateChat(res, chat, item, request) {
   try {
     const userMessageId = randomUUID();
     const outputPreference = item.outputPreference || modelPreferences.resolve(item.model, chat);
+    await admitModel();
     const context = await conversationModelContext(chat, text, selectedModel.contextLength, attachments, selectedModel.vision, fileAccess, userMessageId, {webAccess,scriptAccess,imageAccess,fileProfile,webApproval}, outputPreference);
     const requestModel = async () => {
       if (controller.signal.aborted) throw fail(409, 'Demande arrêtée.');
+      if (!admitted) { chat.generation.phase = 'waiting-model'; dirty = true; await admitModel(); }
       const budget = outputBudget({ contextLength: selectedModel.contextLength, messages: context.messages, tools: availableTools, preference: outputPreference });
       context.outputBudget = reply.outputBudget = context.receipt.outputBudget = budget;
       (context.receipt.outputBudgets ||= []).push({ ...budget, call: context.receipt.outputBudgets?.length + 1 || 1 });
-      chat.generation.phase = 'waiting-model'; dirty = true;
-      releaseUpstream = await inferenceGate.acquire(controller.signal);
       chat.generation.phase = 'model';
       let response;
       try { response = await fetch(API + '/v1/chat/completions', {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...apiHeaders() }, signal: controller.signal,
-        body: JSON.stringify({ model: data.model, messages: context.messages, stream: true, stream_options: { include_usage: true }, max_tokens: budget.maxOutputTokens, ...(availableTools.length ? { tools: availableTools, tool_choice: 'auto', parallel_tool_calls: false } : {}), ...reasoning.payload })
+        body: JSON.stringify({ model: selectedModel.inferenceId || data.model, messages: context.messages, stream: true, stream_options: { include_usage: true }, max_tokens: budget.maxOutputTokens, ...(availableTools.length ? { tools: availableTools, tool_choice: 'auto', parallel_tool_calls: false } : {}), ...reasoning.payload })
       }); } catch (error) { releaseUpstream(); throw error; }
       if (!response.ok) { releaseUpstream(); await response.body?.cancel(); throw fail(502, `Bionic ne peut pas répondre (HTTP ${response.status}). Vérifie le modèle, son contexte et les appels d’outils dans Bionic.`); }
       markContextTransmitted(context.receipt); dirty = true;

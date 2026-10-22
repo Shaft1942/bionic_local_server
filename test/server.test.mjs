@@ -20,6 +20,7 @@ const upstream=[], upstreamBodies=[];let upstreamCount=0;let preStarted=false,pr
 globalThis.fetch=async(url,opt={})=>{
  if(String(url).endsWith('/api/v1/models'))return {ok:true,json:async()=>({models:[{type:'llm',key:'synthetic',loaded_instances:fixtureLoaded?[{id:'loaded-synthetic',config:{context_length:4096}}]:[],capabilities:{vision:true,reasoning:{allowed_options:['off','on'],default:'on'}}}]})};
  if(String(url).endsWith('/api/v1/models/unload')){unloadCount++;fixtureLoaded=false;return {ok:true,json:async()=>({instance_id:'loaded-synthetic'})};}
+ if(String(url).endsWith('/api/v1/models/load')){fixtureLoaded=true;return {ok:true,json:async()=>({status:'loaded',instance_id:'loaded-synthetic',load_config:{context_length:4096}})};}
  upstreamCount++;lastUpstreamBody=JSON.parse(opt.body);upstreamBodies.push(structuredClone(lastUpstreamBody));const lastContent=lastUpstreamBody.messages.at(-1).content;const text=typeof lastContent==='string'?lastContent:lastContent.filter(p=>p.type==='text').map(p=>p.text).join('\n');
  const original=lastUpstreamBody.messages.findLast(m=>m.role==='user')?.content;
  if(typeof original==='string'&&original.startsWith('HTTP_FAIL_INITIAL'))return {ok:false,status:503,body:{cancel:async()=>{}}};

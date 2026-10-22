@@ -68,7 +68,8 @@ function createCompanionSettings({api,getState,node,onChange}) {
       const value=draft?draft.maxOutputTokens:data.automatic===true||data.source==='auto'?null:data.maxOutputTokens;
       el('output-mode').value=value===null?'auto':'manual';el('output-tokens').value=value??8192;
       el('output-all-sessions').checked=draft?.applyToAllSessions??data.applyToAllSessions;
-      message('output-current','Contexte du modèle : '+number(data.contextLength)+' tokens. Réglage : '+(value===null?'automatique':number(value)+' tokens')+'.');outputMode();
+      const context=Number.isSafeInteger(data.contextLength)&&data.contextLength>0?'Contexte du modèle : '+number(data.contextLength)+' tokens.':'Contexte du modèle : à confirmer au chargement.';
+      message('output-current',context+' Réglage : '+(value===null?'automatique':number(value)+' tokens')+'.');outputMode();
     }catch(e){if(ticket===generation)message('output-error',e.message,true);}
     finally{if(ticket===generation)el('output-save').disabled=false;}
   }
