@@ -1,8 +1,8 @@
 # Certificats serveur et clients : fiche d’implémentation
 
-22 octobre 2026 — cadrage accepté, implémentation non commencée.
+22 octobre 2026 — cadrage accepté et implémenté sur la branche dédiée.
 Branche `codex/certificats`, base V2 `a948b1926e139ba72046195951911ac16af30f2a`.
-Cette préparation porte uniquement sur cette fiche ; elle n’active aucun service.
+La recette et ses limites sont consignées dans [Validation certificats](certificats-validation.md). L’installation utilisée reste distincte de ce candidat.
 
 ## Parcours retenu
 
@@ -30,7 +30,7 @@ certificat expiré, de clé absente ou d’erreur au démarrage.
    Windows restreints, certificats serveur/client aux usages distincts, registre
    des appareils, expiration, renouvellement et révocation. Choisir un outil de
    signature maintenu et une méthode d’import compatible avec les appareils
-   cibles ; aucun outil ni téléchargement n’est ajouté dans cette préparation.
+   cibles ; le choix livré est décrit dans [Signature](certificats-signature.md).
 2. **Transport et sessions** : HTTPS/mTLS natif Node, contrôle du certificat puis
    de l’appareil autorisé avant tout accès privé, cookies `Secure`, invalidation
    des anciennes sessions à la montée. Adapter les contrôles Host/Origin et les
@@ -63,7 +63,7 @@ certificat expiré, de clé absente ou d’erreur au démarrage.
 
 ## Critères de recette et preuves attendues
 
-Tous les critères ci-dessous restent **à exécuter** dans le futur lot.
+Cette table fixe les critères ; leurs résultats effectifs sont dans le registre de validation.
 
 | ID | Critère | Preuve attendue |
 | --- | --- | --- |
