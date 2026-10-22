@@ -10,6 +10,7 @@
 - `FreeMemoryAfterWorkflow` relié après `SaveImage` dans les deux workflows : déchargement des modèles et libération mémoire en fin d’exécution selon le mécanisme de `/free`. Le nœud doit être installé sur l’instance ComfyUI.
 - Projets et conversations dans un arbre repliable, avec chargement à l’ouverture et affichage progressif.
 - Mémoire courte des reçus d’outils déjà transmis, bornée et dépourvue d’autorisations ; vue des capacités et limites du compagnon.
+- Mise à jour Windows : reprise bornée des renommages temporairement bloqués et retour arrière confirmé par empreintes, avec redémarrage de l’ancienne version lorsque les sources sont restaurées.
 - Assistant Windows conservé ; correction du nom du script d’autorisation du pare-feu facultatif. La mise à jour attend aussi la fin des générations d’images avant tout redémarrage.
 - Métaprompts, décisions, workflows et preuves conservés dans les guides V2. Les itérations locales 2.1.0 à 2.1.3 sont réunies dans cette première release publique 2.0.0 ; la protection contre les retours de version reste active.
 

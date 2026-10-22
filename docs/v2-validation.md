@@ -202,7 +202,7 @@ les textes à afficher et les prompts exacts fournis par l’utilisateur.
 
 Les itérations de développement locales 2.1.0 à 2.1.3 sont consolidées sous le numéro public 2.0.0, avec le slider de tokens jusqu’à 5 000 000 et les deux LoRA jusqu’à 20. La branche certificats est séparée de cette livraison. Les preuves précédentes restent des étapes historiques ; les contrôles ci-dessous portent sur les sources réunies.
 
-- Suite complète Windows : **457 tests réussis**, aucun échec ni test ignoré ; **83 fichiers JavaScript** vérifiés et **161 sources publiques** contrôlées par le manifeste d’export.
+- Suite complète Windows : **461 tests réussis**, aucun échec ni test ignoré ; **83 fichiers JavaScript** vérifiés et **161 sources publiques** contrôlées par le manifeste d’export.
 - Navigateur synthétique : **12 parcours réussis**, largeurs 1280 et 320 px, sans erreur JavaScript ni débordement. Le scénario V2 exerce ensemble tokens à 5 000 000, deux LoRA à 20, clavier, valeurs affichées, sauvegarde et changement de modèle ; arborescence et parcours de conversations également rejoués. La fixture a été complétée pour simuler le catalogue LoRA.
 - Wizard : correction des noms des scripts de pare-feu facultatifs et test de présence dans le manifeste. Installation réelle par le helper du wizard depuis le ZIP dans un dossier vide, avec Node existant, authentification neuve, routes statiques et API vérifiées. Les quatre écrans WinForms ont été exportés sans ouvrir de fenêtre interactive. Aucun réglage du pare-feu utilisateur, raccourci ou téléchargement réel de Node n’a été effectué.
 - Mise à jour directe : sources réelles du tag **v1.9.0**, installation et données fictives, puis ZIP candidat 2.0.0 via `prepareUpdate`, worker détaché et redémarrage du vrai serveur. Version, identité d’instance, runtime et sources contrôlés ; les **10 fichiers privés synthétiques** sont strictement identiques avant/après. Code d’accès conservé, ancienne session refusée, reconnexion, conversations, classement, livrable et préférences ComfyUI vérifiés.
@@ -210,3 +210,10 @@ Les itérations de développement locales 2.1.0 à 2.1.3 sont consolidées sous 
 - Le refus de retour **2.1.3 → 2.0.0** a été vérifié et conservé. Les installations de développement numérotées 2.1.x suivent la procédure manuelle documentée si elles passent à la distribution publique.
 
 Ces essais utilisent des installations séparées, des ports dédiés et des données fictives. Aucun serveur utilisateur, inférence Bionic, rendu ComfyUI ou GPU n’a été sollicité par la recette d’intégration. Les processus de test ont été arrêtés et aucun appel au backend fictif n’a été observé. L’archive candidate vérifiée contient le code validé ; la documentation de cette recette est ajoutée avant reconstruction de l’archive finale et CI du commit à publier.
+
+
+### Résilience Windows du worker de mise à jour
+
+La relance de la recette finale a reproduit des refus intermittents `EPERM` au renommage, sur un document public puis sur le journal transactionnel. Une analyse des empreintes a aussi montré un faux état de retour arrière incomplet alors que les fichiers étaient déjà identiques à leurs sauvegardes. Aucun processus précis n’est attribué à ces verrous.
+
+Le worker réessaie désormais les renommages Windows temporairement refusés, avec une attente cumulée plafonnée à 1 875 ms, sans supprimer la destination ni changer ses droits. Le retour arrière conserve un fichier déjà identique à son état initial et confirme les empreintes restaurées ; un échec réellement incomplet reste signalé. Quatre nouveaux tests couvrent les verrous transitoires et persistants Windows, la reprise de l’ancien serveur, une restauration réellement impossible et un nouveau fichier déjà absent. La suite complète repassée contient 461 tests réussis, sans test ignoré.
