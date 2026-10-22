@@ -13,7 +13,7 @@ try{
     const context=await browser.newContext({viewport:{width,height:900}}),page=await context.newPage(),errors=[],writes=[],sends=[];let tests=0;
     page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(6000);
     const models=['a','b'].map(id=>({id,name:'Modèle '+id,type:'llm',tools:true,contextLength:16384,reasoning:{allowedOptions:[],default:'default'}}));
-    let comfy={enabled:false,url:'http://127.0.0.1:8188',workflowId:'krea2_turbo',activeJobs:0,workflows:[{id:'krea2_turbo',label:'Krea2 Turbo'},{id:'hassaku_illustrious',label:'Hassaku XL Illustrious v34'}]};
+    let comfy={enabled:false,url:'http://127.0.0.1:8188',workflowId:'krea2_turbo',activeJobs:0,loraProfiles:{krea2_turbo:[],hassaku_illustrious:[]},workflows:[{id:'krea2_turbo',label:'Krea2 Turbo'},{id:'hassaku_illustrious',label:'Hassaku XL Illustrious v34'}]};
     const defaults=new Map();let sentChat;
     await context.route('**/*',async route=>{
       const request=route.request(),url=new URL(request.url());if(url.origin!==origin)return route.abort();
@@ -25,6 +25,7 @@ try{
       else if(url.pathname==='/api/activity')data={events:[],warnings:[]};
       else if(url.pathname==='/api/updates')data={currentVersion:'2.0.0',enabled:false,canInstall:false,installation:{status:'idle'}};
       else if(url.pathname==='/api/comfy/settings'){if(input){writes.push({type:'comfy',...input});comfy={...comfy,...input};}data=comfy;}
+      else if(url.pathname==='/api/comfy/loras')data={url:input?.url||comfy.url,loras:['synthetic/style.safetensors','synthetic/detail.safetensors'],loaders:{LoraLoader:['synthetic/style.safetensors','synthetic/detail.safetensors'],LoraLoaderModelOnly:['synthetic/style.safetensors','synthetic/detail.safetensors']},checkedAt:Date.now()};
       else if(url.pathname==='/api/comfy/check'){tests++;assert.equal(input.workflowId,'hassaku_illustrious');data={ok:true,url:input.url,workflows:[{id:input.workflowId,compatible:true,errors:[]}]};}
       else if(url.pathname==='/api/capabilities')data={items:[{name:'Scripts sur le PC',description:'Validation du code exact. 120 secondes maximum.'},{name:'Bionic Desktop',description:'MCP et sous-agents non hérités.'}]};
       else if(url.pathname==='/api/model-preferences'){
@@ -64,8 +65,17 @@ try{
     await page.locator('#settings-model').selectOption('b');await page.waitForFunction(()=>document.querySelector('#output-tokens-slider').value==='5000000');assert.equal(await precise.inputValue(),'5000000');
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);if(captures){await slider.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(captures,width+'-v2-token-slider.png')});}
     await page.locator('#comfy-enabled').check();await page.locator('#comfy-url').fill('http://192.168.1.197:8188');await page.locator('#comfy-workflow').selectOption('hassaku_illustrious');
+    await page.locator('#comfy-lora-1').selectOption('synthetic/style.safetensors');await page.locator('#comfy-lora-2').selectOption('synthetic/detail.safetensors');
+    for(const index of [1,2]){
+      const strength=page.locator('#comfy-lora-'+index+'-strength'),value=page.locator('#comfy-lora-'+index+'-value');
+      assert.equal(await strength.getAttribute('type'),'range');assert.equal(await strength.getAttribute('min'),'-2');assert.equal(await strength.getAttribute('max'),'20');assert.equal(await strength.getAttribute('step'),'0.05');
+      await strength.press('Home');assert.equal(await strength.inputValue(),'-2');assert.equal(await value.textContent(),'-2,00');
+      await strength.press('End');assert.equal(await strength.inputValue(),'20');assert.equal(await value.textContent(),'20,00');assert.equal(await strength.getAttribute('aria-valuetext'),'20,00');
+      await strength.press('ArrowLeft');assert.equal(await strength.inputValue(),'19.95');assert.equal(await value.textContent(),'19,95');await strength.press('End');
+    }
+    assert.equal(await precise.inputValue(),'5000000','token and LoRA sliders coexist in the same settings view');
     await page.locator('#comfy-test').click();await page.getByText(/Connexion confirmée/).waitFor();assert.equal(tests,1);assert.equal(writes.filter(w=>w.type==='comfy').length,0);
-    await page.locator('#comfy-save').click();await page.getByText(/Configuration enregistrée/).waitFor();assert.equal(writes.at(-1).workflowId,'hassaku_illustrious');
+    await page.locator('#comfy-save').click();await page.getByText(/Configuration enregistrée/).waitFor();assert.equal(writes.at(-1).workflowId,'hassaku_illustrious');assert.deepEqual(writes.at(-1).loraProfiles.hassaku_illustrious,[{name:'synthetic/style.safetensors',strength:20},{name:'synthetic/detail.safetensors',strength:20}]);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);if(captures)await page.screenshot({path:path.join(captures,width+'-v2-settings.png'),fullPage:true});
     await page.locator('#comfy-url').press('Escape');assert.equal(await page.evaluate(()=>document.activeElement.id),'settings-open-sidebar');assert.equal(await page.locator('#settings-view').isVisible(),false);
     await page.locator('#new-chat').click();await page.locator('#model').selectOption('a');await page.locator('#prompt').fill('Prompt de validation');
