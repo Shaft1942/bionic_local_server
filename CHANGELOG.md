@@ -1,6 +1,6 @@
 # Journal des versions
 
-## 2.1.0 — préparation
+## 2.1.0 — 23 octobre 2026
 
 - Paramètres → Sécurité des connexions : préparer HTTPS, télécharger l’autorité publique, créer et télécharger un certificat client chiffré depuis le navigateur, renouveler et révoquer un appareil. L’activation exige une connexion de preuve ; la récupération après perte de tous les accès reste locale au PC.
 - L’assistant Windows configure une fois l’accès au compagnon et un port fixe de vérification HTTPS, sur le réseau privé choisi. Après cette préparation, la gestion des certificats est disponible depuis le téléphone. L’installation d’un certificat et sa confiance restent confirmées dans Android/iOS.
