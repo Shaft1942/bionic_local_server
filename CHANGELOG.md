@@ -2,6 +2,8 @@
 
 ## En préparation
 
+- Assistant Windows `Installer.cmd` : choix du dossier, configuration guidée de l’API Bionic et du port, détection de Node.js et téléchargement portable officiel facultatif avec contrôle SHA-256 et signature Windows. Raccourci et démarrage proposés ; accès au téléphone facultatif avec accord Windows pour le pare-feu privé. Préservation des données et sauvegarde des réglages pour une reconfiguration sur place ; aucune migration automatique entre installations.
+
 - Recherche sans clé via l’interface officielle DuckDuckGo Lite ; URL envoyée identique à celle présentée à la validation. Les blocages HTTP 202/403/429 sont explicites et empêchent les tentatives répétées dans le même tour, sans empêcher une lecture d’URL directe.
 - Secours Brave facultatif avec `BIONIC_SEARCH_FALLBACK=brave` et une clé privée côté serveur. Accord distinct avant l’envoi à Brave si la validation web est activée ; aucune bascule après annulation ou refus de sécurité. Brave reste le moteur principal si seule sa clé est configurée.
 - Instructions web plus précises : consulter les sources et annoncer un échec au lieu de présenter des connaissances générales comme une recherche effectuée. Le respect de ces instructions dépend toujours du modèle utilisé.

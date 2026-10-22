@@ -32,6 +32,8 @@ Le [bilan du lot d’audit](docs/choix-audit.md) décrit les choix intégrés et
 
 ## Démarrer
 
+**Assistant Windows en préparation sur cette branche** : après extraction complète des sources correspondantes, double-cliquez sur **Installer.cmd** pour choisir le dossier, détecter Node.js ou télécharger une copie portable, configurer Bionic et créer un raccourci. Aucun Docker ni modification manuelle du JSON n’est nécessaire. Il n’est pas inclus dans la Release 1.9.0 déjà publiée. Voir [l’assistant d’installation](docs/assistant-installation.md). Le parcours manuel ci-dessous reste disponible.
+
 1. Installez **Node.js 24 ou une version ultérieure** depuis [nodejs.org](https://nodejs.org/en/download). Bionic doit déjà fonctionner sur ce PC.
 2. Téléchargez une [version publiée](https://github.com/Shaft1942/bionic_local_server/releases), ou utilisez **Code → Download ZIP** sur [le dépôt](https://github.com/Shaft1942/bionic_local_server). Extrayez entièrement l’archive dans un dossier à vous.
 3. Dans Bionic, activez le serveur **API des modèles locaux** et notez son adresse. Copiez `config.example.json` en `config.local.json`, puis ajustez `apiUrl` si nécessaire. Le port d’exemple `1235` n’est pas forcément celui de votre installation.

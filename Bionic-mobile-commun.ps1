@@ -27,14 +27,25 @@ function Get-BionicPort {
 }
 
 function Get-BionicNode {
-    $candidate = $env:BIONIC_MOBILE_NODE
-    if ([string]::IsNullOrWhiteSpace($candidate)) { $candidate = 'node.exe' }
-    $command = Get-Command -Name $candidate -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $command) { throw 'Node.js 24 ou plus recent est necessaire. Installe-le puis relance, ou renseigne BIONIC_MOBILE_NODE avec le chemin de node.exe.' }
-    $version = & $command.Source --version 2>$null
-    if ($LASTEXITCODE -ne 0 -or [string]$version -notmatch '^v(\d+)\.') { throw 'Impossible de verifier la version de Node.js.' }
-    if ([int]$Matches[1] -lt 24) { throw 'Node.js 24 ou plus recent est necessaire. Mets Node.js a jour ou renseigne BIONIC_MOBILE_NODE.' }
-    return $command.Source
+    param([string]$Root = $PSScriptRoot)
+    $explicit = -not [string]::IsNullOrWhiteSpace($env:BIONIC_MOBILE_NODE)
+    $candidates = @()
+    if ($explicit) { $candidates += $env:BIONIC_MOBILE_NODE }
+    else {
+        $candidates += Join-Path $Root 'runtime\node\node.exe'
+        $saved = Read-BionicJson (Join-Path $Root 'runtime\node-path.json')
+        $configured = [string](Get-BionicField $saved 'path')
+        if ($configured) { $candidates += $configured }
+        $candidates += 'node.exe'
+        if ($env:ProgramFiles) { $candidates += Join-Path $env:ProgramFiles 'nodejs\node.exe' }
+    }
+    foreach ($candidate in $candidates) {
+        $command = Get-Command -Name $candidate -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $command) { continue }
+        $version = & $command.Source --version 2>$null
+        if ($LASTEXITCODE -eq 0 -and [string]$version -match '^v(\d+)\.' -and [int]$Matches[1] -ge 24) { return $command.Source }
+    }
+    throw 'Node.js 24 ou plus recent est necessaire. Lance Installer.cmd pour le detecter ou telecharger une copie portable, ou renseigne BIONIC_MOBILE_NODE.'
 }
 
 function Get-BionicPing {

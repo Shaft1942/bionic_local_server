@@ -4,6 +4,8 @@
 
 ## Sur le PC qui exécute Bionic
 
+Les sources en préparation proposent désormais **Installer.cmd**, un assistant graphique Windows qui fonctionne même sans Node.js installé. Il guide le choix du dossier, la préparation de Node.js, les ports et l’API Bionic, puis propose le démarrage, un raccourci et l’autorisation réseau facultative. Il n’est pas dans l’archive 1.9.0 déjà publiée. Consultez [le parcours et ses limites](assistant-installation.md) ; la procédure manuelle reste décrite ci-dessous.
+
 Le PC héberge Bionic, ses modèles et ce compagnon. Le téléphone n’installe aucun modèle : il utilise son navigateur.
 
 1. Vérifiez qu’une conversation fonctionne directement dans Bionic.
@@ -23,7 +25,7 @@ Le dossier Bionic est détecté par défaut dans `.lmstudio/apps/bionic` de votr
 - **Deconnecter-appareils.cmd** : révoquer globalement les sessions du serveur actif sans arrêter ses travaux ; un appareil connaissant le code peut se reconnecter.
 - **Diagnostic.cmd** : produire les cinq contrôles bornés de compatibilité, sans message ni génération, dans `diagnostic-bionic.json`.
 
-Les lanceurs utilisent Node.js présent dans le `PATH`, ou le chemin explicitement indiqué par `BIONIC_MOBILE_NODE`. Ils ne requièrent pas Codex.
+Les lanceurs utilisent en priorité `BIONIC_MOBILE_NODE` s’il est défini. Sinon, ils recherchent la copie portable dans `runtime/node/node.exe`, le chemin conservé par l’assistant, puis un Node.js installé sur le PC. Ils ne requièrent pas Codex. Le runtime portable reste privé à l’installation et nécessite sa propre maintenance.
 
 Au premier démarrage, ouvrez **ACCES-PRIVE.txt** dans le dossier de l’application. Il contient le code personnel et les adresses disponibles. Ouvrez d’abord l’adresse du PC, habituellement [http://127.0.0.1:8769](http://127.0.0.1:8769), puis saisissez le code. Chaque installation crée son propre code : aucun code fourni par GitHub n’est nécessaire.
 
