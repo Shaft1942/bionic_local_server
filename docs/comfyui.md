@@ -73,6 +73,6 @@ lecture seule. La cohabitation mémoire et la durée de génération dépendent 
 modèles chargés dans Bionic et de l’offload ComfyUI.
 
 Un rendu Krea2 1024 × 1024 piloté par Gemma a réussi pendant la validation V2.
-Voir `docs/history/v2-live-proof.json`. L’extension 2.1 a ensuite été testée avec
+Voir `docs/history/v2-live-proof.json`. Les ajouts LoRA réunis dans la release 2.0.0 ont été testés avec
 des rendus HassakuXL et Krea2 avec LoRA depuis des prompts du compagnon ; voir
 `docs/v2-validation.md`. Le workflow mixte reste expérimental et non validé.

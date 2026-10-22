@@ -1,33 +1,17 @@
 # Journal des versions
 
-## 2.1.3 — 22 octobre 2026
-
-- Force maximale des deux LoRA portée à 20 dans les sliders et la validation serveur.
-
-## 2.1.2 — 22 octobre 2026
-
-- Réglage des deux forces LoRA par sliders de −2 à 2, au pas de 0,05, avec valeur affichée en direct et utilisation au clavier.
-
-## 2.1.1 — 22 octobre 2026
-
-- Le sélecteur d’image suit aussi le changement de conversation et la reprise de son brouillon ; il est bloqué pendant les opérations qui verrouillent le formulaire.
-- Les consignes d’outil demandent une description en anglais, adaptée aux modèles locaux, en conservant les textes à afficher et les prompts exacts explicitement fournis.
-
-## 2.1.0 — 22 octobre 2026
-
-- Choix de Krea2 Turbo ou HassakuXL dans les outils du message, conservé avec le brouillon et la conversation.
-- Deux LoRA facultatifs par modèle, avec forces indépendantes et catalogue fourni par les loaders ComfyUI : dossiers ajoutés et fichiers téléchargés reconnus par l’instance.
-- La demande conserve le modèle et les LoRA choisis lors de son envoi ; contrôle des noms avant soumission. La présence dans le catalogue ne garantit pas la compatibilité du LoRA avec le modèle.
-- `FreeMemoryAfterWorkflow` relié après `SaveImage` dans les deux workflows : déchargement des modèles et libération mémoire en fin d’exécution, selon le mécanisme de `/free`.
-
 ## 2.0.0 — 22 octobre 2026
 
 - Paramètres accessibles depuis la barre latérale et les options de conversation, avec fermeture directe et Échap.
-- Réponses : plafond automatique de 8 192 tokens, ajusté au contexte estimé à chaque appel, y compris outils et résultats. Choix par modèle ou conversation ; les valeurs souhaitées restent conservées. Signalement des réponses coupées.
-- ComfyUI facultatif, réglable dans l’UI : URL locale/LAN, test sans rendu, Krea2 Turbo ou HassakuXL Illustrious v34. Suivi persistant lié à l’adresse et au workflow d’origine ; images consultables après désactivation.
-- Projets et conversations regroupés dans un arbre repliable, listes chargées à l’ouverture et affichage progressif.
-- Mémoire courte des reçus d’outils déjà transmis, bornée et dépourvue d’autorisations ; vue des capacités et limites réellement fournies par le compagnon.
-- Métaprompts exécutés, plan de projet, décisions d’audit, exports de workflows et preuves de validation conservés dans la documentation. Sources 1.11.0 locales réunies avec l’historique Git 1.10.0.
+- Réponses : plafond automatique de 8 192 tokens ajusté au contexte estimé à chaque appel, outils et résultats compris. Saisie précise et slider synchronisés de 1 à 5 000 000 tokens, par modèle ou conversation. La préférence reste conservée et le budget effectif respecte le contexte disponible. Signalement des réponses coupées.
+- ComfyUI facultatif et configurable dans l’interface : URL locale/LAN, test sans rendu, choix Krea2 Turbo ou HassakuXL Illustrious v34 dans les outils du message, conservé avec le brouillon et la conversation.
+- Deux LoRA facultatifs par modèle, sélectionnés dans le catalogue de l’instance ComfyUI (dossiers supplémentaires et téléchargements reconnus compris). Sliders de force de −2 à 20 par pas de 0,05, valeur affichée en direct ; 0 désactive l’emplacement. La présence dans le catalogue ne garantit pas la compatibilité avec le modèle.
+- Le modèle et les LoRA sont figés à l’envoi. Suivi persistant lié à l’adresse et au workflow d’origine ; images accessibles après désactivation. Le sélecteur suit la conversation et son brouillon. Les consignes d’outil demandent une description en anglais tout en conservant les textes à afficher et les prompts exacts explicitement fournis.
+- `FreeMemoryAfterWorkflow` relié après `SaveImage` dans les deux workflows : déchargement des modèles et libération mémoire en fin d’exécution selon le mécanisme de `/free`. Le nœud doit être installé sur l’instance ComfyUI.
+- Projets et conversations dans un arbre repliable, avec chargement à l’ouverture et affichage progressif.
+- Mémoire courte des reçus d’outils déjà transmis, bornée et dépourvue d’autorisations ; vue des capacités et limites du compagnon.
+- Assistant Windows conservé ; correction du nom du script d’autorisation du pare-feu facultatif. La mise à jour attend aussi la fin des générations d’images avant tout redémarrage.
+- Métaprompts, décisions, workflows et preuves conservés dans les guides V2. Les itérations locales 2.1.0 à 2.1.3 sont réunies dans cette première release publique 2.0.0 ; la protection contre les retours de version reste active.
 
 ## 1.11.0 — 22 octobre 2026
 
