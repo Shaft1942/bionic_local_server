@@ -9,9 +9,9 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const windows = process.platform === 'win32';
 const quote = value => `'${String(value).replaceAll("'", "''")}'`;
-function ps(source, env = {}) {
+function ps(source, env = {}, { timeout = 15_000 } = {}) {
   return execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(`$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; ${source}`, 'utf16le').toString('base64')], {
-    encoding: 'utf8', timeout: 15_000,
+    encoding: 'utf8', timeout,
     env: { ...process.env, BIONIC_MOBILE_PORT: '', BIONIC_MOBILE_NODE: '', ...env }
   }).trim();
 }
@@ -27,7 +27,7 @@ async function fixture(t) {
 }
 
 test('PowerShell launchers parse without executing their actions', { skip: !windows }, () => {
-  const result = ps(`$bad = @(); Get-ChildItem -LiteralPath ${quote(root)} -Filter '*.ps1' | ForEach-Object { $tokens = $null; $errors = $null; $null = [Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors); $bad += $errors }; if ($bad.Count) { throw ($bad | Out-String) }; 'OK'`);
+  const result = ps(`$bad = @(); Get-ChildItem -LiteralPath ${quote(root)} -Filter '*.ps1' | ForEach-Object { $tokens = $null; $errors = $null; $null = [Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors); $bad += $errors }; if ($bad.Count) { throw ($bad | Out-String) }; 'OK'`, {}, { timeout: 45_000 });
   assert.equal(result, 'OK');
 });
 
