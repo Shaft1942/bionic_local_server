@@ -14,6 +14,13 @@ redémarrage ComfyUI n'est effectué par le compagnon ou son autoupdate.
 Le nœud 99 dépend de `SaveImage`. Il programme les indicateurs `unload_models` et
 `free_memory`, puis le worker ComfyUI les traite après le workflow : déchargement
 des modèles ComfyUI, remise à zéro du cache de l'exécuteur et collecte mémoire.
+Les graphes fournis exigent donc une sortie `IMAGE` d'indice 0 sur `SaveImage`.
+Elle est présente dans le backend ComfyUI 0.42.2 vérifié pour cette intégration
+(`RETURN_TYPES = ("IMAGE",)` et résultat `images`). Certaines autres versions de
+`SaveImage` ne renvoient aucune sortie. Dans ce cas, **Tester la connexion et les
+modèles** refuse le graphe avec « lien de sortie absent » : le type générique
+du déclencheur ne rend pas valide une sortie inexistante. Le compagnon ne modifie
+ni le backend ComfyUI ni les liens du graphe automatiquement.
 Il ne décharge pas un modèle Bionic. Le journal
 `[Free Memory after Workflow] Requested ...` confirme la **demande**, pas une
 quantité de RAM ou de VRAM libérée.

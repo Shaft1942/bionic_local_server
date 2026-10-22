@@ -97,6 +97,11 @@ test('connection test reads actual HTTP endpoints, checks both exact models and 
   assert.equal(result.workflows.length,2);assert(result.workflows.every(profile=>profile.compatible));
   assert.equal(f.service.getSettings().enabled,false);assert.equal(f.service.getSettings().url,'http://127.0.0.1:8188');
   assert.deepEqual(routes.map(route=>route.method),['GET','GET','GET']);
+  info.SaveImage.output=[];
+  result=await f.service.checkConnection({url});
+  assert.equal(result.ok,false);assert(result.workflows.every(profile=>!profile.compatible));
+  assert(result.workflows.every(profile=>profile.errors.some(error=>/FreeMemoryAfterWorkflow\.trigger : lien de sortie absent/.test(error))));
+  info.SaveImage.output=['IMAGE'];
   info.CheckpointLoaderSimple.input.required.ckpt_name=[['another-model.safetensors']];
   result=await f.service.checkConnection({url,workflowId:'hassaku_illustrious'});
   assert.equal(result.ok,false);assert.equal(result.reachable,true);assert.match(result.workflows.find(profile=>profile.id==='hassaku_illustrious').errors.join(' '),/hassakuXLIllustrious_v34/);
