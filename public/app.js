@@ -26,6 +26,7 @@ document.addEventListener('pointerdown', event => {
   for (const details of document.querySelectorAll('.message.user .message-extras[open]')) if (!details.contains(event.target)) details.open = false;
 });
 const icons = {
+  branch: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M6 7v10m12-10v2a5 5 0 0 1-5 5H6"/>',
   more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
   refresh: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 18 17"/>',
   plus: '<path d="M12 5v14M5 12h14"/>', search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>',
@@ -578,7 +579,7 @@ function messageCopyControl(label) {
   return copy;
 }
 function groupMessageExtras(article, message, role) {
-  const auxiliary = [...article.children].filter(child => child.matches('.actions-log,.message-fork,.message-metrics,.context-receipt,.pin-control,.message-effort,.message-budget:not(.message-budget-adjusted)'));
+  const auxiliary = [...article.children].filter(child => child.matches('.actions-log,.message-metrics,.context-receipt,.pin-control,.message-effort,.message-budget:not(.message-budget-adjusted)'));
   const failed = (message.actions || []).some(action => action.ok === false);
   const grouped = auxiliary.filter(child => {
     if (!failed || !child.matches('.actions-log') || !child.querySelector('.action-rows')) return true;
@@ -609,7 +610,7 @@ function groupMessageExtras(article, message, role) {
   details.append(summary, content);
   details.addEventListener('keydown', event => { if (event.key === 'Escape' && details.open) { event.preventDefault(); details.open = false; summary.focus({preventScroll:true}); } });
   if (message.role === 'user') details.addEventListener('focusout', event => { if (event.relatedTarget && !details.contains(event.relatedTarget)) details.open = false; });
-  if (message.role === 'user') role.append(details); else article.append(details);
+  if (message.role === 'user') role.querySelector('.message-actions').append(details); else article.append(details);
 }
 function addMessage(message, parent = $('messages'), renderBody = true) {
   const article = node('article', 'message ' + message.role);
@@ -619,11 +620,12 @@ function addMessage(message, parent = $('messages'), renderBody = true) {
   const role = node('div', 'message-role', message.role === 'user' ? 'Toi' : 'Assistant');
   if (message.fromBionic) role.append(node('span', 'origin-tag', 'historique Bionic'));
   else if(message.fromFork)role.append(node('span','origin-tag','copié du fil source'));
+  const actions = node('div', 'message-actions'); role.append(actions);
   const content = node('div', 'message-body'); content.dataset.messageRole = message.role;
   if (renderBody) renderText(content, message.text || '');
   article.append(role, content);
   if (message.text && (message.role==='user'||message.role==='assistant')) {
-    const copy=messageCopyControl(message.role==='user'?'Copier mon prompt':'Copier la réponse');copy.dataset.workspaceFocus='message-copy:'+article.dataset.messageKey;role.append(copy);
+    const copy=messageCopyControl(message.role==='user'?'Copier mon prompt':'Copier la réponse');copy.dataset.workspaceFocus='message-copy:'+article.dataset.messageKey;actions.append(copy);
   }
   if (message.attachments?.length) {
     const files = node('div', 'message-attachments');
@@ -644,7 +646,7 @@ function addMessage(message, parent = $('messages'), renderBody = true) {
   for (const action of message.actions || []) addFileAction(article, action, message);
   for(const approval of message.approvals||[])addToolApproval(article,approval,state.chat);
   if(message.historicalActions?.length){const history=node('details','actions-log');history.append(node('summary','','Actions dans la conversation source · '+message.historicalActions.length));for(const action of message.historicalActions)history.append(node('p','message-footer',(action.message||action.name||'Action')+(action.path?' · '+action.path:'')));article.append(history);}
-  if(message.id&&!(message.role==='assistant'&&(message.complete===false||state.chat?.generation?.status==='running'&&state.chat.generation.replyId===message.id))){const fork=node('button','message-fork','Créer une branche depuis ici');fork.type='button';fork.addEventListener('click',()=>forkChat(message.id));article.append(fork);}
+  if(message.id&&!(message.role==='assistant'&&(message.complete===false||state.chat?.generation?.status==='running'&&state.chat.generation.replyId===message.id))){const fork=node('button','message-copy-icon message-fork');fork.type='button';fork.title='Créer une branche depuis ici';fork.setAttribute('aria-label',fork.title);fork.dataset.workspaceFocus='message-fork:'+article.dataset.messageKey;fork.append(icon('branch'));fork.addEventListener('click',()=>forkChat(message.id));actions.append(fork);}
   const footer = [];
   if (message.reasoning && EFFORT_LABELS[message.reasoning]) article.append(node('p', 'message-footer message-effort', 'Effort : ' + EFFORT_LABELS[message.reasoning].toLocaleLowerCase('fr')));
   if (message.truncated) addBudgetWarning(article, message);
@@ -692,7 +694,7 @@ function renderQueue(chat, parent = $('messages')) {
     const interrupted = item.status === 'interrupted' || item.status === 'error', submitting = item.status === 'submitting';
     const role=node('div', 'message-role', interrupted ? 'Message non exécuté · à reprendre' : submitting ? 'Envoi au PC…' : 'Message en attente');article.append(role);
     const content = node('div', 'message-body'); content.dataset.messageRole = 'user'; renderText(content, item.text || ''); article.append(content);
-    if(item.text){const copy=messageCopyControl('Copier mon prompt');copy.dataset.workspaceFocus='message-copy:'+article.dataset.messageKey;role.append(copy);}
+    if(item.text){const copy=messageCopyControl('Copier mon prompt');copy.dataset.workspaceFocus='message-copy:'+article.dataset.messageKey;const actions=node('div','message-actions');actions.append(copy);role.append(actions);}
     if (item.attachments?.length) article.append(node('p', 'message-footer', item.attachments.length + ' fichier' + (item.attachments.length > 1 ? 's joints' : ' joint')));
     const actions = node('div', 'queue-actions');
     if (interrupted) {
