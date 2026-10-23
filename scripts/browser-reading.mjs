@@ -30,7 +30,7 @@ const streamInitial = '## Réponse en cours\n\n' + readingSentence + '\n\n```js\
 const imageBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAGAAAABACAIAAABqVuVZAAAB00lEQVR4nO3bMXbCMAwG4KDH0GuwduhJ6ObXQ+p5a6/RoQwsHbgGY4e+Dn2JI9uyZAvrHwk40YfsBAiHz++vxZMO7GzzOBAd7yAiDkTEgYg4EBEHInJMbbjcbstkeTmd1g96BxFxICIORMSBiDhQ7VmMk/D8tH4wXu/L5EBhy2W91ZbUUYFm88lWmEBZh/kqe0CBUacJIxZQYFc4vhF0ry2MbQQjVBUGNvILRQGgIPCGD9tEJjsI3z/U9gVGdVDLCMaZC6FwZB0jYx2E/1EUjCwBoeLSYw8IEzrSamaAdiJqBI9BgGJGBoAwr3gho2KgKPZF1+bIRWVLGBnooKI0N4LHqxabGtUARYFZth6zy1WPmQ5Cnk5D3Eqg2LSJJFqylRF0ryqKTa4m47CmWGQbSS89/NG4a1BkGOkszMwxGyzSscpI85dVjlGbs1i83vMLTj1Z9LxePXjLmxfiX9kVd3cMctWzziH1ZxbNmzhRS+ft9byz1W/iXCreif5X0qg7uUp31xkIeyw9RTvtCYT9Fub8XfefYoMbdQPCAc7rOccA0+pkBibXQepg5l2DMo1g5vbJOSpVIBxSZ//Ykp/FPL/xNYiIAxFxICIORMSBiDjQsp8f0uK9xNqfBloAAAAASUVORK5CYII=', 'base64');
 
 function fixture() {
-  const now = Date.now(), preferenceQueries = [], decisions = [], unexpected = [];
+  const now = Date.now(), preferenceQueries = [], decisions = [], unexpected = [], forks = [];
   const models = ['a', 'b'].map(id => ({ id: 'reading-' + id, name: 'Modèle synthétique ' + id, type: 'llm', tools: true, vision: true, loaded: true, loadedInstances: [], contextLength: 16384, reasoning: { allowedOptions: ['low', 'high'], default: 'low' } }));
   const receipt = { version: 1, initialTransmitted: true, history: { selectedCount: 1, messages: [{ id: 'reading-user', role: 'user', preview: 'Texte fourni, synthétique.' }] }, current: { messageId: 'reading-user' }, attachments: [{ index: 0, messageId: 'reading-user', name: 'extrait-synthetique.txt', rootId: 'project', path: 'extrait-synthetique.txt', kind: 'text', transmitted: true, text: 'Extrait fictif.', preview: 'Extrait fictif.', characters: 15 }], permissions: { fileProfile: 'none', webAccess: false, scriptAccess: false }, toolReads: [], external: [] };
   const markdown = [
@@ -97,6 +97,7 @@ function fixture() {
     if (url.pathname === '/api/projects') return { projects: [{ id: projectId, name: 'Projet synthétique de lecture', sessionsCount: 1 }] };
     if (url.pathname === '/api/sessions') return { sessions: [{ ...chat, messages: undefined }], warnings: [], partial: false };
     if (url.pathname === '/api/conversation') return chat;
+    if (url.pathname === '/api/conversation/fork') { forks.push(input); return { id: chatId }; }
     if (url.pathname === '/api/chat-request') return { id: chatId, projectId, status: chat.generation.status };
     if (url.pathname === '/api/activity') return { events: [], warnings: [] };
     if (url.pathname === '/api/ping') return { app: 'bionic-mobile-local', version: '2.1.0', instanceId: '55555555-5555-4555-8555-555555555555' };
@@ -117,7 +118,7 @@ function fixture() {
     }
     unexpected.push(url.pathname); throw Error('Route synthétique non prévue : ' + url.pathname);
   }
-  return { chat, models, preferenceQueries, decisions, unexpected, respond, startStream, apply, get sends() { return sends; } };
+  return { chat, models, preferenceQueries, decisions, unexpected, forks, respond, startStream, apply, get sends() { return sends; } };
 }
 
 const message = (page, id) => page.locator('.message[data-message-id="' + id + '"]');
@@ -166,6 +167,21 @@ try {
       await page.goto(origin); await page.locator('#app').waitFor({ state: 'visible' });
       await page.locator('.session').first().click(); await message(page, 'reading-normal').waitFor();
       const normal = message(page, 'reading-normal'), normalBody = normal.locator('.message-body'), extras = normal.locator(':scope > .message-extras');
+      for (const id of ['reading-user','reading-normal']) {
+        const header=message(page,id).locator('.message-role'), actions=header.locator('.message-actions');
+        const fork=actions.getByRole('button',{name:'Créer une branche depuis ici',exact:true});
+        assert.equal(await fork.isVisible(),true,'branch action is directly visible');
+        assert.equal(await fork.textContent(),'');assert.equal(await fork.locator('svg').count(),1);
+        assert.equal(await actions.locator('.message-text-copy').isVisible(),true);
+        const layout=await header.evaluate(el=>{
+          const a=el.querySelector('.message-actions').getBoundingClientRect(),h=el.getBoundingClientRect();
+          const copy=el.querySelector('.message-text-copy').getBoundingClientRect(),fork=el.querySelector('.message-fork').getBoundingClientRect();
+          return {right:Math.abs(h.right-a.right),gap:fork.left-copy.right,aligned:Math.abs(fork.top-copy.top)};
+        });
+        assert(layout.right<2 && layout.gap>=0 && layout.gap<=8 && layout.aligned<2,'message icons form one group at the right edge');
+      }
+      assert.equal(await message(page,'reading-user').locator('.message-extras').count(),0,'branch does not create an ellipsis menu');
+      await message(page,'reading-user').scrollIntoViewIfNeeded();await snapshot(page,'message-actions',width);
       assert.match(await normal.locator('.origin-tag').textContent(), /historique Bionic/);
       assert.equal(await normalBody.locator('h2').first().textContent(), 'Une réponse structurée');
       assert.equal(await normalBody.locator('strong').first().textContent(), 'forte'); assert.equal(await normalBody.locator('em').first().textContent(), 'emphase');
@@ -221,6 +237,7 @@ try {
       const submitted = await page.evaluate(() => window.__readingSent[0]), startEvent = api.startStream(submitted);
       await page.evaluate(event => window.__readingPush(event), startEvent); await push(page, api, { type: 'delta', text: streamInitial });
       const streaming = message(page, streamReply); await streaming.locator('.message-code-copy').waitFor();
+      assert.equal(await streaming.locator('.message-fork').count(),0,'incomplete reply cannot be branched');
       assert.equal(api.sends, 1); assert.equal(await streaming.locator('.message-code').getAttribute('data-complete'), 'false');
       await page.locator('#messages').evaluate(el => { el.scrollTop = el.scrollHeight; el.dispatchEvent(new Event('scroll')); }); await settle(page);
       await push(page, api, { type: 'delta', text: '  const suite = "fragment 2";\n' });
@@ -306,6 +323,9 @@ try {
       await streaming.getByRole('button',{name:'Copier la réponse',exact:true}).click();assert.equal(await page.evaluate(()=>window.__readingClipboard.at(-1)),api.chat.messages.find(m=>m.id===streamReply).text,'message copy uses the complete updated stream, not the initial snapshot');
 
       assert.equal(await page.evaluate(() => window.__readingExecuted), 0, 'code/HTML never executes');
+      await message(page,'reading-user').getByRole('button',{name:'Créer une branche depuis ici',exact:true}).click();
+      await page.waitForFunction(()=>document.querySelector('#toast')?.textContent.includes('Branche indépendante créée'));
+      assert.deepEqual(api.forks,[{projectId,chatId,messageId:'reading-user'}],'branch icon passes the source message to the existing fork API');
       assert.deepEqual(outbound, [], 'all requests stay intercepted; raw HTML caused no request'); assert.deepEqual(api.unexpected, []); assert.deepEqual(errors, []);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no document horizontal overflow at ' + width);
       results.push({ width, passed: true, sends: api.sends, refusals: api.decisions.length, clipboardCopies: await page.evaluate(() => window.__readingClipboard.length), preferenceQueries: api.preferenceQueries.length, durationMs: Math.round(performance.now() - started) });

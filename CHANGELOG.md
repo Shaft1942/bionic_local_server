@@ -6,6 +6,8 @@
 - Le canal stable exclut les préversions ; le canal bêta reçoit les bêtas et les stables compatibles plus récentes. Un retour au canal stable attend une stable supérieure à la bêta installée, sans retour automatique à une ancienne version.
 - Publication bêta distincte sur GitHub, avec archive, empreinte et manifeste contrôlés. La stable 2.1.0 déjà publiée reste la référence stable ; le premier passage depuis cette version exige une installation manuelle de la bêta, car son vérificateur ignore les préversions.
 
+- Les icônes de copie et de création de branche sont regroupées à droite de chaque message. La création de branche est directement accessible.
+
 - Durée, tokens générés et débit visibles à droite de « Détails du tour » replié. Copie des prompts, réponses et blocs de code par icône accessible, avec texte source exact et repli manuel.
 - Paramètres regroupés par tâche, avec recherche locale des réglages et indications de portée. Brouillons, diagnostic, certificats, modèles et mises à jour restent accessibles depuis leurs destinations et raccourcis.
 - Les formulaires de plafond et de ComfyUI proposent une annulation et signalent les saisies non enregistrées. La fermeture permet de poursuivre, d'abandonner ou de conserver ces saisies dans l'onglet, sans conserver les secrets de certificat.
