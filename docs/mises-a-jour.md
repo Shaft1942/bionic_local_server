@@ -8,6 +8,8 @@ La vérification transmet à GitHub une demande publique de liste de versions et
 
 ## Choisir
 
+La stable **2.3.0** reprend les fonctions de **2.2.1-beta.4**. Elle est proposée sur les deux canaux aux installations compatibles, notamment depuis 2.1.0 et 2.2.1-beta.4 ; aucun passage par une version intermédiaire n’est requis.
+
 Ouvrez **Paramètres → Maintenance → Mises à jour**. L'icône Paramètres se trouve au pied de la colonne des projets et conversations, avec Modèles chargés et Reconnexion au PC. L'indication de disponibilité reste à l'intérieur des paramètres ; aucune fenêtre ne s'ouvre automatiquement.
 
 Le **canal de publication** vaut **Stable** par défaut, même après installation d'un ZIP bêta. Le choix **Bêta** ajoute les versions d'essai `X.Y.Z-beta.N` aux stables compatibles plus récentes. Le choix s'applique au PC pour tous les appareils connectés et reste indépendant de la vérification automatique. Changer le canal n'installe rien ; si les vérifications automatiques sont désactivées, utilisez **Vérifier maintenant**.

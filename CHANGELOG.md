@@ -1,5 +1,15 @@
 # Journal des versions
 
+## 2.3.0 — 2026-10-23
+
+- Publication stable du contenu validé de 2.2.1-beta.4, sans changement fonctionnel supplémentaire. Les préversions restent disponibles dans l’historique GitHub.
+- Paramètres organisés par usage, avec Maintenance et Aide séparées, guide audité en huit thèmes et onze raccourcis préservant les saisies et le focus.
+- Configuration ComfyUI guidée : recherche du serveur, diagnostic des modèles et nœuds, nettoyage mémoire facultatif et module fourni avec installation expliquée.
+- Améliorations de lecture des conversations et barre système dans la colonne des projets ; canaux de mise à jour Stable/Bêta avec préférences conservées.
+- Le manifeste de mise à jour déclare le canal stable. La 2.3.0 est proposée aux installations compatibles des canaux Stable et Bêta ; aucun passage par une préversion n’est requis.
+- Validation de la beta.4 : 610 tests, parcours navigateur synthétiques à 320/390/1280 px et revue indépendante. Aucun nouveau rendu, modèle, GPU ou téléphone physique qualifié par la promotion stable.
+
+
 ## 2.2.1-beta.4 — 2026-10-23
 
 - Paramètres : Maintenance et Aide sont deux rubriques distinctes. Maintenance conserve mises à jour, diagnostic et configuration PC ; Aide regroupe le guide et les capacités.

@@ -6,7 +6,7 @@
 
 Le canal **stable** est choisi par défaut dans les paramètres des mises à jour. Le canal **beta** est volontaire : il permet de recevoir les préversions en cours de préparation. Le réglage est conservé dans les données locales et reste indépendant du numéro de la version installée.
 
-La stable `2.1.0` ne dispose pas encore du choix du canal. Le premier passage à une beta qui apporte ce réglage suit la procédure manuelle de mise à jour du README, avec sauvegarde des données. Le choix beta devient ensuite disponible pour les préversions suivantes ; une installation neuve conserve stable par défaut, même si son ZIP est une beta.
+Les installations restées en `2.1.0` ne disposent pas du choix du canal. Elles peuvent recevoir directement la stable `2.3.0` par la mise à jour habituelle, puis choisir beta si souhaité. Une installation neuve conserve stable par défaut, même si son ZIP est une beta. Un premier passage manuel vers une préversion reste possible selon la procédure du README, avec sauvegarde des données.
 
 | Canal | Version et tag | Publication GitHub |
 | --- | --- | --- |
