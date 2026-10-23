@@ -41,7 +41,7 @@ Le [bilan du lot d’audit](docs/choix-audit.md) décrit les choix intégrés et
 
 ## Démarrer sous Windows
 
-1. Téléchargez **bionic-mobile-v2.1.0.zip** depuis [la Release 2.0.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v2.0.0), puis extrayez entièrement l’archive.
+1. Téléchargez le ZIP de [la stable 2.1.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v2.1.0) ou de [cette bêta 2.2.0-beta.1](https://github.com/Shaft1942/bionic_local_server/releases/tag/v2.2.0-beta.1), selon le canal souhaité, puis extrayez entièrement l’archive.
 2. Double-cliquez sur **Installer.cmd**. Choisissez le dossier du compagnon et un Node.js compatible, ou cochez le téléchargement portable proposé.
 3. Dans **Bionic → API des modèles locaux**, activez le serveur. Reportez son adresse dans l’assistant ; le suffixe `/v1` est accepté et retiré automatiquement. Le bouton **Tester l’API** lit la liste des modèles sans génération ni déchargement.
 4. Vérifiez le récapitulatif puis cliquez sur **Installer**. Le raccourci et le démarrage sont proposés. L’accès au téléphone via le pare-feu est facultatif et demande l’accord Windows sur un réseau privé.
