@@ -4,6 +4,8 @@ Utilisez les modèles de votre PC, consultez vos projets Bionic et continuez une
 
 Ce projet communautaire est indépendant de Bionic. Bionic et ses modèles ne sont pas inclus. Le compagnon utilise l’API locale de Bionic et un adaptateur de lecture de ses fichiers internes.
 
+Cette branche prépare la **2.1.0** : certificats gérés depuis le navigateur du téléphone, contexte actualisé lors du changement de modèle et module de nettoyage ComfyUI distribué. Le curseur de tokens reste dans les paramètres, jusqu’à 5 millions. Voir la [validation 2.1](docs/v2.1-validation.md) et le [parcours certificats](docs/certificats-utilisation.md). La dernière Release publiée reste la 2.0.0.
+
 La **2.0.0** ajoute les plafonds de réponses par modèle/conversation, avec saisie et slider jusqu’à 5 000 000 tokens, ComfyUI optionnel avec HassakuXL/Krea2 et deux LoRA par modèle, ainsi que les projets repliables.
 Voir le [guide V2](docs/v2-utilisation.md), le [plan et les décisions](docs/v2-plan.md),
 les [métaprompts exécutés](docs/v2-metaprompts.md) et le [registre de validation](docs/v2-validation.md).
@@ -61,7 +63,9 @@ L’application n’envoie pas automatiquement toute votre bibliothèque au mod�
 
 Un chat web illisible est préservé et signalé par un **inventaire partiel** ; les autres restent accessibles. Aucune réparation automatique n’est tentée. Le [guide de dépannage](docs/depannage.md) explique la récupération manuelle. Sous Windows, **Diagnostic.cmd** produit un diagnostic borné et **Deconnecter-appareils.cmd** invalide globalement les sessions sans arrêter les travaux ; un appareil connaissant le code peut se reconnecter.
 
-Ce serveur utilise **HTTP** et un code d’accès pour un **réseau local de confiance**. Il ne doit pas être exposé directement sur Internet. N’ouvrez pas de redirection de port sur votre routeur. Lisez [Sécurité](SECURITY.md) avant de partager un accès.
+Le premier démarrage utilise **HTTP** et un code d’accès pour un **réseau local de confiance**. Dans **Paramètres → Sécurité des connexions**, depuis le téléphone ou le PC, préparez HTTPS, téléchargez l’autorité puis vérifiez la connexion avant activation. Depuis HTTPS, créez et téléchargez directement le certificat privé de chaque appareil, avec son mot de passe d’import, puis activez si souhaité le certificat client obligatoire (mTLS). L’import dans le système demande votre confirmation. Le port de vérification est configuré une fois dans l’assistant Windows ; **Certificats.cmd** reste un outil de récupération locale. Consultez le [parcours certificats](docs/certificats-utilisation.md).
+
+N’exposez pas directement le compagnon sur Internet et n’ouvrez pas de redirection de port sur votre routeur. Lisez [Sécurité](SECURITY.md) avant de partager un accès.
 
 ## Documentation
 

@@ -50,7 +50,8 @@ test('new installation copies only public sources and records a reusable Node pa
   // directory identity, since PowerShell expands that alias to its long path.
   assert.equal(await fs.realpath(result.Root),await fs.realpath(target));assert.equal(result.Existing,false);
   const config=JSON.parse(await fs.readFile(path.join(target,'config.local.json'),'utf8'));
-  assert.deepEqual(config,{port:3002,apiUrl:'http://localhost:1235'});
+  assert.deepEqual(config,{port:3002,certificateProofPort:3003,apiUrl:'http://localhost:1235'});
+  assert.equal(result.CertificateProofPort,3003);
   await assert.rejects(fs.access(path.join(target,'data/private.txt')));
   assert.equal(await fs.realpath(JSON.parse(await fs.readFile(path.join(target,'runtime/node-path.json'),'utf8')).path),await fs.realpath(process.execPath));
   assert.equal(await fs.realpath(ps(`Get-BionicNode -Root ${q(target)}`)),await fs.realpath(process.execPath));
@@ -101,4 +102,17 @@ test('Node metadata selects exactly one architecture and rejects an ambiguous or
   const sums='a'.repeat(64)+'  node-v24.22.1-win-x64.zip\n'+'b'.repeat(64)+'  node-v24.22.1-win-arm64.zip\n';
   const result=JSON.parse(ps(`Get-BionicNodeDownload ${q(sums)} 'arm64' | ConvertTo-Json -Compress`));assert.equal(result.Hash,'b'.repeat(64));assert.equal(result.Archive,'node-v24.22.1-win-arm64.zip');
   for(const value of [sums+sums,'no checksum'])assert.equal(ps(reject(`Get-BionicNodeDownload ${q(value)} 'x64'`)),'rejected');
+});
+
+test('certificate proof port is configurable, retained on reconfiguration, and cannot collide with app or API ports',{skip:!windows},async t=>{
+ const {source,target}=await fixture(t);
+ let result=JSON.parse(ps(`${install(source,target,'-CertificateProofPort 42111')} | ConvertTo-Json -Compress`));
+ assert.equal(result.CertificateProofPort,42111);
+ assert.equal(JSON.parse(await fs.readFile(path.join(target,'config.local.json'),'utf8')).certificateProofPort,42111);
+ ps(`${install(target,target)} | Out-Null`);
+ assert.equal(JSON.parse(await fs.readFile(path.join(target,'config.local.json'),'utf8')).certificateProofPort,42111);
+ const original=await fs.readFile(path.join(source,'config.local.json'));
+ for(const port of [3002,1235,-1,65536])assert.equal(ps(reject(install(source,source,'-CertificateProofPort '+port))),'rejected');
+ assert.equal(ps(`function Test-BionicPortOpen {param($Port) return $Port -eq 42111}; ${reject(install(source,source,'-CertificateProofPort 42111'))}`),'rejected');
+ assert.deepEqual(await fs.readFile(path.join(source,'config.local.json')),original);
 });

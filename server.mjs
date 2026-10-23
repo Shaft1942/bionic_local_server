@@ -26,6 +26,9 @@ import { createWorkspaceFeatures } from './lib/workspace-features.mjs';
 import { createConversationOrganizer, conversationName } from './lib/conversation-organizer.mjs';
 import { createUpdateService } from './lib/update-service.mjs';
 import { prepareUpdate, launchUpdate } from './lib/update-installer.mjs';
+import { openCertificateStore } from './lib/certificate-store.mjs';
+import { clientFingerprint, requireCertificateTransport, startCertificateTransport } from './lib/certificate-transport.mjs';
+import { createCertificateWeb } from './lib/certificate-web.mjs';
 
 const APP_VERSION = JSON.parse(await defaultFS.readFile(new URL('./package.json', import.meta.url), 'utf8')).version;
 
@@ -51,6 +54,8 @@ const configPath = path.join(DATA, 'config.json');
 await fs.mkdir(DATA, { recursive: true });
 await fs.mkdir(path.join(DATA, 'chats'), { recursive: true });
 await fs.mkdir(RUNTIME, { recursive: true });
+const certificateStore = options.certificateStore || await openCertificateStore(DATA, { allowExpired: true });
+let certificateTransport;
 const modelPreferences = await createModelPreferences({ filename: path.join(DATA, 'model-preferences.json'), fs });
 const localIPs = Object.entries(os.networkInterfaces()).filter(([name]) => !/vEthernet|WSL|Docker|VirtualBox|VMware/i.test(name)).flatMap(([, addresses]) => addresses || []).filter(x => x.family === 'IPv4' && !x.internal && privateIP(x.address)).map(x => x.address);
 let config;
@@ -69,13 +74,30 @@ if (!config.instanceId) {
 }
 // Refresh connection addresses without storing the clear access code in config.
 const privateAccessFile = path.join(ROOT, 'ACCES-PRIVE.txt');
-try {
-  const content = await fs.readFile(privateAccessFile, 'utf8');
-  const updated = content.replace(/Sur le téléphone,[\s\S]*?\r?\n\r?\nCode d’accès/, `Sur le téléphone, connecté au Wi-Fi de la maison :\r\n${localIPs.map(ip => `http://${ip}:${PORT}`).join('\r\n')}\r\n\r\nCode d’accès`);
-  if (updated !== content) await fs.writeFile(privateAccessFile, updated, { mode: 0o600 });
-} catch (e) { if (e.code !== 'ENOENT') throw e; }
 
 const sessions = new Map();
+const certificateWeb = createCertificateWeb({ store: certificateStore, transport: () => certificateTransport, suggestedHosts: ['127.0.0.1', 'localhost', ...localIPs], root: ROOT, instanceId: config.instanceId });
+const connectionUrl = (protocol, host) => `${protocol}//${host.includes(':') ? '[' + host + ']' : host}:${PORT}`;
+function connectionUrls() {
+  const protocol = certificateStore.state.mode === 'http' ? 'http:' : 'https:';
+  const hosts = certificateStore.state.mode === 'http' ? localIPs : certificateStore.state.server?.hosts || [];
+  return hosts.filter(host => host !== 'localhost' && !/^(?:127\.|::1$|::ffff:127\.)/.test(host)).map(host => connectionUrl(protocol, host));
+}
+function pcConnectionUrl() {
+  if (certificateStore.state.mode === 'http') return connectionUrl('http:', '127.0.0.1');
+  const hosts = certificateStore.state.server?.hosts || [];
+  const host = hosts.includes('127.0.0.1') ? '127.0.0.1' : hosts.includes('localhost') ? 'localhost' : hosts[0];
+  return host ? connectionUrl('https:', host) : 'consulte les paramètres de connexion';
+}
+async function refreshSecurityAddresses() {
+  try {
+    const content = await fs.readFile(privateAccessFile, 'utf8');
+    const note = certificateStore.state.mode === 'http' ? 'Le serveur utilise HTTP sur le réseau de confiance de la maison.' : 'Le serveur exige HTTPS. La gestion des certificats se fait dans Paramètres > Sécurité des connexions.';
+    const updated = content.replace(/Sur le t[ée]l[ée]phone,[\s\S]*?\r?\n\r?\nCode d’accès/, `Sur le téléphone, connecté au Wi-Fi de la maison :\r\n${connectionUrls().join('\r\n')}\r\n\r\nCode d’accès`).replace(/^Sur ce PC[ \t]*:[^\r\n]*/m, `Sur ce PC : ${pcConnectionUrl()}`).replace(/Le serveur (?:utilise HTTP sur le réseau de confiance de la maison\.|exige HTTPS\. La gestion des certificats se fait (?:sur le PC avec Certificats\.cmd|dans Paramètres > Sécurité des connexions)\.)/, note);
+    if (content !== updated) await fs.writeFile(privateAccessFile, updated, { mode: 0o600 });
+  } catch (error) { if (error.code !== 'ENOENT') throw error; }
+}
+await refreshSecurityAddresses();
 const failures = new Map();
 const busy = new Set();
 const active = new Map();
@@ -93,7 +115,7 @@ const updatePlatform = options.updatePlatform || process.platform;
 let updatePreparing = false, updateMaintenance = false, inFlightMutations = 0;
 let installation = { status: 'idle', message: '' };
 function updateHasWork() {
-  return busy.size > 0 || active.size > 0 || modelManagementBusy || acceptanceLocks.size > 0 || comfyImages.getSettings?.()?.activeJobs > 0 ||
+  return certificateWeb.busy || !!certificateTransport?.status().candidate || busy.size > 0 || active.size > 0 || modelManagementBusy || acceptanceLocks.size > 0 || comfyImages.getSettings?.()?.activeJobs > 0 ||
     [...chatRequests.values()].some(request => ['starting', 'queued', 'running'].includes(request.status)) ||
     [...chatStates.values()].some(({ chat }) => chat.generation?.status === 'running' || chat.queue?.some(item => item.status === 'queued'));
 }
@@ -132,10 +154,11 @@ function privateIP(ip) {
 }
 function fail(status, message) { return Object.assign(new Error(message), { status }); }
 function json(res, status, obj) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); }
-function cookie(req) { return (req.headers.cookie || '').split(';').map(x => x.trim()).find(x => x.startsWith('bm_session='))?.slice(11); }
+function sessionCookieName() { return (certificateStore.state.mode === 'http' ? 'bm_session_' : '__Host-bm_session_') + certificateStore.state.epoch.replaceAll('-', ''); }
+function cookie(req) { const prefix = sessionCookieName() + '='; return (req.headers.cookie || '').split(';').map(x => x.trim()).find(x => x.startsWith(prefix))?.slice(prefix.length); }
 function auth(req) {
-  const token = cookie(req), expiry = sessions.get(token);
-  if (!expiry || expiry < Date.now()) { if (token) sessions.delete(token); return false; }
+  const token = cookie(req), session = sessions.get(token);
+  if (!session || session.expiry < Date.now() || session.epoch !== certificateStore.state.epoch || session.fingerprint !== (certificateStore.state.mode === 'mtls' ? clientFingerprint(req.socket) : '')) { if (token) sessions.delete(token); return false; }
   return true;
 }
 async function body(req, limit = 262144) {
@@ -360,7 +383,7 @@ async function messageContent(message, vision, materialize = true) {
   return [{ type: 'text', text }, ...await Promise.all(images.map(async file => ({ type: 'image_url', image_url: { url: materialize ? await projectFiles.imageData(file) : '' } })))];
 }
 function contentCost(content) { return typeof content === 'string' ? content.length : content.reduce((n, part) => n + (part.type === 'text' ? part.text.length : 3000), 0); }
-async function conversationModelContext(chat, prompt, contextLength = 4096, attachments = [], vision = false, fileAccess = false, messageId, permissions = {}, outputPreference) {
+async function conversationModelContext(chat, prompt, contextLength, attachments = [], vision = false, fileAccess = false, messageId, permissions = {}, outputPreference) {
   // The companion does not inherit native system prompts, credentials, or tool authority.
   const candidates = await Promise.all(chat.messages.map((source, index) => ({ source, index })).filter(({ source }) => (source.role === 'user' || source.role === 'assistant') && source.text?.trim()).map(async candidate => ({ ...candidate, modelMessage: { role: candidate.source.role, content: await messageContent(candidate.source, vision, false) } })));
   const input = await messageContent({ text: prompt, attachments }, vision);
@@ -453,8 +476,8 @@ async function sendChat(req, res, data) {
     if (project.isUnassigned && data.attachments?.length) throw fail(400, 'Choisis un projet pour joindre ses fichiers.');
     const attachments = (await projectFiles.attachments(data.projectId, data.attachments, { allowImages: !!selectedModel.vision })).map(file => ({ ...file, projectId: data.projectId }));
     const attachmentReferences = attachments.map((file, index) => ({ rootId: file.rootId, path: file.path, hash: file.hash, ...(file.excerpt ? { selection: { start: data.attachments[index].selection.start, end: data.attachments[index].selection.end } } : {}) }));
-    // Resolve file bytes and options now, but build history only when this turn starts.
-    await conversationModelContext({ messages: [] }, text, selectedModel.contextLength, attachments, selectedModel.vision, fileAccess, undefined, {webAccess,scriptAccess,imageAccess,fileProfile,webApproval});
+    // Resolve file bytes and options now. Context validation belongs to execution:
+    // an unloaded model has no confirmed context, and a queued snapshot may expire.
     const key = data.sessionId ? data.projectId + ':' + data.sessionId : 'new:' + requestId;
     let execute;
     await withAcceptanceLock(key, async () => {
@@ -533,7 +556,8 @@ async function drainChat(state, first, response) {
   }
 }
 async function generateChat(res, chat, item, request) {
-  const { text, selectedModel, fileAccess, attachments } = item;
+  const { text, fileAccess, attachments } = item;
+  let selectedModel;
   const webAccess=item.webAccess===true,webApproval=item.webApproval===true,scriptAccess=item.scriptAccess===true,fileProfile=normalizeFileProfile(item);
   const imageAccess=item.imageAccess===true;
   const availableTools=toolsFor({fileAccess,fileProfile,webAccess,scriptAccess,imageAccess});
@@ -545,6 +569,17 @@ async function generateChat(res, chat, item, request) {
   if (request) { request.controller = controller; if (request.cancelRequested) controller.abort(); }
   const timeout = setTimeout(() => controller.abort(), 1800000); // Includes admission and human approval, preserving the existing total deadline.
   let releaseUpstream = () => {};
+  let admitted = false;
+  const admitModel = async () => {
+    const release = await inferenceGate.acquire(controller.signal);
+    admitted = true;
+    releaseUpstream = () => { admitted = false; release(); };
+    try {
+      // Refresh after admission, including queued turns and tool continuations.
+      selectedModel = modelService.forInference ? await modelService.forInference(item.model, { signal: controller.signal }) : (await models()).find(model => model.id === item.model);
+      if (!selectedModel) throw fail(400, 'Sélectionne un modèle local disponible.');
+    } catch (error) { releaseUpstream(); throw error; }
+  };
   // A phone may suspend or close the HTTP stream. Only explicit Stop/timeout cancels the job.
   let detached = false;
   res.on('close', () => { detached = true; });
@@ -555,19 +590,19 @@ async function generateChat(res, chat, item, request) {
   try {
     const userMessageId = randomUUID();
     const outputPreference = item.outputPreference || modelPreferences.resolve(item.model, chat);
+    await admitModel();
     const context = await conversationModelContext(chat, text, selectedModel.contextLength, attachments, selectedModel.vision, fileAccess, userMessageId, {webAccess,scriptAccess,imageAccess,fileProfile,webApproval}, outputPreference);
     const requestModel = async () => {
       if (controller.signal.aborted) throw fail(409, 'Demande arrêtée.');
+      if (!admitted) { chat.generation.phase = 'waiting-model'; dirty = true; await admitModel(); }
       const budget = outputBudget({ contextLength: selectedModel.contextLength, messages: context.messages, tools: availableTools, preference: outputPreference });
       context.outputBudget = reply.outputBudget = context.receipt.outputBudget = budget;
       (context.receipt.outputBudgets ||= []).push({ ...budget, call: context.receipt.outputBudgets?.length + 1 || 1 });
-      chat.generation.phase = 'waiting-model'; dirty = true;
-      releaseUpstream = await inferenceGate.acquire(controller.signal);
       chat.generation.phase = 'model';
       let response;
       try { response = await fetch(API + '/v1/chat/completions', {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...apiHeaders() }, signal: controller.signal,
-        body: JSON.stringify({ model: data.model, messages: context.messages, stream: true, stream_options: { include_usage: true }, max_tokens: budget.maxOutputTokens, ...(availableTools.length ? { tools: availableTools, tool_choice: 'auto', parallel_tool_calls: false } : {}), ...reasoning.payload })
+        body: JSON.stringify({ model: selectedModel.inferenceId || data.model, messages: context.messages, stream: true, stream_options: { include_usage: true }, max_tokens: budget.maxOutputTokens, ...(availableTools.length ? { tools: availableTools, tool_choice: 'auto', parallel_tool_calls: false } : {}), ...reasoning.payload })
       }); } catch (error) { releaseUpstream(); throw error; }
       if (!response.ok) { releaseUpstream(); await response.body?.cancel(); throw fail(502, `Bionic ne peut pas répondre (HTTP ${response.status}). Vérifie le modèle, son contexte et les appels d’outils dans Bionic.`); }
       markContextTransmitted(context.receipt); dirty = true;
@@ -655,7 +690,7 @@ async function generateChat(res, chat, item, request) {
   }
 }
 
-const STATIC = { '/': 'index.html', '/app.js': 'app.js', '/settings.js':'settings.js', '/project-tree.js':'project-tree.js', '/project-tree.css':'project-tree.css', '/comfy-images.js':'comfy-images.js', '/updates.js': 'updates.js', '/message-drafts.js': 'message-drafts.js', '/files.js': 'files.js', '/workspace.js': 'workspace.js', '/style.css': 'style.css', '/manifest.webmanifest': 'manifest.webmanifest', '/icon.svg': 'icon.svg' };
+const STATIC = { '/': 'index.html', '/app.js': 'app.js', '/settings.js':'settings.js', '/certificates.js':'certificates.js', '/project-tree.js':'project-tree.js', '/project-tree.css':'project-tree.css', '/comfy-images.js':'comfy-images.js', '/updates.js': 'updates.js', '/message-drafts.js': 'message-drafts.js', '/files.js': 'files.js', '/workspace.js': 'workspace.js', '/style.css': 'style.css', '/manifest.webmanifest': 'manifest.webmanifest', '/icon.svg': 'icon.svg' };
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml' };
 function handle(req, res) { return scanCycles.run({}, () => handleRequest(req, res)); }
 async function handleRequest(req, res) {
@@ -667,11 +702,15 @@ async function handleRequest(req, res) {
   let countedMutation = false;
   try {
     if (!privateIP(req.socket.remoteAddress || '')) throw fail(403, 'Accès réservé au réseau local.');
-    const host = new URL('http://' + (req.headers.host || '')).hostname;
-    if (!allowedHosts.has(host)) throw fail(403, 'Adresse du serveur non reconnue.');
-    const url = new URL(req.url, 'http://' + req.headers.host);
+    requireCertificateTransport(req, certificateStore);
+    const protocol = req.socket.encrypted ? 'https:' : 'http:';
+    const host = new URL(protocol + '//' + (req.headers.host || '')).hostname;
+    if (!allowedHosts.has(host) && !certificateStore.state.server?.hosts?.includes(host)) throw fail(403, 'Adresse du serveur non reconnue.');
+    const url = new URL(req.url, protocol + '//' + req.headers.host);
+    if (req.companionMaintenance && !['/api/ping','/api/admin/stop','/api/admin/revoke-sessions','/api/admin/certificates/action'].includes(url.pathname)) throw fail(404, 'Page introuvable.');
+    if (url.pathname.startsWith('/api/admin/') && certificateStore.state.mode !== 'http' && !req.companionMaintenance) throw fail(403, 'Utilise Certificats.cmd sur le PC.');
     if (req.method !== 'GET' && req.method !== 'HEAD') {
-      if (req.headers.origin && req.headers.origin !== 'http://' + req.headers.host) throw fail(403, 'Origine refusée.');
+      if (req.headers.origin && req.headers.origin !== protocol + '//' + req.headers.host) throw fail(403, 'Origine refusée.');
       if (req.headers['sec-fetch-site'] === 'cross-site') throw fail(403, 'Origine refusée.');
     }
     if (req.method === 'POST' && url.pathname === '/api/admin/stop') {
@@ -682,7 +721,13 @@ async function handleRequest(req, res) {
     if (req.method === 'POST' && url.pathname === '/api/admin/revoke-sessions') {
       const d = await body(req, 1024);
       if (!/^127\.|^::1$|^::ffff:127\./.test(req.socket.remoteAddress) || d.token !== config.adminToken) throw fail(403, 'Accès refusé.');
-      const revoked = sessions.size; sessions.clear(); json(res, 200, { revoked, canReconnectWithCode: true }); return;
+      const revoked = sessions.size; certificateWeb.clear(); sessions.clear(); json(res, 200, { revoked, canReconnectWithCode: certificateStore.state.mode !== 'mtls', requiresClientCertificate: certificateStore.state.mode === 'mtls' }); return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/admin/certificates/action') {
+      const d = await body(req, 8192);
+      if (!/^127\.|^::1$|^::ffff:127\./.test(req.socket.remoteAddress) || d.token !== config.adminToken || !req.companionMaintenance || !certificateTransport) throw fail(403, 'Administration locale refusée.');
+      if (updatePreparing || updateMaintenance) throw fail(409, 'Attends la fin de la mise à jour.');
+      json(res, 200, await certificateTransport.action(d)); return;
     }
     if (req.method === 'GET' && url.pathname === '/api/ping') { json(res, 200, { app: 'bionic-mobile-local', version: APP_VERSION, instanceId: config.instanceId }); return; }
     if (req.method === 'POST' && url.pathname === '/api/login') {
@@ -697,18 +742,42 @@ async function handleRequest(req, res) {
         throw fail(401, 'Code d’accès incorrect. Consulte ACCES-PRIVE.txt sur le PC.');
       }
       failures.delete(ip);
-      const token = randomBytes(32).toString('base64url'); sessions.set(token, Date.now() + 43200000);
-      res.setHeader('Set-Cookie', `bm_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`);
+      const token = randomBytes(32).toString('base64url'); sessions.set(token, { expiry: Date.now() + 43200000, epoch: certificateStore.state.epoch, fingerprint: certificateStore.state.mode === 'mtls' ? clientFingerprint(req.socket) : '' });
+      res.setHeader('Set-Cookie', `${sessionCookieName()}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${req.socket.encrypted ? '; Secure' : ''}`);
       json(res, 200, { ok: true }); return;
     }
     if (url.pathname === '/api/logout' && req.method === 'POST') {
-      sessions.delete(cookie(req)); res.setHeader('Set-Cookie', 'bm_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'); json(res, 200, { ok: true }); return;
+      const session = sessions.get(cookie(req)); if (session) certificateWeb.releaseSession(session);
+      sessions.delete(cookie(req)); res.setHeader('Set-Cookie', sessionCookieName() + '=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' + (req.socket.encrypted ? '; Secure' : '')); json(res, 200, { ok: true }); return;
     }
     if (url.pathname.startsWith('/api/')) {
       if (!auth(req)) throw fail(401, 'Connecte-toi avec le code du PC.');
+      if (req.method === 'GET' && url.pathname === '/api/security/status') { res.setHeader('Cache-Control', 'no-store'); json(res, 200, await certificateWeb.status(req, sessions.get(cookie(req)))); return; }
+      if (req.method === 'GET' && url.pathname === '/api/security/authority') {
+        const download = await certificateWeb.authorityCertificate();
+        res.writeHead(200, { 'Content-Type': download.contentType, 'Content-Disposition': `attachment; filename="${download.filename}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(download.bytes); return;
+      }
       if (!['GET', 'HEAD'].includes(req.method) && url.pathname !== '/api/updates/install') {
         if (updateMaintenance) throw fail(503, 'Le serveur redémarre pour une mise à jour. Réessaie après reconnexion.');
         if (!url.pathname.startsWith('/api/updates/')) { inFlightMutations++; countedMutation = true; }
+      }
+      if (req.method === 'POST' && url.pathname === '/api/security/actions') {
+        if (updatePreparing || updateMaintenance) throw fail(409, 'Attends la fin de la mise à jour avant de modifier les connexions.');
+        res.setHeader('Cache-Control', 'no-store');
+        json(res, 200, await certificateWeb.action(req, sessions.get(cookie(req)), await body(req, 8192))); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/security/proof') {
+        const input = new URLSearchParams((await receiveBody(req, { limit: 2048, timeoutMs: 15000 })).toString('utf8'));
+        const proof = certificateWeb.startProof(req, sessions.get(cookie(req)), Object.fromEntries(input));
+        const escape = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+        res.setHeader('Content-Security-Policy', `default-src 'none'; style-src 'unsafe-inline'; form-action ${new URL(proof.url).origin}; frame-ancestors 'none'; base-uri 'none'`);
+        res.setHeader('Referrer-Policy', 'strict-origin');
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(`<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Vérifier la connexion HTTPS</title><style>body{font:17px system-ui;max-width:40rem;margin:8vh auto;padding:24px;line-height:1.6}button{font:inherit;padding:12px 18px;cursor:pointer}button:focus-visible{outline:3px solid #1976d2;outline-offset:4px}</style><main><h1>Vérifier la connexion HTTPS</h1><p>Installe d’abord l’autorité du compagnon dans les réglages de ton appareil. Le navigateur va ensuite vérifier le nouveau certificat.</p><p>Continue uniquement si la page suivante s’ouvre sans avertissement de certificat. Si elle reste inaccessible, vérifie sur le PC l’autorisation réseau du port de preuve.</p><form method="post" action="${escape(proof.url)}"><input type="hidden" name="ticket" value="${escape(proof.ticket)}"><button type="submit">Ouvrir la vérification sécurisée</button></form></main></html>`); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/security/device-download') {
+        const download = certificateWeb.downloadDevice(req, sessions.get(cookie(req)), await body(req, 2048));
+        res.writeHead(200, { 'Content-Type': download.contentType, 'Content-Disposition': `attachment; filename="${download.filename}"`, 'Cache-Control': 'no-store', 'Pragma': 'no-cache', 'X-Content-Type-Options': 'nosniff' }); res.end(download.bytes, () => download.bytes.fill(0)); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/updates') { json(res, 200, await updateStatus()); return; }
       if (req.method === 'POST' && url.pathname === '/api/updates/check') { await updater.check({ manual: true }); json(res, 200, await updateStatus()); return; }
@@ -769,7 +838,7 @@ async function handleRequest(req, res) {
       if (req.method === 'GET' && url.pathname === '/api/status') {
         let modelList = [], apiError = null;
         try { modelList = await models(); } catch { apiError = 'API Bionic injoignable. Ouvre Bionic, active son API locale et vérifie apiUrl dans config.local.json.'; }
-        json(res, 200, { ok: !apiError, apiError, models: modelList, addresses: localIPs.map(ip => `http://${ip}:${PORT}`), capabilities: { nativeProjects: 'read-only', nativeSessions: 'read-only', reply: 'web-branch', nativeAgentTools: false, projectFiles: 'read-write-text' } }); return;
+        json(res, 200, { ok: !apiError, apiError, models: modelList, addresses: connectionUrls(), capabilities: { nativeProjects: 'read-only', nativeSessions: 'read-only', reply: 'web-branch', nativeAgentTools: false, projectFiles: 'read-write-text' } }); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/model-preferences') {
         json(res, 200, await preferenceDTO({ model: url.searchParams.get('model'), projectId: url.searchParams.get('projectId'), id: url.searchParams.get('id') })); return;
@@ -925,6 +994,9 @@ async function handleRequest(req, res) {
       throw fail(404, 'Action inconnue.');
     }
     if ((req.method === 'GET' || req.method === 'HEAD') && STATIC[url.pathname]) {
+      // Native POST navigation needs a non-null Origin for certificate proof.
+      // Send only the origin, never a conversation path or a token-bearing URL.
+      if (url.pathname === '/') res.setHeader('Referrer-Policy', 'strict-origin');
       const file = path.join(ROOT, 'public', STATIC[url.pathname]);
       const content = await fs.readFile(file);
       res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' }); res.end(req.method === 'HEAD' ? undefined : content); return;
@@ -940,17 +1012,21 @@ async function handleRequest(req, res) {
 const server = http.createServer(handle);
 server.requestTimeout = settings.requestTimeoutMs || 180000;
 server.headersTimeout = 15000;
-async function close() { updater.stop(); await comfyImages.close(); for (const job of active.values()) job.controller.abort(); await Promise.allSettled([...chatStates.values()].map(state => state.writes)); if (server.listening) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); } }
+async function close() { certificateWeb.clear(); await certificateTransport?.close(); updater.stop(); await comfyImages.close(); for (const job of active.values()) job.controller.abort(); await Promise.allSettled([...chatStates.values()].map(state => state.writes)); if (server.listening) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); } }
 if (options.enableUpdateScheduling) server.once('listening', () => updater.start());
-return { server, handle, close, config, settings, readWeb, webChats, chatSnapshot, conversationModelContext, sendChat, chatStates, persistChat, measurements, inferenceGate, updater, addresses:localIPs, withScanCycle: work => scanCycles.run({},work) };
+return { server, handle, close, config, settings, certificateStore, attachCertificateTransport: controller => { certificateTransport = controller; }, clearSecuritySessions: () => { certificateWeb.clear(); sessions.clear(); }, refreshSecurityAddresses, readWeb, webChats, chatSnapshot, conversationModelContext, sendChat, chatStates, persistChat, measurements, inferenceGate, updater, addresses:localIPs, withScanCycle: work => scanCycles.run({},work) };
 }
 
 if (process.argv[1] && (process.platform === 'win32' ? path.resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase() : path.resolve(process.argv[1]) === fileURLToPath(import.meta.url))) {
   const app = await createCompanion({ enableUpdateScheduling: true, exitOnUpdate: true });
-  app.server.on('error', error => { console.error('Serveur non démarré : ' + error.code); process.exit(1); });
-  app.server.listen(app.settings.port, '0.0.0.0', async () => {
-    const root = path.dirname(fileURLToPath(import.meta.url));
-    await defaultFS.writeFile(path.join(root, 'runtime', 'server.json'), JSON.stringify({ pid: process.pid, port: app.settings.port, node: process.execPath, root, instanceId: app.config.instanceId, startedAt: new Date().toISOString(), addresses: app.addresses }));
-    console.log('Bionic Mobile actif sur http://127.0.0.1:' + app.settings.port + '. Accès privé : ACCES-PRIVE.txt');
-  });
+  const root = path.dirname(fileURLToPath(import.meta.url));
+  try {
+    const transport = await startCertificateTransport({ app, root });
+    await defaultFS.writeFile(path.join(root, 'runtime', 'server.json'), JSON.stringify({ pid: process.pid, port: transport.appPort, node: process.execPath, root, instanceId: app.config.instanceId, startedAt: new Date().toISOString(), addresses: app.addresses }));
+    console.log('Bionic Mobile actif en ' + app.certificateStore.state.mode.toUpperCase() + ' sur le port ' + transport.appPort + '. Accès privé : ACCES-PRIVE.txt ; certificats : Paramètres > Sécurité des connexions ; récupération locale : Certificats.cmd');
+  } catch (error) {
+    await app.close();
+    console.error('Serveur non démarré : ' + (error.code || 'configuration de sécurité invalide') + '. Consulte Certificats.cmd sur le PC.');
+    process.exitCode = 1;
+  }
 }

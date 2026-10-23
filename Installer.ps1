@@ -77,6 +77,15 @@ if (-not (Get-BionicField $local 'port')) { foreach($candidate in 8769..8789){if
 $rootValue=if(Get-BionicField $local 'bionicRoot'){$local.bionicRoot}else{Join-Path $env:USERPROFILE '.lmstudio\apps\bionic'}
 $api=Add-Field $pages[2] 'API locale affichee dans Bionic' $apiValue
 $port=Add-Field $pages[2] 'Port du compagnon (different du port de Bionic)' $portValue
+$proofPortValue=Get-BionicField $local 'certificateProofPort'
+if ($null -eq $proofPortValue) {
+    $proofPortValue=if ([int]$portValue -lt 65535) { [int]$portValue + 1 } else { [int]$portValue - 1 }
+    foreach ($offset in 1..32) {
+        $suggested=(([int]$portValue + $offset - 1) % 65535) + 1
+        if ($suggested -ne ([Uri]$apiValue).Port -and -not (Test-BionicPortOpen $suggested)) { $proofPortValue=$suggested; break }
+    }
+}
+$proofPort=Add-Field $pages[2] 'Port de verification HTTPS (utilise pendant la configuration)' ([string]$proofPortValue)
 $bionicRoot=Add-Field $pages[2] 'Dossier de données Bionic (pas Bionic.exe)' $rootValue $true
 $testApi=New-ActionButton 'Tester l API'; $pages[2].Controls.Add($testApi)
 $apiStatus=Add-Info $pages[2] 'Le test lit uniquement la liste des modèles. Une API indisponible ne bloque pas l installation : elle devra etre activee avant de discuter.' 65
@@ -85,17 +94,31 @@ $testApi.Add_Click({ $testApi.Enabled=$false; $apiStatus.Text='Verification de l
 $review=Add-Info $pages[3] '' 140
 $shortcut=Add-Choice $pages[3] 'Creer un raccourci sur le Bureau' $true
 $launch=Add-Choice $pages[3] 'Demarrer le compagnon après installation' $true
-$firewall=Add-Choice $pages[3] 'Autoriser le telephone sur le réseau Windows privé (accord Windows)' $false
-$null=Add-Info $pages[3] 'Le pare-feu reste inchangé sans cette option. Elle exige le démarrage du serveur et un accord administrateur Windows. Aucun changement du routeur ni du profil réseau. Le code d acces sera généré localement.' 75
+$firewall=Add-Choice $pages[3] 'Autoriser le telephone et la configuration HTTPS sur le réseau privé' $false
+$null=Add-Info $pages[3] 'Accord administrateur Windows unique pour les deux ports, sur ce réseau privé. Ensuite, les certificats se gèrent depuis Paramètres sur le téléphone. Sans cette option, le pare-feu reste inchangé. Aucun changement du routeur ni du profil réseau.' 75
 $firewall.Add_CheckedChanged({if($firewall.Checked){$launch.Checked=$true}})
 $launch.Add_CheckedChanged({if(-not $launch.Checked){$firewall.Checked=$false}})
 $complete=Add-Info $pages[4] '' 145
 $openApp=New-ActionButton 'Ouvrir l application'; $openApp.Width=190; $pages[4].Controls.Add($openApp)
-$openApp.Add_Click({$config=Read-BionicJson (Join-Path $script:state.Result.Root 'data/config.json');if(Test-BionicIdentity (Get-BionicPing $script:state.Result.Port) ([string](Get-BionicField $config 'instanceId'))){Start-Process ('http://127.0.0.1:'+ $script:state.Result.Port)}else{$feedback.Text='Le serveur de ce dossier ne repond pas. Lance Demarrer.cmd.'}})
+$openApp.Add_Click({$config=Read-BionicJson (Join-Path $script:state.Result.Root 'data/config.json');if(Test-BionicIdentity (Get-BionicPing -Port $script:state.Result.Port -Root $script:state.Result.Root) ([string](Get-BionicField $config 'instanceId'))){Start-Process (Get-BionicApplicationUrl -Root $script:state.Result.Root -Port $script:state.Result.Port)}else{$feedback.Text='Le serveur de ce dossier ne repond pas. Lance Demarrer.cmd.'}})
 $openAccess=New-ActionButton 'Code et adresses'; $openAccess.Width=175; $pages[4].Controls.Add($openAccess)
 $openAccess.Add_Click({ $file=Join-Path $script:state.Result.Root 'ACCES-PRIVE.txt'; if(Test-Path -LiteralPath $file){Start-Process -FilePath 'notepad.exe' -ArgumentList ('"'+$file+'"')}else{$feedback.Text='Lance Demarrer.cmd pour générér ACCES-PRIVE.txt.'} })
 $openFolder=New-ActionButton 'Ouvrir le dossier'; $openFolder.Width=175; $pages[4].Controls.Add($openFolder)
 $openFolder.Add_Click({Start-Process -FilePath 'explorer.exe' -ArgumentList ('"'+$script:state.Result.Root+'"')})
+$manageCertificates=New-ActionButton 'Acces securises'; $manageCertificates.Width=190
+$pages[0].Controls.Add($manageCertificates)
+$manageCertificates.Add_Click({
+    try {
+        $selected=Assert-BionicInstallPath $destination.Text
+        $config=Read-BionicJson (Join-Path $selected 'data/config.json')
+        $selectedPort=Get-BionicPort $selected
+        if (-not (Test-BionicIdentity (Get-BionicPing -Port $selectedPort -Root $selected) ([string](Get-BionicField $config 'instanceId')))) { throw 'Demarre cette installation pour ouvrir ses parametres de securite.' }
+        $address=(Get-BionicApplicationUrl -Root $selected -Port $selectedPort).TrimEnd('/') + '/?settings=security'
+        Start-Process -FilePath $address
+    } catch { $feedback.Text=$_.Exception.Message }
+})
+$null=Add-Info $pages[0] 'Acces securises ouvre les parametres dans le navigateur. HTTPS et les certificats clients se configurent aussi depuis le telephone. Certificats.cmd reste disponible sur le PC en cas de perte de tous les acces.' 65
+
 
 function Show-Step([int]$Index) {
     $script:state.Step=$Index; $hostPanel.Controls.Clear(); $hostPanel.Controls.Add($pages[$Index])
@@ -104,7 +127,7 @@ function Show-Step([int]$Index) {
     $previous.Visible=$Index -gt 0 -and $Index -lt 4; $cancel.Visible=$Index -lt 4
     $next.Text=if($Index -eq 3){'Installer'}elseif($Index -eq 4){'Fermer'}else{'Suivant'}
     $feedback.Text=''; $pages[$Index].SelectNextControl($null,$true,$true,$true,$false) | Out-Null
-    if($Index -eq 3){$review.Text="Dossier : $($destination.Text)`r`nNode.js : $(if($download.Checked){'copie portable à télécharger'}else{'exécutable déjà disponible'})`r`nBionic : $($api.Text)`r`nCompagnon : http://127.0.0.1:$($port.Text)`r`n`r`nLes conversations d un autre dossier ne sont pas transférées."}
+    if($Index -eq 3){$review.Text="Dossier : $($destination.Text)`r`nNode.js : $(if($download.Checked){'copie portable à télécharger'}else{'exécutable déjà disponible'})`r`nBionic : $($api.Text)`r`nCompagnon : port $($port.Text) (niveau de securite existant conserve)`r`nVerification HTTPS : port $($proofPort.Text)`r`n`r`nLes conversations d un autre dossier ne sont pas transférées."}
 }
 
 $timer=New-Object Windows.Forms.Timer; $timer.Interval=150
@@ -126,14 +149,14 @@ $next.Add_Click({
     try {
         if($script:state.Step -eq 0){$destination.Text=Assert-BionicInstallPath $destination.Text; if(-not [string]::Equals($destination.Text,$PSScriptRoot,[StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $destination.Text) -and @(Get-ChildItem -LiteralPath $destination.Text -Force).Count){throw 'Choisis un dossier vide, ou Ce dossier pour conserver cette installation.'}}
         if($script:state.Step -eq 1 -and -not $download.Checked){if(-not $script:state.Node){throw 'Choisis node.exe ou coche le téléchargement portable.'}}
-        if($script:state.Step -eq 2){$api.Text=ConvertTo-BionicApiUrl $api.Text; $number=0; if(-not [int]::TryParse($port.Text,[ref]$number) -or $number -lt 1 -or $number -gt 65535){throw 'Le port doit etre un entier entre 1 et 65535.'}; if(Test-BionicPortOpen $number){throw 'Ce port est occupe. Choisis un autre port, ou arrêté cette installation avant de la reconfigurer.'};if(([Uri]$api.Text).Port -eq $number){throw 'Utilise un port different de celui de Bionic.'}; if($bionicRoot.Text){$null=Assert-BionicInstallPath $bionicRoot.Text}}
+        if($script:state.Step -eq 2){$api.Text=ConvertTo-BionicApiUrl $api.Text; $number=0; if(-not [int]::TryParse($port.Text,[ref]$number) -or $number -lt 1 -or $number -gt 65535){throw 'Le port doit etre un entier entre 1 et 65535.'}; if(Test-BionicPortOpen $number){throw 'Ce port est occupe. Choisis un autre port, ou arrêté cette installation avant de la reconfigurer.'};if(([Uri]$api.Text).Port -eq $number){throw 'Utilise un port different de celui de Bionic.'}; $proofNumber=0; if(-not [int]::TryParse($proofPort.Text,[ref]$proofNumber) -or $proofNumber -lt 1 -or $proofNumber -gt 65535 -or $proofNumber -eq $number -or $proofNumber -eq ([Uri]$api.Text).Port){throw 'Choisis un port de verification HTTPS distinct du compagnon et de Bionic, entre 1 et 65535.'}; if(Test-BionicPortOpen $proofNumber){throw 'Le port de verification HTTPS est occupe. Choisis un autre port.'}; if($bionicRoot.Text){$null=Assert-BionicInstallPath $bionicRoot.Text}}
         if($script:state.Step -lt 3){Show-Step ($script:state.Step+1);return}
         $script:state.Token=New-Object Threading.CancellationTokenSource
         $script:state.Queue=New-Object 'Collections.Concurrent.ConcurrentQueue[string]'
         $script:state.Worker=[PowerShell]::Create()
-        $job={param($helper,$source,$target,$port,$api,$bionic,$node,$download,$shortcut,$launch,$firewall,$token,$queue)
+        $job={param($helper,$source,$target,$port,$proofPort,$api,$bionic,$node,$download,$shortcut,$launch,$firewall,$token,$queue)
             $ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; . $helper
-            $result=Install-BionicCompanion -Source $source -Destination $target -Port $port -ApiUrl $api -BionicRoot $bionic -NodePath $node -DownloadNode $download -Cancellation $token -Progress {$queue.Enqueue($args[0])}
+            $result=Install-BionicCompanion -Source $source -Destination $target -Port $port -CertificateProofPort $proofPort -ApiUrl $api -BionicRoot $bionic -NodePath $node -DownloadNode $download -Cancellation $token -Progress {$queue.Enqueue($args[0])}
             $messages=New-Object 'Collections.Generic.List[string]'
             function Invoke-WizardScript([string]$Path) {
                 # Wait only for the launcher process, not its long-lived server
@@ -146,10 +169,10 @@ $next.Add_Click({
                 finally { $child.Dispose() }
             }
             if($shortcut){try{$desktop=[Environment]::GetFolderPath('Desktop');$link=Join-Path $desktop 'Bionic Mobile.lnk';if(Test-Path -LiteralPath $link){$messages.Add('Raccourci existant conserve.')}else{$shell=New-Object -ComObject WScript.Shell;$s=$shell.CreateShortcut($link);$s.TargetPath=Join-Path $result.Root 'Demarrer.cmd';$s.WorkingDirectory=$result.Root;$s.Description='Demarrer le compagnon local Bionic';$s.Save();$messages.Add('Raccourci créé sur le Bureau.')}}catch{$messages.Add('Raccourci non créé ; utilise Demarrer.cmd.')}}
-            if($launch){$queue.Enqueue('Démarrage du compagnon...');if(Invoke-WizardScript (Join-Path $result.Root 'Demarrer.ps1')){$messages.Add('Serveur demarre.');if($firewall){$queue.Enqueue('Autorisation du pare-feu : attends la demande Windows...');if(Invoke-WizardScript (Join-Path $result.Root 'Autoriser-reseau-prive.ps1')){$messages.Add('Regle du réseau privé créée.')}else{$messages.Add('Pare-feu non confirme : utilise Autoriser-reseau.cmd si nécessaire.')}}}else{$messages.Add('Serveur non demarre : consulte server-error.log puis Demarrer.cmd.')}}else{$messages.Add('Lance Demarrer.cmd quand tu seras pret.')}
+            if($launch){$queue.Enqueue('Démarrage du compagnon...');if(Invoke-WizardScript (Join-Path $result.Root 'Demarrer.ps1')){$messages.Add('Serveur demarre.');if($firewall){$queue.Enqueue('Autorisation du pare-feu : attends la demande Windows...');if(Invoke-WizardScript (Join-Path $result.Root 'Autoriser-reseau-prive.ps1')){$messages.Add('Acces telephone et verification HTTPS autorises sur le réseau privé.')}else{$messages.Add('Pare-feu non confirme : utilise Autoriser-reseau.cmd si nécessaire.')}}}else{$messages.Add('Serveur non demarre : consulte server-error.log puis Demarrer.cmd.')}}else{$messages.Add('Lance Demarrer.cmd quand tu seras pret.')}
             $result.Message=$messages -join ' '; return $result
         }
-        $null=$script:state.Worker.AddScript($job).AddArgument((Join-Path $PSScriptRoot 'Installation-commun.ps1')).AddArgument($PSScriptRoot).AddArgument($destination.Text).AddArgument([int]$port.Text).AddArgument($api.Text).AddArgument($bionicRoot.Text).AddArgument($script:state.Node).AddArgument($download.Checked).AddArgument($shortcut.Checked).AddArgument($launch.Checked).AddArgument($firewall.Checked).AddArgument($script:state.Token.Token).AddArgument($script:state.Queue)
+        $null=$script:state.Worker.AddScript($job).AddArgument((Join-Path $PSScriptRoot 'Installation-commun.ps1')).AddArgument($PSScriptRoot).AddArgument($destination.Text).AddArgument([int]$port.Text).AddArgument([int]$proofPort.Text).AddArgument($api.Text).AddArgument($bionicRoot.Text).AddArgument($script:state.Node).AddArgument($download.Checked).AddArgument($shortcut.Checked).AddArgument($launch.Checked).AddArgument($firewall.Checked).AddArgument($script:state.Token.Token).AddArgument($script:state.Queue)
         $script:state.Handle=$script:state.Worker.BeginInvoke(); $script:state.Busy=$true; $next.Enabled=$false; $previous.Enabled=$false; $feedback.Text='Préparation...'; $timer.Start()
     }catch{$feedback.Text=$_.Exception.Message}
 })

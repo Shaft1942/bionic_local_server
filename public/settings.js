@@ -1,6 +1,7 @@
 /* Settings stay server-owned; unsent conversation overrides stay in this tab. */
 function createCompanionSettings({api,getState,node,onChange}) {
   const el=id=>document.getElementById(id), pending=new Map();
+  const certificates=createCompanionCertificates({api,getState,node});
   let opener, scope, generation=0, viewRevision=0, comfyRevision=0, comfy=null, savingRevision=null;
   let loraDrafts={},editingWorkflow=null,loraNames=[],imageOptionsSignature='';
   const key=(model,view=getState().viewKey)=>JSON.stringify([view,model]);
@@ -56,7 +57,7 @@ function createCompanionSettings({api,getState,node,onChange}) {
   }
   async function refresh(){const epoch=getState().authEpoch,ticket=++comfyRevision;try{const data=await api('/api/comfy/settings');if(ticket!==comfyRevision||epoch!==getState().authEpoch||!getState().authenticated)return;comfy=data;onChange?.();imagePermission();}catch{if(ticket===comfyRevision&&epoch===getState().authEpoch){comfy=null;imagePermission();}}}
   const current=revision=>revision===viewRevision&&!el('settings-view').hidden&&getState().authenticated;
-  function close(restore=true){if(el('settings-view').hidden)return;++generation;++viewRevision;el('settings-view').hidden=true;el('app').hidden=!getState().authenticated;if(restore&&opener?.isConnected)opener.focus({preventScroll:true});}
+  function close(restore=true){certificates.reset();if(el('settings-view').hidden)return;++generation;++viewRevision;el('settings-view').hidden=true;el('app').hidden=!getState().authenticated;if(restore&&opener?.isConnected)opener.focus({preventScroll:true});}
   async function loadOutput(){
     const ticket=++generation,model=el('settings-model').value;if(!model)return;
     message('output-current','Chargement du réglage…');message('output-error','');message('output-result','');el('output-save').disabled=true;
@@ -67,7 +68,8 @@ function createCompanionSettings({api,getState,node,onChange}) {
       const value=draft?draft.maxOutputTokens:data.automatic===true||data.source==='auto'?null:data.maxOutputTokens;
       el('output-mode').value=value===null?'auto':'manual';el('output-tokens').value=value??8192;
       el('output-all-sessions').checked=draft?.applyToAllSessions??data.applyToAllSessions;
-      message('output-current','Contexte du modèle : '+number(data.contextLength)+' tokens. Réglage : '+(value===null?'automatique':number(value)+' tokens')+'.');outputMode();
+      const context=Number.isSafeInteger(data.contextLength)&&data.contextLength>0?'Contexte du modèle : '+number(data.contextLength)+' tokens.':'Contexte du modèle : à confirmer au chargement.';
+      message('output-current',context+' Réglage : '+(value===null?'automatique':number(value)+' tokens')+'.');outputMode();
     }catch(e){if(ticket===generation)message('output-error',e.message,true);}
     finally{if(ticket===generation)el('output-save').disabled=false;}
   }
@@ -79,7 +81,7 @@ function createCompanionSettings({api,getState,node,onChange}) {
     el('settings-view').hidden=false;el('app').hidden=true;el('settings-close').focus({preventScroll:true});
     el('settings-model').replaceChildren(...(state.status?.models||[]).map(m=>{const option=node('option','',m.name);option.value=m.id;return option;}));
     el('settings-model').value=el('model').value;message('comfy-error','');message('comfy-result','Chargement…');
-    await Promise.allSettled([loadOutput(),(async()=>{
+    await Promise.allSettled([certificates.load(),loadOutput(),(async()=>{
       try{const ticket=++comfyRevision,data=await api('/api/comfy/settings');if(ticket!==comfyRevision||!current(revision))return;comfy=data;el('comfy-enabled').checked=data.enabled;el('comfy-url').value=data.url;
         el('comfy-workflow').replaceChildren(...data.workflows.map(w=>{const option=node('option','',w.label);option.value=w.id;return option;}));el('comfy-workflow').value=data.workflowId;loraDrafts=structuredClone(data.loraProfiles||{});editingWorkflow=data.workflowId;loraNames=[];showLoras();loadLoras();message('comfy-result',data.activeJobs?data.activeJobs+' génération(s) en cours. Attends leur fin pour modifier la configuration.':'');onChange?.();imagePermission();
       }catch(e){if(current(revision)){message('comfy-error',e.message,true);message('comfy-result','');}}
@@ -118,5 +120,5 @@ function createCompanionSettings({api,getState,node,onChange}) {
   el('output-tokens-slider').addEventListener('input',()=>{el('output-tokens').value=el('output-tokens-slider').value;syncOutputSlider();});
   el('settings-close').addEventListener('click',()=>close());el('settings-view').addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();close();}});
   for(const id of ['settings-open','settings-open-sidebar'])el(id).addEventListener('click',open);
-  return {refresh,close,imagePermission,enabled:()=>comfy?.enabled===true,decorate(data){const preference=pending.get(key(data.model));return {...data,...(preference?{outputPreferences:preference}:{}),...(data.imageAccess?{imageWorkflowId:el('image-workflow').value||comfy?.workflowId}:{})};},accepted(data,viewKey){const k=key(data.model,viewKey),value=pending.get(k);if(value&&JSON.stringify(value)===JSON.stringify(data.outputPreferences))pending.delete(k);},reset(){pending.clear();comfy=null;close(false);}};
+  return {refresh,close,async openSecurity(){await open({currentTarget:el('settings-open-sidebar')});el('certificate-title').focus();},imagePermission,enabled:()=>comfy?.enabled===true,decorate(data){const preference=pending.get(key(data.model));return {...data,...(preference?{outputPreferences:preference}:{}),...(data.imageAccess?{imageWorkflowId:el('image-workflow').value||comfy?.workflowId}:{})};},accepted(data,viewKey){const k=key(data.model,viewKey),value=pending.get(k);if(value&&JSON.stringify(value)===JSON.stringify(data.outputPreferences))pending.delete(k);},reset(){pending.clear();comfy=null;close(false);}};
 }

@@ -53,3 +53,69 @@ test('network and schema errors remain actionable', async () => {
   const invalid = createModelService({ baseUrl: 'http://127.0.0.1', fetchImpl: async () => Response.json({}) });
   await assert.rejects(invalid.list(), { status: 502 });
 });
+
+function coldFixture({ contextLength = 16384, listedContext = contextLength, reject = false, malformed = false, hold } = {}) {
+  let loaded = [];
+  const requests = [];
+  const service = createModelService({ baseUrl: 'http://127.0.0.1:9999', fetchImpl: async (url, options) => {
+    requests.push({ url, options });
+    if (url.endsWith('/load')) {
+      if (reject) return new Response('{}', { status: 400 });
+      if (hold) await hold;
+      loaded = [{ id: 'precise-instance', config: { context_length: listedContext } }];
+      return Response.json(malformed ? {} : { status: 'loaded', instance_id: 'precise-instance', load_config: { context_length: contextLength } });
+    }
+    return Response.json({ models: [{ key: 'cold', type: 'llm', max_context_length: 262144, loaded_instances: loaded }] });
+  } });
+  return { service, requests };
+}
+
+test('unloaded models expose an unknown active context, never 4096 or the theoretical maximum', async () => {
+  const { service, requests } = coldFixture();
+  const [cold] = await service.list();
+  assert.equal(cold.loaded, false);
+  assert.equal(cold.contextLength, null);
+  assert.equal(cold.maxContextLength, 262144);
+  assert.equal(cold.inferenceId, null);
+  assert.equal(requests.filter(request => request.options.method === 'POST').length, 0);
+});
+
+test('cold inference loads with Bionic defaults and budgets the confirmed instance, never the supported maximum', async () => {
+  const { service, requests } = coldFixture({ contextLength: 16384, listedContext: 12288 });
+  const model = await service.forInference('cold');
+  assert.equal(model.contextLength, 12288);
+  assert.equal(model.inferenceId, 'precise-instance');
+  assert.equal(model.maxContextLength, 262144);
+  const loads = requests.filter(request => request.options.method === 'POST');
+  assert.equal(loads.length, 1);
+  assert.deepEqual(JSON.parse(loads[0].options.body), { model: 'cold', echo_load_config: true });
+  assert.equal((await service.forInference('cold')).contextLength, 12288);
+  assert.equal(requests.filter(request => request.options.method === 'POST').length, 1);
+});
+
+test('an unknown loaded context is actionable instead of being reported as a full context', async () => {
+  const { service } = coldFixture({ contextLength: null });
+  await assert.rejects(service.forInference('cold'), error => error.status === 409 && /n’a pas confirmé/.test(error.message) && !/est plein/.test(error.message));
+  await assert.rejects(service.forInference('cold'), { status: 409 });
+});
+
+test('load refusals and invalid confirmations never proceed as successful inference preparation', async () => {
+  for (const options of [{ reject: true }, { malformed: true }]) {
+    await assert.rejects(coldFixture(options).service.forInference('cold'), { status: 502 });
+  }
+});
+
+test('concurrent requests share a cold load and a cancelled waiter never consumes its result', async () => {
+  let release;
+  const hold = new Promise(resolve => { release = resolve; });
+  const { service, requests } = coldFixture({ hold });
+  const controller = new AbortController();
+  const first = service.forInference('cold', { signal: controller.signal });
+  const second = service.forInference('cold');
+  await new Promise(resolve => setImmediate(resolve));
+  controller.abort();
+  await assert.rejects(first, { status: 409 });
+  release();
+  assert.equal((await second).contextLength, 16384);
+  assert.equal(requests.filter(request => request.options.method === 'POST').length, 1);
+});

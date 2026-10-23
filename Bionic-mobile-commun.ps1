@@ -1,4 +1,4 @@
-# Shared helpers. Loading this file never starts a server or changes Windows.
+﻿# Shared helpers. Loading this file never starts a server or changes Windows.
 Set-StrictMode -Version 2.0
 
 function Read-BionicJson {
@@ -49,8 +49,11 @@ function Get-BionicNode {
 }
 
 function Get-BionicPing {
-    param([int]$Port)
-    try { return Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/ping" -TimeoutSec 2 -UseBasicParsing }
+    param([int]$Port, [string]$Root)
+    try {
+        $base = if ($Root) { Get-BionicMaintenanceBase -Root $Root -Port $Port } else { "http://127.0.0.1:$Port" }
+        return Invoke-RestMethod -Uri ($base + "/api/ping") -TimeoutSec 2 -MaximumRedirection 0 -UseBasicParsing
+    }
     catch { return $null }
 }
 
@@ -96,7 +99,7 @@ function Assert-BionicRuntimeIdentity {
     if ([string]::IsNullOrWhiteSpace($instanceId) -or (Get-BionicField $Runtime 'instanceId') -cne $instanceId) {
         throw 'Identite de serveur incoherente dans ce dossier. Aucun autre serveur ne sera modifie.'
     }
-    $ping = Get-BionicPing ([int]$Runtime.port)
+    $ping = Get-BionicPing -Port ([int]$Runtime.port) -Root $Root
     if (-not (Test-BionicIdentity $ping $instanceId)) {
         throw 'Le serveur de ce dossier ne repond pas, ou le port appartient a une autre instance. Aucun changement effectue.'
     }
@@ -120,4 +123,50 @@ function Start-BionicElevated {
     $child = Start-Process -FilePath 'powershell.exe' -Verb RunAs -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $ScriptPath + '"')) -PassThru -Wait
     if ($child.ExitCode -ne 0) { throw 'La modification du pare-feu a echoue. Consulte reseau-verification.txt dans ce dossier.' }
     return $true
+}
+
+# Transport metadata contains no secret. Never probe the HTTPS application by
+# bypassing validation: maintenance has its own loopback-only HTTP listener.
+function Get-BionicTransport {
+    param([Parameter(Mandatory = $true)][string]$Root, [int]$Port = 0)
+    if ($Port -eq 0) { $Port = Get-BionicPort $Root }
+    $metadata = Read-BionicJson (Join-Path $Root 'runtime/transport.json')
+    if ($null -eq $metadata) {
+        if ((Test-Path -LiteralPath (Join-Path $Root 'data/security/state.json')) -or (Test-Path -LiteralPath (Join-Path $Root 'data/security-floor.json'))) { throw 'Canal de maintenance non publie. Demarre ce compagnon avant cette operation.' }
+        return [pscustomobject]@{ version=1; mode='http'; appPort=$Port; adminPort=$Port; appProtocol='http:' }
+    }
+    $config = Read-BionicJson (Join-Path $Root 'data/config.json')
+    $instanceId = [string](Get-BionicField $config 'instanceId')
+    if ((Get-BionicField $metadata 'version') -ne 1 -or -not $instanceId -or (Get-BionicField $metadata 'instanceId') -cne $instanceId) { throw 'Identite du transport incoherente. Aucun autre serveur ne sera contacte.' }
+    foreach ($name in @('appPort','adminPort','pid')) {
+        $number = 0
+        if (-not [int]::TryParse([string](Get-BionicField $metadata $name), [ref]$number) -or $number -lt 1 -or ($name -ne 'pid' -and $number -gt 65535)) { throw 'Metadonnees de transport invalides.' }
+    }
+    $mode = [string](Get-BionicField $metadata 'mode')
+    $protocol = [string](Get-BionicField $metadata 'appProtocol')
+    if ($mode -notin @('http','https','mtls') -or ($mode -eq 'http' -and ($protocol -ne 'http:')) -or ($mode -ne 'http' -and ($protocol -ne 'https:' -or $metadata.appPort -eq $metadata.adminPort))) { throw 'Mode de transport invalide.' }
+    return $metadata
+}
+
+function Get-BionicMaintenanceBase {
+    param([Parameter(Mandatory = $true)][string]$Root, [int]$Port = 0)
+    $transport = Get-BionicTransport -Root $Root -Port $Port
+    return 'http://127.0.0.1:' + $transport.adminPort
+}
+
+function Get-BionicApplicationUrl {
+    param([Parameter(Mandatory = $true)][string]$Root, [int]$Port = 0)
+    $transport = Get-BionicTransport -Root $Root -Port $Port
+    $hostName = '127.0.0.1'
+    if ($transport.mode -ne 'http') {
+        $security = Read-BionicJson (Join-Path $Root 'data/security/state.json')
+        $server = Get-BionicField $security 'server'
+        $hosts = @(Get-BionicField $server 'hosts' | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+        if ($hosts.Count -gt 0 -and $hosts -notcontains '127.0.0.1') { $hostName = [string]$hosts[0] }
+    }
+    if ($hostName.Contains(':')) { $hostName = '[' + $hostName.Trim('[',']') + ']' }
+    $uri = $null
+    $url = $transport.appProtocol + '//' + $hostName + ':' + $transport.appPort
+    if (-not [Uri]::TryCreate($url, [UriKind]::Absolute, [ref]$uri) -or $uri.UserInfo -or $uri.Query -or $uri.Fragment -or $uri.AbsolutePath -ne '/') { throw 'Adresse applicative invalide.' }
+    return $url
 }

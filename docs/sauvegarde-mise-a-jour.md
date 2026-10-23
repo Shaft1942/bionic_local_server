@@ -38,6 +38,19 @@ La suppression d’une conversation web n’a pas de fonction d’annulation dan
 
 `runtime/` est recréé au démarrage et ne doit pas être restauré depuis un autre PC.
 
+Avec les certificats, une copie complète de `data/` contient aussi l’autorité
+privée, le registre des appareils et le plancher de sécurité. C’est une
+sauvegarde d’identité sensible : la protéger comme une clé, séparément des
+sauvegardes ordinaires de conversations. `scripts/deploy-local.mjs` exclut cette
+identité et les exports clients de sa sauvegarde de sources/données ; l’identité
+active reste sur la cible et son empreinte est contrôlée après mise à jour.
+Pour restaurer seulement des conversations, recopier leurs sous-dossiers dans
+l’installation existante sans remplacer `data/security/` ni le plancher.
+Une restauration manuelle complète d’un ancien `data/` peut restaurer d’anciens
+droits et certificats : elle reste une intervention explicite du propriétaire
+du PC, hors garantie de non-recul applicative. Ne pas revenir à une version qui
+ignore la gestion des certificats. Voir le [guide certificats](certificats-utilisation.md).
+
 Une approbation en attente n’est pas un travail à relancer après restauration : au redémarrage du serveur elle expire, un script précédemment en cours est marqué interrompu et les messages en attente ne sont pas rejoués. Vérifiez les fichiers avant de proposer une nouvelle exécution ; une interruption du processus ne prouve pas qu’il n’a rien modifié.
 
 Une intention de mutation directe restée sans reçu est marquée **Opération à vérifier** après redémarrage. Les copies proposées sont des pistes à examiner, pas la preuve d’un succès ni une transaction à reprendre. Leur téléchargement préserve la version disponible ; vérifiez aussi le fichier actuel avant toute restauration manuelle.
@@ -61,9 +74,9 @@ Avant de déplacer l’installation, utilisez `Retirer-autorisation-reseau.cmd` 
 
 ## Renouveler un code perdu ou divulgué
 
-Pour simplement déconnecter les appareils, exécutez **Deconnecter-appareils.cmd** depuis le dossier du serveur actif, ou `node scripts/revoke-sessions.mjs` depuis ce dossier. Le lanceur `.ps1` correspondant est également fourni. L’utilitaire vérifie l’identité de l’instance sur la boucle locale, utilise son secret local sans l’afficher et invalide **toutes les sessions en mémoire**, sans interrompre générations, files ou accords. Un cookie partagé entre navigateurs ne représente pas une identité d’appareil. Il n’existe ni liste fiable ni révocation ciblée d’appareil dans ce lot.
+Pour simplement déconnecter les sessions, exécutez **Deconnecter-appareils.cmd** depuis le dossier du serveur actif, ou `node scripts/revoke-sessions.mjs` depuis ce dossier. Le lanceur `.ps1` correspondant est également fourni. L’utilitaire vérifie l’identité de l’instance sur la boucle locale, utilise son secret local sans l’afficher et invalide **toutes les sessions en mémoire**, sans interrompre générations, files ou accords. Pour révoquer le certificat d’un appareil particulier en mTLS, utiliser **Paramètres → Sécurité des connexions → Retirer cet appareil** depuis une autre identité autorisée ; cela refuse son identité et ferme ses connexions sans retirer les autres appareils. **Certificats.cmd** conserve cette possibilité en maintenance locale.
 
-**Un appareil connaissant encore le code peut se reconnecter.** Cette révocation ne change pas le code. Pour un code divulgué, suivez la rotation ci-dessous. La déconnexion de l’interface efface les brouillons durables du navigateur concerné ; l’utilitaire local ne garantit pas l’effacement instantané du stockage des appareils distants.
+**Aux niveaux HTTP et HTTPS, un appareil connaissant encore le code peut se reconnecter.** En mTLS, son certificat doit aussi être autorisé. La déconnexion globale ne change ni le code ni le registre des certificats. Pour un code divulgué, suivez la rotation ci-dessous ; pour recommencer tout le parcours de confiance, utiliser la réinitialisation locale explicite de **Certificats.cmd**, serveur arrêté. La déconnexion de l’interface efface les brouillons durables du navigateur concerné ; l’utilitaire local ne garantit pas l’effacement instantané du stockage des appareils distants.
 
 Cette procédure renouvelle aussi le secret d’administration local et déconnecte les sessions.
 

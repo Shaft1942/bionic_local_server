@@ -993,6 +993,10 @@ async function start() {
   }
   $('app').hidden = false;
   await recoverReplies(); scheduleRecovery();
+  if(new URLSearchParams(location.search).get('settings')==='security'){
+    await companionSettings.openSecurity();
+    const url=new URL(location.href);url.searchParams.delete('settings');history.replaceState(history.state,'',url.pathname+url.search+url.hash);
+  }
 }
 function hidePrivateViews() {
   companionSettings.reset();

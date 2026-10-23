@@ -46,6 +46,44 @@ test('edits preserve BOM and CRLF, save a copy and can restore it', async () => 
   const restored=await files.write('p1','project','notes.md',saved.hash,undefined,saved.backupId);
   assert.equal(restored.text,original.text);
 });
+
+test('a restored file stays independently editable and later edits preserve every saved version', async () => {
+  const filename=path.join(own,'restore-edit.md');
+  const originalBytes=Buffer.from('\ufeffVersion initiale\r\n');
+  await fs.writeFile(filename,originalBytes);
+  const original=await files.read('p1','project','restore-edit.md');
+  const saved=await files.write('p1','project','restore-edit.md',original.hash,'Deuxième version\n');
+  const originalBackup=path.join(base,'backups',saved.backupId+'.bin');
+  const restored=await files.write('p1','project','restore-edit.md',saved.hash,undefined,saved.backupId);
+  const replacedBackup=path.join(base,'backups',restored.backupId+'.bin');
+  assert.equal(restored.editable,true);
+  assert.equal((await fs.stat(filename)).nlink,1);
+  assert.equal((await fs.stat(originalBackup)).nlink,1);
+  assert.equal((await fs.stat(replacedBackup)).nlink,1);
+  assert.deepEqual(await fs.readFile(filename),originalBytes);
+  const edited=await files.write('p1','project','restore-edit.md',restored.hash,'Troisième version\n');
+  assert.equal(edited.editable,true);
+  assert.deepEqual(await fs.readFile(filename),Buffer.from('\ufeffTroisième version\r\n'));
+  assert.deepEqual(await fs.readFile(originalBackup),originalBytes);
+  assert.deepEqual(await fs.readFile(replacedBackup),Buffer.from('\ufeffDeuxième version\r\n'));
+  assert.deepEqual(await fs.readFile(path.join(base,'backups',edited.backupId+'.bin')),originalBytes);
+});
+
+test('a genuine external hardlink remains read-only and neither linked name can be changed by an edit or restore', async t => {
+  const external=path.join(other,'shared.txt'),inside=path.join(own,'shared.txt');
+  const bytes=Buffer.from('Shared foreign bytes\n');
+  await fs.writeFile(external,bytes);
+  try { await fs.link(external,inside); }
+  catch(e) { if(['EPERM','EACCES','ENOTSUP'].includes(e.code))return t.skip('Hardlink creation is unavailable.');throw e; }
+  const linked=await files.read('p1','project','shared.txt');
+  assert.equal((await fs.stat(inside)).nlink,2);
+  assert.equal(linked.editable,false);
+  await assert.rejects(files.write('p1','project','shared.txt',linked.hash,'Changed'),{status:415});
+  await assert.rejects(files.write('p1','project','shared.txt',linked.hash,undefined,'00000000-0000-4000-8000-000000000000'),{status:415});
+  await assert.rejects(files.manipulate('p1','project','shared.txt',linked.hash,{remove:true}),{status:403});
+  assert.deepEqual(await fs.readFile(external),bytes);
+  assert.deepEqual(await fs.readFile(inside),bytes);
+});
 test('stale versions never replace newer PC edits, including concurrent saves', async () => {
   const old=await files.read('p1','project','config.json');
   await fs.writeFile(path.join(own,'config.json'),'{"value":2}\n');

@@ -2,7 +2,7 @@ import { readFile, lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 export const repositoryRoot = fileURLToPath(new URL('../', import.meta.url));
-const excluded = /(?:^|\/)(?:data|runtime|dist|node_modules|\.git|\.venv|__pycache__)(?:\/|$)|(?:^|\/)(?:config\.local\.json|ACCES-PRIVE\.txt|\.env(?:\..*)?|reseau-verification\.txt|verification.*\.json|store-verification.*\.json|apercu-.*)$|\.(?:log|sqlite(?:-wal|-shm)?|db|pem|key|pfx|p12|zip|bin)$/i;
+const excluded = /(?:^|\/)(?:data|runtime|dist|node_modules|\.git|\.venv|__pycache__)(?:\/|$)|(?:^|\/)(?:config\.local\.json|ACCES-PRIVE\.txt|\.env(?:\..*)?|reseau-verification\.txt|verification.*\.json|store-verification.*\.json|apercu-.*)$|\.(?:log|sqlite(?:-wal|-shm)?|db|pem|key|pfx|p12|crt|cer|der|zip|bin)$/i;
 const suspicious = [
   /\bgh[pousr]_[A-Za-z0-9]{20,}\b/,
   /\bgithub_pat_[A-Za-z0-9_]{20,}\b/,

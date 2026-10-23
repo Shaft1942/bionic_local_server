@@ -19,6 +19,7 @@ Le fichier `data/config.json` est différent : il est généré pour l’authent
 ```json
 {
   "port": 8769,
+  "certificateProofPort": 8770,
   "apiUrl": "http://127.0.0.1:1235",
   "bionicRoot": "",
   "python": "",
@@ -31,6 +32,7 @@ Le fichier `data/config.json` est différent : il est généré pour l’authent
 | Champ | Signification |
 | --- | --- |
 | `port` | Port HTTP du compagnon. Par défaut : `8769`. Choisissez un autre port s’il est déjà utilisé. |
+| `certificateProofPort` | Port TLS dédié aux vérifications de certificats. Distinct du port principal, entre 1 et 65535 ; par défaut le port principal + 1 (ou −1 si 65535). Il n’écoute que pendant une préparation, dix minutes maximum. L’assistant Windows configure son autorisation réseau une fois. |
 | `apiUrl` | Adresse de l’API Bionic sur ce PC, sans `/v1` final. L’exemple utilise `1235` ; vérifiez le port dans Bionic. Seules les adresses de boucle locale sont autorisées. |
 | `bionicRoot` | Dossier de données Bionic. Vide : détection dans `.lmstudio/apps/bionic` du compte utilisateur. Ce n’est pas le dossier de `Bionic.exe`. |
 | `python` | Exécutable Python destiné à l’extraction de documents et aux scripts Python validés. Vide : `python` sous Windows, `python3` ailleurs. Sans Python, ces deux usages sont indisponibles ; les autres fonctions restent disponibles. |
@@ -68,6 +70,7 @@ Les variables prennent le pas sur le fichier local. Elles sont utiles pour un la
 | Variable | Réglage |
 | --- | --- |
 | `BIONIC_MOBILE_PORT` | Port du compagnon |
+| `BIONIC_MOBILE_CERTIFICATE_PROOF_PORT` | Prioritaire sur `certificateProofPort` ; même validation et nécessité d’une règle réseau correspondante |
 | `BIONIC_API_URL` | Adresse de l’API Bionic locale |
 | `BIONIC_API_TOKEN` | Jeton d’API si votre serveur Bionic en exige un |
 | `BIONIC_MOBILE_BIONIC_ROOT` | Dossier de données Bionic |
@@ -93,6 +96,27 @@ npm start
 ```
 
 Si votre API Bionic requiert un jeton, définissez `BIONIC_API_TOKEN` dans votre environnement privé, sans le copier dans une issue, une capture ou une commande publiée. Consultez [Sécurité](../SECURITY.md) pour les données à conserver privées.
+
+## Certificats et transport du compagnon
+
+Le niveau HTTP/HTTPS/mTLS se gère dans **Paramètres → Sécurité des connexions**, depuis le téléphone ou le PC, et non par
+un champ de `config.local.json` ou un retour automatique en HTTP. L’état privé
+est dans `data/security/` et son plancher dans `data/security-floor.json`.
+Ne pas copier ces fichiers depuis une autre installation ni les supprimer pour
+contourner un verrouillage. Le [guide certificats](certificats-utilisation.md)
+décrit la confiance initiale, la preuve TLS, les appareils et la récupération.
+
+Le port `port` reste celui de l’application après chaque confirmation. Une page
+de preuve utilise `certificateProofPort` pendant dix minutes maximum. Le pare-feu
+autorise ce port précis dans le même périmètre privé que le port principal. Un
+ancien dossier sans ce provisionnement affiche un diagnostic demandant une
+configuration unique dans l’assistant sur le PC. Le reçu local
+`runtime/certificate-network.json` est seulement un indicateur de configuration
+du réseau actuel ; il ne garantit pas la connectivité de l’appareil.
+La maintenance a son propre port HTTP éphémère, lié uniquement à `127.0.0.1`,
+décrit sans secret dans `runtime/transport.json`. Ce canal ne sert pas l’application.
+Les API Bionic et ComfyUI gardent leur configuration indépendante ; HTTPS du
+compagnon ne change pas leur transport.
 
 ## Moteur de recherche des agents
 

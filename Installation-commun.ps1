@@ -1,4 +1,4 @@
-# Installation helpers. Dot-sourcing never installs, downloads or launches anything.
+﻿# Installation helpers. Dot-sourcing never installs, downloads or launches anything.
 Set-StrictMode -Version 2.0
 . (Join-Path $PSScriptRoot 'Bionic-mobile-commun.ps1')
 
@@ -51,7 +51,7 @@ function Get-BionicInstallFiles {
     $manifest = Read-BionicJson (Join-Path $root 'release-manifest.json')
     $seen = @{}
     foreach ($relative in $manifest.files) {
-        if ($relative -notmatch '^[a-zA-Z0-9_.@/-]+$' -or $relative -match '(^|/)(\.{1,2}|data|runtime|dist|node_modules|\.git)(/|$)' -or $relative -match '(^|/)(config\.local\.json|ACCES-PRIVE\.txt|\.env)' -or $seen.ContainsKey($relative)) { throw 'Inventaire de distribution invalide.' }
+        if ($relative -notmatch '^[a-zA-Z0-9_.@/-]+$' -or $relative -match '(^|/)(\.{1,2}|data|runtime|dist|node_modules|\.git)(/|$)' -or $relative -match '(^|/)(config\.local\.json|ACCES-PRIVE\.txt|\.env)' -or $relative -match '\.(pem|key|pfx|p12|crt|cer|der|zip|bin)$' -or $relative -match '(^|/)(security|certificate-exports)(/|$)' -or $seen.ContainsKey($relative)) { throw 'Inventaire de distribution invalide.' }
         $seen[$relative] = $true
         $file = Join-Path $root $relative
         $cursor = $file
@@ -114,11 +114,18 @@ function Install-BionicPortableNode {
 }
 
 function Install-BionicCompanion {
-    param([string]$Source, [string]$Destination, [int]$Port, [string]$ApiUrl, [string]$BionicRoot, [string]$NodePath, [bool]$DownloadNode, $Cancellation, [scriptblock]$Progress = {})
+    param([string]$Source, [string]$Destination, [int]$Port, [string]$ApiUrl, [string]$BionicRoot, [string]$NodePath, [bool]$DownloadNode, [int]$CertificateProofPort = 0, $Cancellation, [scriptblock]$Progress = {})
     $sourceRoot=Assert-BionicInstallPath $Source; $target=Assert-BionicInstallPath $Destination
     $inPlace=[string]::Equals($sourceRoot,$target,[StringComparison]::OrdinalIgnoreCase)
     if ($Port -lt 1 -or $Port -gt 65535) { throw 'Port invalide.' }
     $api=ConvertTo-BionicApiUrl $ApiUrl
+    if ($CertificateProofPort -eq 0) {
+        $savedPorts=if ($inPlace) { Read-BionicJson (Join-Path $target 'config.local.json') } else { $null }
+        $savedProof=Get-BionicField $savedPorts 'certificateProofPort'
+        $CertificateProofPort=if ($null -ne $savedProof) { [int]$savedProof } elseif ($Port -lt 65535) { $Port + 1 } else { $Port - 1 }
+    }
+    if ($CertificateProofPort -lt 1 -or $CertificateProofPort -gt 65535 -or $CertificateProofPort -eq $Port -or $CertificateProofPort -eq ([Uri]$api).Port) { throw 'Choisis un port de verification HTTPS distinct du compagnon et de Bionic, entre 1 et 65535.' }
+    if (Test-BionicPortOpen $CertificateProofPort) { throw 'Le port de verification HTTPS est occupe. Choisis un autre port avant de continuer.' }
     if (([Uri]$api).Port -eq $Port) { throw 'Le port du compagnon doit etre different du port de l API Bionic.' }
     if ($BionicRoot) { $null=Assert-BionicInstallPath $BionicRoot }
     if (Test-BionicPortOpen $Port) { throw 'Ce port est occupe. Choisis un autre port, ou arrete ce compagnon avant de le reconfigurer.' }
@@ -147,6 +154,7 @@ function Install-BionicCompanion {
         $settings=if ($inPlace) { Read-BionicJson (Join-Path $target 'config.local.json') } else { $null }
         if ($null -eq $settings) { $settings=New-Object PSObject }
         $settings | Add-Member -NotePropertyName port -NotePropertyValue $Port -Force
+        $settings | Add-Member -NotePropertyName certificateProofPort -NotePropertyValue $CertificateProofPort -Force
         $settings | Add-Member -NotePropertyName apiUrl -NotePropertyValue $api -Force
         if ($BionicRoot) { $settings | Add-Member -NotePropertyName bionicRoot -NotePropertyValue $BionicRoot -Force }
         $utf8=New-Object Text.UTF8Encoding($false)
@@ -157,7 +165,7 @@ function Install-BionicCompanion {
         if ($Cancellation) { $Cancellation.ThrowIfCancellationRequested() }
         & $Progress 'Enregistrement de l installation...'
         if ($inPlace) {
-            if (Test-BionicPortOpen $Port) { throw 'Le port vient de devenir occupe. Aucun reglage applique.' }
+            if ((Test-BionicPortOpen $Port) -or (Test-BionicPortOpen $CertificateProofPort)) { throw 'Un port vient de devenir occupe. Aucun reglage applique.' }
             $null=New-Item -ItemType Directory -Path (Join-Path $target 'runtime') -Force
             $written=New-Object 'Collections.Generic.List[string]'; $backups=@{}; $movedNode=$false
             try {
@@ -182,7 +190,7 @@ function Install-BionicCompanion {
             if (Test-Path -LiteralPath $target) { [IO.Directory]::Delete($target,$false) }
             [IO.Directory]::Move($stage,$target)
         }
-        return @{ Root=$target; Port=$Port; Node=$savedNode; Existing=$inPlace }
+        return @{ Root=$target; Port=$Port; CertificateProofPort=$CertificateProofPort; Node=$savedNode; Existing=$inPlace }
     } finally {
         # Only our own freshly generated sibling directory can be removed.
         if ((Test-Path -LiteralPath $stage) -and [IO.Path]::GetDirectoryName($stage) -eq $parent -and [IO.Path]::GetFileName($stage) -match '^\.bionic-install-[a-f0-9]{32}$') { Remove-Item -LiteralPath $stage -Recurse -Force }
