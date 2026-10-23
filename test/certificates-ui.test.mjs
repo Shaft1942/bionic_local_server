@@ -133,10 +133,10 @@ test('a later refresh wins over an older delayed result',async()=>{
 });
 
 test('settings has an explicit close action, Escape dismissal and return of focus',()=>{
-  assert.match(html,/<button id="settings-close"[^>]*>Fermer les paramètres<\/button>/);
+  assert.match(html,/<button id="settings-close"[^>]*aria-label="Fermer les paramètres"[^>]*>Fermer<\/button>/);
   assert.match(settingsSource,/event\.key==='Escape'/);
   assert.match(settingsSource,/opener\.focus\(\{preventScroll:true\}\)/);
-  assert.match(settingsSource,/function close\(restore=true\)\{certificates\.reset\(\)/);
+  assert.match(settingsSource,/function closeNow\(restore=true\)\{\s*certificates\.reset\(\)/);
   assert.ok(html.indexOf('/certificates.js')<html.indexOf('/settings.js'));
   assert.ok(!source.includes('innerHTML'));
   assert.match(html,/Certificat perdu \? Retourne sur le PC serveur/);

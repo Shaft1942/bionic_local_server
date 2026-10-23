@@ -43,7 +43,7 @@ try{
       return route.fulfill({contentType:'application/json',body:JSON.stringify(data)});
     });
     await page.goto(origin);await page.locator('#app').waitFor({state:'visible'});await page.locator('#project').selectOption('p1');
-    await page.locator('#settings-open-sidebar').click();await page.locator('#output-current').getByText(/Contexte du modèle/).waitFor();
+    await page.locator('#settings-open-sidebar').click();await page.locator('[data-settings-page="models"]').click();await page.locator('#output-current').getByText(/Réglage actuel chargé/).waitFor();
     assert.equal(await page.locator('#app').isVisible(),false);
     const precise=page.locator('#output-tokens'),slider=page.getByRole('slider',{name:'Ajuster avec le curseur'});
     assert.equal(await precise.isDisabled(),true);
@@ -59,11 +59,12 @@ try{
     await page.locator('#output-save').click();await page.getByText('Réglage prêt pour le premier envoi de cette conversation.').waitFor();
     await page.locator('#output-mode').selectOption('manual');await precise.fill('777');
     await page.locator('#output-save').click();await page.getByText('Réglage prêt pour le premier envoi de cette conversation.').waitFor();assert.equal(writes.filter(w=>w.type==='output').length,0);
-    await page.locator('#settings-model').selectOption('b');await page.getByText(/Contexte du modèle/).waitFor();assert.equal(await page.locator('#output-mode').inputValue(),'auto');
-    await page.locator('#output-mode').selectOption('manual');await precise.fill('5000000');await page.locator('#output-all-sessions').check();await page.locator('#output-save').click();await page.getByText('Valeur par défaut enregistrée pour ce modèle.').waitFor();assert.equal(writes.at(-1).model,'b');assert.equal(writes.at(-1).applyToAllSessions,true);assert.equal(writes.at(-1).maxOutputTokens,5000000);
+    await page.locator('#settings-model').selectOption('b');await page.locator('#output-current').getByText(/Réglage actuel chargé/).waitFor();assert.equal(await page.locator('#output-mode').inputValue(),'auto');
+    await page.locator('#output-mode').selectOption('manual');await precise.fill('5000000');await page.locator('#output-all-sessions').selectOption('model');await page.locator('#output-save').click();await page.locator('#output-result').getByText(/Défaut de ce modèle enregistré/).waitFor();assert.equal(writes.at(-1).model,'b');assert.equal(writes.at(-1).applyToAllSessions,true);assert.equal(writes.at(-1).maxOutputTokens,5000000);
     await page.locator('#settings-model').selectOption('a');await page.waitForFunction(()=>document.querySelector('#output-tokens').value==='777');
     await page.locator('#settings-model').selectOption('b');await page.waitForFunction(()=>document.querySelector('#output-tokens-slider').value==='5000000');assert.equal(await precise.inputValue(),'5000000');
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);if(captures){await slider.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(captures,width+'-v2-token-slider.png')});}
+    if(width===320)await page.locator('#settings-back').click();await page.locator('[data-settings-page="images"]').click();
     await page.locator('#comfy-enabled').check();await page.locator('#comfy-url').fill('http://192.168.1.197:8188');await page.locator('#comfy-workflow').selectOption('hassaku_illustrious');
     await page.locator('#comfy-lora-1').selectOption('synthetic/style.safetensors');await page.locator('#comfy-lora-2').selectOption('synthetic/detail.safetensors');
     for(const index of [1,2]){
@@ -80,7 +81,7 @@ try{
     await page.locator('#comfy-url').press('Escape');assert.equal(await page.evaluate(()=>document.activeElement.id),'settings-open-sidebar');assert.equal(await page.locator('#settings-view').isVisible(),false);
     await page.locator('#new-chat').click();await page.locator('#model').selectOption('a');await page.locator('#prompt').fill('Prompt de validation');
     // The unsent preference follows the initial view only: configure this new view.
-    await page.locator('#conversation-options-toggle').click();await page.locator('#settings-open').click();await page.getByText(/Contexte du modèle/).waitFor();await page.locator('#output-mode').selectOption('manual');await page.locator('#output-tokens').fill('777');await page.locator('#output-all-sessions').uncheck();await page.locator('#output-save').click();await page.getByText('Réglage prêt pour le premier envoi de cette conversation.').waitFor();await page.locator('#settings-close').click();
+    await page.locator('#conversation-options-toggle').click();await page.locator('#settings-open').click();await page.locator('[data-settings-page="models"]').click();await page.locator('#output-current').getByText(/Réglage (actuel chargé|enregistré dans cet onglet)/).waitFor();await page.locator('#output-mode').selectOption('manual');await page.locator('#output-tokens').fill('777');await page.locator('#output-all-sessions').selectOption('session');await page.locator('#output-save').click();await page.getByText('Réglage prêt pour le premier envoi de cette conversation.').waitFor();await page.locator('#settings-close').click();
     await page.locator('#files-menu-toggle').click();await page.locator('#agent-images').check();await page.locator('#agent-images').press('Escape');await page.locator('#send').click();
     await page.locator('.message-truncated').waitFor();assert.equal(sends.length,1);assert.equal(sends[0].outputPreferences.maxOutputTokens,777);assert.equal(sends[0].outputPreferences.applyToAllSessions,false);assert.equal(sends[0].imageAccess,true);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);if(captures)await page.screenshot({path:path.join(captures,width+'-v2-chat.png')});assert.deepEqual(errors,[]);

@@ -10,20 +10,22 @@ const defaultComfy={enabled:false,url:'http://127.0.0.1:8188',workflowId:'krea2_
 
 /** A small DOM boundary keeps scope and asynchronous transport tests independent of a browser. */
 function fixture(intercept=()=>undefined) {
-  const elements=new Map(),writes=[];
-  const document={activeElement:null,getElementById:element};
+  const elements=new Map(),writes=[],navigations=[],globalEvents={};
+  const document={activeElement:null,getElementById:element,querySelectorAll:selector=>selector==='[data-settings-page]'?[...elements.values()].filter(value=>value.dataset.settingsPage):[]};
   function element(id) {
     if(!elements.has(id)) {
       let value='';
-      elements.set(id,{id,hidden:id==='settings-view',checked:false,disabled:false,isConnected:true,textContent:'',children:[],attributes:{},listeners:{},
+      elements.set(id,{id,hidden:id==='settings-view',checked:false,disabled:false,isConnected:true,textContent:'',children:[],attributes:{},listeners:{},dataset:{},
         get value(){return value;},set value(next){value=String(next);},
-        focus(){document.activeElement=this;},setAttribute(name,next){this.attributes[name]=String(next);},
+        focus(){document.activeElement=this;},scrollIntoView(){},setAttribute(name,next){this.attributes[name]=String(next);},
+        closest(selector){if(selector!=='[hidden]')return null;const parents={'certificate-prepare':'certificate-setup-form','certificate-setup-form':'certificate-controls','certificate-device-name':'certificate-device-form','certificate-device-form':'certificate-controls'};let current=this;while(current){if(current.hidden)return current;current=parents[current.id]?element(parents[current.id]):null;}return null;},
         replaceChildren(...children){this.children=children;},append(...children){this.children.push(...children);},
         addEventListener(type,callback){this.listeners[type]=callback;}
       });
     }
     return elements.get(id);
   }
+  for(const page of ['reading','models','tools','images','connection','maintenance'])element('nav-'+page).dataset.settingsPage=page;
   const state={authenticated:true,authEpoch:1,projectId:'p',chat:null,viewKey:'p|new',status:{models:[{id:'m',name:'Modèle M'}]}};
   element('model').value='m';document.activeElement=element('settings-open');
   const api=async(route,options)=>{
@@ -36,13 +38,13 @@ function fixture(intercept=()=>undefined) {
     if(route==='/api/capabilities')return {items:[{name:'Capacité actuelle',description:'Description actuelle.'}]};
     throw Error('Unexpected API route '+route);
   };
-  const context=vm.createContext({document,Intl,URLSearchParams,structuredClone});
+  const context=vm.createContext({document,Intl,URL,URLSearchParams,structuredClone,addEventListener:(name,callback)=>globalEvents[name]=callback});
   vm.runInContext(source,context);
-  const settings=context.createCompanionSettings({api,getState:()=>state,node:(tag,className,textContent)=>({tag,className,textContent}),onChange(){}});
+  let nodes=0;const settings=context.createCompanionSettings({api,getState:()=>state,node:(tag,className,textContent)=>Object.assign(element('node-'+nodes++),{tag,className,textContent}),onChange(){},onNavigate:target=>navigations.push(target)});
   const fire=(id,type='click')=>element(id).listeners[type]({currentTarget:element(id),preventDefault(){}});
   const open=()=>fire('settings-open');
-  async function saveOutput(value,all=false){element('output-mode').value=value===null?'auto':'manual';element('output-tokens').value=value??8192;element('output-all-sessions').checked=all;return fire('output-settings-form','submit');}
-  return {state,document,element,settings,writes,fire,open,saveOutput};
+  async function saveOutput(value,all=false){element('output-mode').value=value===null?'auto':'manual';element('output-tokens').value=value??8192;element('output-all-sessions').value=all?'model':'session';return fire('output-settings-form','submit');}
+  return {state,document,element,settings,writes,navigations,globalEvents,fire,open,saveOutput};
 }
 
 test('LoRA form keeps two choices and strengths independently when switching image models',async()=>{
@@ -134,7 +136,7 @@ test('large loaded and pending preferences restore both controls with exact valu
   await f.saveOutput(4999999,false);f.settings.close();await f.open();
   assert.equal(f.element('output-tokens').value,'4999999');
   assert.equal(f.element('output-tokens-slider').value,'4999999');
-  assert.equal(f.element('output-all-sessions').checked,false);
+  assert.equal(f.element('output-all-sessions').value,'session');
   await f.saveOutput(5000000,true);
   assert.equal(f.writes.at(-1).body.maxOutputTokens,5000000);
   assert.equal(f.writes.at(-1).body.applyToAllSessions,true);
@@ -190,7 +192,7 @@ test('an explicit automatic session override reopens as automatic even when its 
   const f=fixture(route=>route.startsWith('/api/model-preferences?')?{source:'session',automatic:true,maxOutputTokens:8192,contextLength:16000,applyToAllSessions:false}:undefined);
   f.state.chat={id:'web-A',source:'web'};await f.open();
   assert.equal(f.element('output-mode').value,'auto');assert.equal(f.element('output-manual').hidden,true);
-  assert.equal(f.element('output-all-sessions').checked,false);
+  assert.equal(f.element('output-all-sessions').value,'session');
 });
 test('logout invalidates a delayed ComfyUI refresh without restoring enabled permissions',async()=>{
   const reply=deferred(),f=fixture(route=>route==='/api/comfy/settings'?reply.promise:undefined);
@@ -248,4 +250,104 @@ test('output shortcut uses its known model, and unknown provenance focuses the m
   f.settings.close();assert.equal(f.document.activeElement,f.element('budget-trigger'));
   await f.settings.openOutput({currentTarget:f.element('unknown-budget')},null);
   assert.equal(queries.at(-1).get('model'),'n');assert.equal(f.document.activeElement,f.element('settings-model'));assert.equal(scrolls,2);
+});
+
+function editOutput(f,value){f.element('output-mode').value='manual';f.fire('output-mode','change');f.element('output-tokens').value=String(value);f.fire('output-tokens','input');}
+const persistedWrites=f=>f.writes.filter(write=>['/api/model-preferences','/api/comfy/settings'].includes(write.route));
+
+test('six pages and local search keep form edits, expose scope and never submit values',async()=>{
+  const f=fixture();await f.open();editOutput(f,4567);await f.fire('nav-images');
+  assert.equal(f.element('settings-page-images').hidden,false);assert.equal(f.element('settings-page-models').hidden,true);assert.equal(f.element('output-tokens').value,'4567');
+  assert.equal(f.element('settings-view').dataset.settingsIndex,'false');await f.fire('settings-back');assert.equal(f.element('settings-view').dataset.settingsIndex,'true');
+  for(const query of ['tokens','permissions','LoRA','certificat','brouillons','renommer','corbeille','python']){f.element('settings-search').value=query;await f.fire('settings-search','input');assert(f.element('settings-results').children.length>0,query);}
+  f.element('settings-search').value='tokens';await f.fire('settings-search','input');const result=f.element('settings-results').children[0];assert.equal(result.children[1].textContent,'Chat ou défaut du modèle');await result.listeners.click();
+  assert.equal(f.element('settings-page-models').hidden,false);assert.equal(f.element('output-tokens').value,'4567');assert.equal(f.document.activeElement,f.element('output-mode'));assert.equal(persistedWrites(f).length,0);
+});
+
+test('Continue keeps the dirty form, Keep only retains it in memory and Annuler restores the loaded value',async()=>{
+  const f=fixture();await f.open();editOutput(f,3333);const first=f.settings.close();assert.equal(f.element('settings-unsaved').hidden,false);await f.fire('settings-unsaved-continue');assert.equal(await first,false);assert.equal(f.element('settings-view').hidden,false);assert.equal(f.element('output-tokens').value,'3333');
+  const second=f.settings.close();await f.fire('settings-unsaved-keep');await second;assert.equal(f.element('settings-view').hidden,true);assert.equal(f.settings.decorate({model:'m'}).outputPreferences,undefined);
+  await f.open();assert.equal(f.element('output-tokens').value,'3333');assert.equal(f.settings.hasUnsaved(),true);await f.fire('output-cancel');assert.equal(f.element('output-tokens').value,'8192');assert.equal(f.settings.hasUnsaved(),false);assert.equal(persistedWrites(f).length,0);
+});
+
+test('abandoning one target preserves a kept form from another conversation',async()=>{
+  const f=fixture();f.state.viewKey='p|A';await f.open();editOutput(f,1111);const a=f.settings.close();await f.fire('settings-unsaved-keep');await a;
+  f.state.viewKey='p|B';await f.open();assert.equal(f.element('output-tokens').value,'8192');editOutput(f,2222);const b=f.settings.close();await f.fire('settings-unsaved-discard');await b;
+  f.state.viewKey='p|A';await f.open();assert.equal(f.element('output-tokens').value,'1111');assert.equal(f.settings.decorate({model:'m'}).outputPreferences,undefined);
+});
+
+test('model target changes are guarded and retained drafts stay independent without changing the composer model',async()=>{
+  const f=fixture();f.state.status.models.push({id:'n',name:'Modèle N'});await f.open();editOutput(f,4444);f.element('settings-model').value='n';const change=f.fire('settings-model','change');assert.equal(f.element('settings-model').value,'m');await f.fire('settings-unsaved-keep');await change;assert.equal(f.element('settings-model').value,'n');assert.equal(f.element('output-tokens').value,'8192');
+  f.element('settings-model').value='m';await f.fire('settings-model','change');assert.equal(f.element('output-tokens').value,'4444');assert.equal(f.element('model').value,'m');assert.equal(persistedWrites(f).length,0);
+});
+
+test('a delayed output GET for model m cannot replace model n and unavailable values remain guarded',async()=>{
+  const old=deferred();let reads=0;const f=fixture(route=>route.startsWith('/api/model-preferences?')&&++reads===1?old.promise:undefined);f.state.status.models.push({id:'n',name:'Modèle N'});
+  const opening=f.open();await tick();assert.equal(f.element('output-mode').disabled,true);f.element('settings-model').value='n';await f.fire('settings-model','change');old.resolve({source:'model',automatic:false,maxOutputTokens:555,contextLength:1000,applyToAllSessions:true});await opening;
+  assert.equal(f.element('settings-model').value,'n');assert.equal(f.element('output-mode').value,'auto');assert.equal(f.element('output-tokens').value,'8192');assert.equal(f.element('output-save').disabled,false);
+});
+
+test('reload and beforeunload protect unsent forms without persisting or applying them',async()=>{
+  let reads=0;const f=fixture(route=>{if(route.startsWith('/api/model-preferences?'))reads++;});await f.open();editOutput(f,7777);let prevented=false;f.globalEvents.beforeunload({preventDefault(){prevented=true;}});assert(prevented);
+  const reload=f.fire('settings-reload');assert.equal(reads,1);await f.fire('settings-unsaved-discard');await reload;assert.equal(reads,2);assert.equal(f.element('output-tokens').value,'8192');assert.equal(persistedWrites(f).length,0);
+});
+
+test('automatic session origin is explicit and a global save keeps its existing clear-current effect',async()=>{
+  const f=fixture(route=>route.startsWith('/api/model-preferences?')?{source:'session',automatic:true,maxOutputTokens:8192,modelMaxOutputTokens:1234,contextLength:12000,applyToAllSessions:false}:undefined);f.state.chat={id:'web-A',source:'web',name:'Alpha'};await f.open();assert.match(f.element('output-origin').textContent,/Exception de ce chat/);assert.match(f.element('output-origin').textContent,/pas une reprise/);assert.match(f.element('output-effective').textContent,/calculé à chaque appel/);
+  await f.saveOutput(5000000,true);const write=persistedWrites(f).at(-1);assert.equal(write.body.id,'web-A');assert.equal(write.body.applyToAllSessions,true);assert.equal(write.body.maxOutputTokens,5000000);assert.match(f.element('output-result').textContent,/exception du chat courant retirée/);
+});
+
+test('Annuler restores the complete ComfyUI configuration and both independent LoRA profiles',async()=>{
+  const data={...defaultComfy,workflows:[{id:'krea2_turbo',label:'Krea'},{id:'hassaku_illustrious',label:'Hassaku'}],loraProfiles:{krea2_turbo:[{name:'k1',strength:.4},{name:'k2',strength:.5}],hassaku_illustrious:[{name:'h1',strength:.6},{name:'h2',strength:.7}]}};
+  const f=fixture(route=>route==='/api/comfy/settings'?structuredClone(data):undefined);await f.open();f.element('comfy-lora-1').value='changed';f.fire('comfy-lora-1','change');f.element('comfy-workflow').value='hassaku_illustrious';f.fire('comfy-workflow','change');f.element('comfy-lora-2-strength').value='19';f.fire('comfy-lora-2-strength','input');f.element('comfy-url').value='http://192.168.1.44:8188';f.fire('comfy-url','input');
+  await f.fire('comfy-cancel');assert.equal(f.element('comfy-url').value,data.url);assert.equal(f.element('comfy-workflow').value,'krea2_turbo');assert.equal(f.element('comfy-lora-1').value,'k1');f.element('comfy-workflow').value='hassaku_illustrious';f.fire('comfy-workflow','change');assert.equal(f.element('comfy-lora-2').value,'h2');assert.equal(f.element('comfy-lora-2-strength').value,'0.7');assert.equal(persistedWrites(f).length,0);
+});
+
+test('ComfyUI tests use unsaved fields but never change enabled state or save the configuration',async()=>{
+  const f=fixture(route=>route==='/api/comfy/check'?{ok:true,reachable:true,workflows:[]}:undefined);await f.open();f.element('comfy-enabled').checked=true;f.element('comfy-url').value='http://192.168.1.44:8188';await f.fire('comfy-test');assert.equal(f.settings.enabled(),false);assert.equal(persistedWrites(f).length,0);assert.equal(f.writes.at(-1).body.url,'http://192.168.1.44:8188');assert.match(f.element('comfy-result').textContent,/aucune saisie enregistrée/);
+});
+
+test('late submitted output cannot erase a newer kept unsent form for the same target',async()=>{
+  const save=deferred(),f=fixture((route,options)=>route==='/api/model-preferences'&&options?.method==='POST'?save.promise:undefined);f.state.chat={id:'web-A',source:'web'};f.state.viewKey='p|web-A';await f.open();const saving=f.saveOutput(4000);await tick();editOutput(f,5000);const closing=f.settings.close();await f.fire('settings-unsaved-keep');await closing;save.resolve({source:'session',automatic:false,maxOutputTokens:4000});await saving;await f.open();assert.equal(f.element('output-tokens').value,'5000');assert.equal(f.settings.hasUnsaved(),true);
+});
+
+test('a late old global save cannot erase a newer local preference prepared in this tab',async()=>{
+  const save=deferred(),f=fixture((route,options)=>route==='/api/model-preferences'&&options?.method==='POST'?save.promise:undefined);await f.open();const older=f.saveOutput(4000,true);await tick();f.settings.close();await f.open();await f.saveOutput(777,false);save.resolve({source:'model',automatic:false,maxOutputTokens:4000});await older;assert.equal(f.settings.decorate({model:'m'}).outputPreferences.maxOutputTokens,777);assert.equal(f.element('output-tokens').value,'777');
+});
+
+test('a rejected save for m cannot add errors or enable the form while model n is loading',async()=>{
+  const save=deferred(),load=deferred();let waiting=false;const f=fixture((route,options)=>route==='/api/model-preferences'&&options?.method==='POST'?save.promise:waiting&&route.startsWith('/api/model-preferences?')?load.promise:undefined);f.state.status.models.push({id:'n',name:'N'});f.state.chat={id:'web-A',source:'web'};await f.open();const saving=f.saveOutput(4000);await tick();waiting=true;f.element('settings-model').value='n';const loading=f.fire('settings-model','change');save.reject(Error('Old model failure'));await saving;assert.equal(f.element('output-error').textContent,'');assert.equal(f.element('output-save').disabled,true);load.resolve({source:'auto',automatic:true,maxOutputTokens:8192,applyToAllSessions:false});await loading;assert.equal(f.element('output-save').disabled,false);
+});
+
+test('certificate fields are cleared when leaving Connection or its mobile index, not stored with kept forms',async()=>{
+  const f=fixture();await f.settings.openSecurity();f.element('certificate-export-password').textContent='SYNTHETIC_PASSWORD';f.element('certificate-proof-csrf').value='SYNTHETIC_CSRF';f.element('certificate-device-name').value='SYNTHETIC_NAME';await f.fire('nav-models');assert.equal(f.element('certificate-export-password').textContent,'');assert.equal(f.element('certificate-proof-csrf').value,'');assert.equal(f.element('certificate-device-name').value,'');
+  await f.fire('nav-connection');f.element('certificate-export-password').textContent='SYNTHETIC_PASSWORD';await f.fire('settings-back');assert.equal(f.element('certificate-export-password').textContent,'');
+  editOutput(f,3333);const closing=f.settings.close();await f.fire('settings-unsaved-keep');await closing;await f.open();assert.equal(f.element('output-tokens').value,'3333');assert.equal(f.element('certificate-export-password').textContent,'');f.element('settings-search').value='SYNTHETIC_PASSWORD';await f.fire('settings-search','input');assert.equal(f.element('settings-results').children.length,0);
+});
+
+test('navigation callbacks wait for a dirty decision and revision tokens expire after close',async()=>{
+  const f=fixture();await f.open();const revision=f.settings.revision();assert(f.settings.isCurrent(revision));editOutput(f,9999);const navigation=f.settings.requestNavigate('tools');assert.equal(f.navigations.length,0);await f.fire('settings-unsaved-continue');await navigation;assert.equal(f.navigations.length,0);assert.equal(f.element('settings-view').hidden,false);
+  const next=f.settings.requestNavigate('tools');await f.fire('settings-unsaved-discard');await next;assert.deepEqual(f.navigations,['tools']);assert.equal(f.settings.isCurrent(revision),false);assert.equal(f.element('settings-view').hidden,true);
+});
+
+test('searching for an unavailable certificate action focuses its visible heading',async()=>{
+  const f=fixture();await f.open();f.element('settings-search').value='préparer https';await f.fire('settings-search','input');const result=f.element('settings-results').children[0];await result.listeners.click();assert.equal(f.element('settings-page-connection').hidden,false);assert.equal(f.document.activeElement,f.element('settings-heading-connection'));assert.equal(f.element('certificate-controls').hidden,true);
+});
+
+test('a delayed security result after Back cannot restore a secret or target focus in the hidden page',async()=>{
+  const response=deferred(),f=fixture(route=>route==='/api/security/status'?response.promise:undefined);await f.open();const opening=f.fire('nav-connection');await tick();f.element('certificate-export-password').textContent='SYNTHETIC_ONLY';await f.fire('settings-back');const focus=f.document.activeElement;
+  response.resolve({mode:'http',epoch:1,server:null,authority:null,devices:[],web:{canConfigure:true,canIssueDevice:true}});await opening;assert.equal(f.element('certificate-export-password').textContent,'');assert.equal(f.element('certificate-controls').hidden,true);assert.equal(f.document.activeElement,focus);assert.equal(f.element('settings-view').dataset.settingsIndex,'true');
+});
+
+test('targeted opening preserves a non-enumerable event currentTarget as its return focus',async()=>{
+  const f=fixture(),trigger=f.element('non-focused-touch-trigger'),event={};Object.defineProperty(event,'currentTarget',{get:()=>trigger});f.document.activeElement=f.element('unrelated-control');await f.settings.openPage(event,'models','output-mode');f.settings.close();assert.equal(f.document.activeElement,trigger);
+});
+
+test('closing restores an available chat or sidebar trigger when the original menu entry is hidden',async()=>{
+  for(const inThread of [true,false]){
+    const f=fixture();await f.open();f.element('settings-open').hidden=true;
+    f.element('conversation-options-toggle').hidden=!inThread;
+    await f.settings.close();
+    assert.equal(f.document.activeElement,f.element(inThread?'conversation-options-toggle':'settings-open-sidebar'));
+  }
 });

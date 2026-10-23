@@ -58,11 +58,10 @@
         <form id="move-conversation-form"><label for="move-project">Déplacer la conversation vers</label><div class="conversation-move-row"><select id="move-project" aria-describedby="move-help"></select><button id="move-conversation" class="file-action" type="submit">Déplacer</button></div><p id="move-help">Le classement concerne le compagnon. Les fichiers et les livrables restent dans leur projet ; les fichiers du brouillon seront à joindre à nouveau.</p><p id="move-error" class="error" role="alert" hidden></p></form>
         <div class="conversation-delete-row"><button id="delete-conversation" class="file-action conversation-delete" type="button">Supprimer la conversation</button><p id="delete-error" class="error" role="alert" hidden></p></div>
         <button id="info-button" class="conversation-help" type="button" aria-expanded="false" aria-controls="info">Comment fonctionne ce compagnon ?</button>
-        <details class="draft-settings"><summary>Brouillons sur cet appareil</summary><label for="draft-duration">Conserver les messages non envoyés</label><select id="draft-duration"><option value="0">Cet onglet uniquement</option><option value="3600000">1 heure</option><option value="86400000">24 heures</option><option value="604800000">7 jours</option></select><p>La durée part de la dernière modification du texte. Aucun fichier joint ni contenu de l’éditeur n’est conservé durablement. Déconnexion et « Effacer » retirent les copies locales. Ce stockage n’est pas une sauvegarde garantie.</p><div class="workspace-actions"><button id="draft-download" class="file-action" type="button">Télécharger ce brouillon</button><button id="draft-clear" class="file-action" type="button">Effacer mes brouillons</button></div><p id="draft-status" role="status"></p></details>
-        <button id="diagnostics-open" class="conversation-help" type="button">Diagnostic de connexion</button>
+        <button id="draft-settings-open" class="conversation-help" type="button">Brouillons sur cet appareil</button>
+        <button id="diagnostics-shortcut" class="conversation-help" type="button">Diagnostic de connexion</button>
         <button id="settings-open" class="conversation-help" type="button" aria-controls="settings-view">Paramètres du compagnon</button>
-        <button id="updates-open" class="conversation-help" type="button" hidden>Mises à jour du compagnon <span id="updates-badge" class="updates-badge" hidden>Disponible</span></button>
-        <div id="diagnostics-result" class="diagnostics-result" hidden></div>
+        <button id="updates-shortcut" class="conversation-help" type="button">Mises à jour du compagnon</button>
       </section>
       <section id="info" class="info-panel" aria-labelledby="info-title" hidden><header class="info-panel-header"><h2 id="info-title">Comment fonctionne ce compagnon ?</h2><button id="info-close" class="icon-button" type="button" aria-label="Fermer l’aide" title="Fermer l’aide"></button></header><div id="info-body" class="info-panel-body"><p>Les historiques natifs restent lus sans modification. Les réponses écrites ici forment des conversations web distinctes sur ce PC.</p><p>Lorsque l’option de modification est cochée, le modèle dispose d’outils pour lire, créer et modifier les textes du dossier de travail de ce projet. Les actions sont enregistrées dans le chat. Les remplacements conservent une copie précédente que tu peux rétablir.</p><p>« Importer un fichier » copie les fichiers de ton appareil dans « Imports telephone », au sein du projet. Les formats lisibles sont joints au prochain message, dans la limite de quatre pièces jointes. Pour analyser une image PNG, JPEG ou WebP, choisis un modèle marqué Vision.</p><p>« Fichiers du projet » reste disponible pour consulter et éditer les fichiers manuellement. Le niveau de protection de la connexion est indiqué dans les paramètres.</p></div></section>
       <div id="banner" class="banner" hidden></div>
@@ -133,10 +132,58 @@
     <p id="workspace-status" class="workspace-status" role="status"></p>
     <div class="workspace-layout"><div id="workspace-list" class="workspace-list"></div><section id="workspace-detail" class="workspace-detail" aria-label="Copie conservée du livrable" hidden></section></div>
   </section>
-  <section id="settings-view" class="settings-view" aria-labelledby="settings-title" hidden>
-    <header class="settings-header"><h1 id="settings-title">Paramètres</h1><button id="settings-close" class="file-action" type="button">Fermer les paramètres</button></header>
-    <div class="settings-body">
-      <section aria-labelledby="certificate-title" class="certificate-section">
+  <section id="settings-view" class="settings-view" aria-labelledby="settings-title" data-settings-index="true" hidden>
+    <header class="settings-header"><div class="settings-heading-row"><button id="settings-back" class="file-action" type="button">Rubriques</button><h1 id="settings-title">Paramètres</h1></div><button id="settings-close" class="file-action" type="button" aria-label="Fermer les paramètres">Fermer</button></header>
+    <div id="settings-unsaved" class="settings-unsaved" role="alert" hidden><p id="settings-unsaved-message">Des réglages ne sont pas enregistrés.</p><div class="settings-actions"><button id="settings-unsaved-continue" class="file-action" type="button">Continuer la saisie</button><button id="settings-unsaved-keep" class="file-action" type="button">Conserver pour plus tard dans cet onglet</button><button id="settings-unsaved-discard" class="file-action" type="button">Abandonner la saisie</button></div></div>
+    <div class="settings-layout"><aside id="settings-navigation" class="settings-navigation" aria-label="Trouver un réglage"><label for="settings-search">Rechercher un réglage</label><input id="settings-search" type="search" placeholder="Plafond, LoRA, brouillons…" autocomplete="off" aria-controls="settings-results"><p id="settings-search-status" class="settings-search-status" role="status"></p><div id="settings-results" class="settings-results" hidden></div><nav id="settings-nav" class="settings-nav" aria-label="Rubriques des paramètres"><button type="button" data-settings-page="reading" aria-controls="settings-page-reading" aria-current="page"><span>Conversations et affichage</span><small>Brouillons sur cet appareil</small></button>
+<button type="button" data-settings-page="models" aria-controls="settings-page-models"><span>Modèles et réponses</span><small>Modèle, effort, plafond de sortie</small></button>
+<button type="button" data-settings-page="tools" aria-controls="settings-page-tools"><span>Outils et autorisations</span><small>Permissions du prochain envoi</small></button>
+<button type="button" data-settings-page="images" aria-controls="settings-page-images"><span>Images et ComfyUI</span><small>Service global et profils LoRA</small></button>
+<button type="button" data-settings-page="connection" aria-controls="settings-page-connection"><span>Connexion et appareils</span><small>Sécurité et certificats</small></button>
+<button type="button" data-settings-page="maintenance" aria-controls="settings-page-maintenance"><span>Maintenance et aide</span><small>Mises à jour, diagnostic, capacités</small></button></nav><button id="settings-reload" class="settings-reload file-action" type="button">Relire les réglages du PC</button></aside><div class="settings-body"><section id="settings-page-reading" class="settings-page" data-settings-section="reading" aria-labelledby="settings-heading-reading"><h2 id="settings-heading-reading" tabindex="-1">Conversations et affichage</h2><p class="settings-page-description">Cet appareil · brouillons de ce navigateur.</p><h3>Messages non envoyés</h3>        <div class="settings-drafts"><label for="draft-duration">Conserver les messages non envoyés</label><select id="draft-duration"><option value="0">Cet onglet uniquement</option><option value="3600000">1 heure</option><option value="86400000">24 heures</option><option value="604800000">7 jours</option></select><p>La durée part de la dernière modification du texte. Aucun fichier joint ni contenu de l’éditeur n’est conservé durablement. Déconnexion et « Effacer » retirent les copies locales. Ce stockage n’est pas une sauvegarde garantie.</p><div class="workspace-actions"><button id="draft-download" class="file-action" type="button">Télécharger ce brouillon</button><button id="draft-clear" class="file-action" type="button">Effacer mes brouillons</button></div><p id="draft-status" role="status"></p></div>
+<p>Les réponses affichent automatiquement titres, listes, tableaux et blocs de code. Les informations du tour s’ouvrent depuis « Détails du tour ».</p></section>
+<section id="settings-page-models" class="settings-page" data-settings-section="models" aria-labelledby="settings-heading-models" hidden><h2 id="settings-heading-models" tabindex="-1">Modèles et réponses</h2><p class="settings-page-description">Prochain envoi et plafond par conversation ou par modèle.</p><div class="settings-current"><h3>Prochain envoi</h3><p id="settings-chat-summary"></p><div class="settings-actions"><button id="settings-edit-model" class="file-action" type="button">Choisir le modèle et l’effort dans le chat</button><button id="settings-models-loaded" class="file-action" type="button">Voir les modèles chargés</button></div><p>Décharger une instance agit sur la mémoire du PC et sur les sessions qui l’utilisent.</p></div>      <section aria-labelledby="output-title"><h2 id="output-title">Longueur des réponses</h2>
+        <form id="output-settings-form">
+          <label for="settings-model">Modèle dont tu règles le plafond</label><select id="settings-model"></select>
+          <label for="output-mode">Plafond par appel</label><select id="output-mode"><option value="auto">Automatique · jusqu’à 8 192 tokens</option><option value="manual">Valeur personnalisée</option></select>
+          <div id="output-manual" hidden>
+            <label for="output-tokens">Nombre maximal de tokens</label><input id="output-tokens" type="number" min="1" max="5000000" step="1" value="8192" inputmode="numeric" aria-describedby="output-help" disabled>
+            <label for="output-tokens-slider" class="output-slider-label">Ajuster avec le curseur</label><input id="output-tokens-slider" class="output-tokens-slider" type="range" min="1" max="5000000" step="1" value="8192" aria-valuetext="8 192 tokens" aria-describedby="output-help" disabled>
+            <div class="output-slider-bounds" aria-hidden="true"><span>1</span><span>5 000 000 tokens</span></div>
+          </div>
+          <p id="output-help">Automatique est un choix explicite pour ce chat, distinct du défaut du modèle. Le plafond effectif dépend du contexte disponible : historique, fichiers et outils. La valeur maximale autorisée ne garantit pas la capacité du moteur.</p>
+          <label for="output-all-sessions">Enregistrer pour</label><select id="output-all-sessions"><option value="session">Ce chat uniquement</option><option value="model">Défaut de ce modèle</option></select>
+          <p id="output-scope" class="settings-scope"></p><p id="output-origin"></p><p id="output-effective"></p>
+          <p id="output-current" role="status"></p>
+          <p id="output-dirty" class="settings-dirty" role="status" hidden></p><div class="settings-actions"><button id="output-save" class="primary" type="submit">Enregistrer le plafond</button><button id="output-cancel" class="file-action" type="button">Annuler la saisie</button></div>
+          <p id="output-result" role="status"></p>
+          <p id="output-error" class="error" role="alert" hidden></p>
+        </form>
+      </section>
+</section>
+<section id="settings-page-tools" class="settings-page" data-settings-section="tools" aria-labelledby="settings-heading-tools" hidden><h2 id="settings-heading-tools" tabindex="-1">Outils et autorisations</h2><p class="settings-page-description">Permissions du prochain envoi, conservées selon les réglages de ce chat.</p><p id="settings-tools-summary" class="settings-current"></p><button id="settings-edit-tools" class="file-action" type="button">Régler les outils dans le chat</button><p>Les autorisations sont figées à l’acceptation de chaque message. Les recherches peuvent transmettre du texte à Internet. Chaque script attend une validation dans le fil ; il s’exécute avec les droits du compte PC.</p><h3>Actions du projet et de la conversation</h3><p>Renommer, déplacer, supprimer et créer une branche restent dans le chat. Les fichiers, leur éditeur, la corbeille et les livrables restent dans leur espace dédié.</p></section>
+<section id="settings-page-images" class="settings-page" data-settings-section="images" aria-labelledby="settings-heading-images" hidden><h2 id="settings-heading-images" tabindex="-1">Images et ComfyUI</h2><p class="settings-page-description">Service global sur le PC ; choix du message séparé.</p><div class="settings-current"><h3>Prochain envoi</h3><p id="settings-image-summary"></p><button id="settings-edit-image" class="file-action" type="button">Choisir le profil et l’autorisation dans le chat</button></div>      <section aria-labelledby="comfy-title"><h2 id="comfy-title">Images avec ComfyUI</h2>
+        <p id="comfy-scope" class="settings-scope">Installation PC · partagé entre les conversations.</p><p id="comfy-origin"></p><p id="comfy-effective"></p>
+        <form id="comfy-settings-form">
+          <label class="settings-check"><input id="comfy-enabled" type="checkbox"><span>Activer ComfyUI pour ce compagnon</span></label>
+          <label for="comfy-url">Adresse du serveur ComfyUI</label><input id="comfy-url" type="url" placeholder="http://127.0.0.1:8188" required autocomplete="off" spellcheck="false" aria-describedby="comfy-url-help">
+          <p id="comfy-url-help">Adresse vue depuis le PC qui héberge le compagnon. Exemple réseau : http://192.168.1.197:8188.</p>
+          <label for="comfy-workflow">Profil par défaut et LoRA à modifier</label><select id="comfy-workflow"></select>
+          <fieldset class="comfy-loras"><legend>Deux LoRA par profil</legend>
+            <p>La liste vient de ComfyUI et comprend ses dossiers supplémentaires et ses téléchargements. Utilise des LoRA SDXL / Illustrious pour HassakuXL, ou Krea2 pour Krea2. Leur présence dans la liste ne garantit pas leur compatibilité.</p>
+            <div class="comfy-lora-row"><div><label for="comfy-lora-1">LoRA 1</label><select id="comfy-lora-1"><option value="">Aucun LoRA</option></select></div><div class="comfy-lora-strength"><label for="comfy-lora-1-strength">Force du LoRA 1<output id="comfy-lora-1-value" for="comfy-lora-1-strength" aria-hidden="true">1,00</output></label><input id="comfy-lora-1-strength" type="range" min="-2" max="20" step="0.05" value="1"></div></div>
+            <div class="comfy-lora-row"><div><label for="comfy-lora-2">LoRA 2</label><select id="comfy-lora-2"><option value="">Aucun LoRA</option></select></div><div class="comfy-lora-strength"><label for="comfy-lora-2-strength">Force du LoRA 2<output id="comfy-lora-2-value" for="comfy-lora-2-strength" aria-hidden="true">1,00</output></label><input id="comfy-lora-2-strength" type="range" min="-2" max="20" step="0.05" value="1"></div></div>
+            <p>Force 0 : LoRA désactivé. Les deux choix et leurs forces sont conservés séparément pour chaque modèle.</p>
+            <button id="comfy-loras-refresh" class="file-action" type="button">Actualiser les LoRA de ComfyUI</button><p id="comfy-loras-status" role="status"></p>
+          </fieldset>
+          <p>Le profil choisi devient le défaut global. Chaque message garde son propre choix dans Outils. Le nettoyage mémoire ComfyUI après sauvegarde est prévu par le workflow. Tester vérifie la connexion sans enregistrer ni lancer de rendu.</p>
+          <p id="comfy-experimental">La chaîne Hassaku vers Krea2 reste expérimentale et n’est pas proposée comme workflow automatique.</p>
+          <p id="comfy-dirty" class="settings-dirty" role="status" hidden></p><div class="settings-actions"><button id="comfy-test" class="file-action" type="button">Tester la connexion et les modèles</button><button id="comfy-save" class="primary" type="submit">Enregistrer ComfyUI</button><button id="comfy-cancel" class="file-action" type="button">Annuler la saisie</button></div>
+          <p id="comfy-result" role="status"></p><p id="comfy-error" class="error" role="alert" hidden></p>
+        </form>
+      </section>
+</section>
+<section id="settings-page-connection" class="settings-page" data-settings-section="connection" aria-labelledby="settings-heading-connection" hidden><h2 id="settings-heading-connection" tabindex="-1">Connexion et appareils</h2><p class="settings-page-description">Installation PC · préparation et actions propres à chaque appareil.</p>      <section aria-labelledby="certificate-title" class="certificate-section">
         <div class="certificate-heading"><h2 id="certificate-title" tabindex="-1">Sécurité des connexions</h2><button id="certificate-refresh" class="file-action" type="button">Actualiser l’état</button></div>
         <p id="certificate-status" role="status" aria-live="polite"></p>
         <p id="certificate-error" class="error" role="alert" hidden>État de sécurité indisponible. Vérifie la connexion au compagnon, puis utilise « Actualiser l’état ».</p>
@@ -173,49 +220,14 @@
           <p id="certificate-devices-empty" hidden>Aucun certificat client enregistré.</p>
           <ul id="certificate-devices" class="certificate-devices"></ul>
         </div>
-        <p class="certificate-local-help">La préparation et les certificats se gèrent ici, depuis le téléphone ou le PC. Le niveau supérieur devient actif après vérification de la connexion.</p>
+        <p id="settings-connection-availability" class="certificate-local-help">Les actions apparaissent selon la connexion et les capacités annoncées par le serveur. Créer un certificat d’appareil exige HTTPS. Si une action manque, actualise l’état ou reprends depuis le PC. Le niveau supérieur devient actif après vérification de la connexion.</p>
         <p>Certificat perdu ? Retourne sur le PC serveur et ouvre <strong>Certificats.cmd</strong> pour rétablir l’accès. La récupération conserve les conversations et les fichiers.</p>
       </section>
-      <section aria-labelledby="output-title"><h2 id="output-title">Longueur des réponses</h2>
-        <form id="output-settings-form">
-          <label for="settings-model">Modèle</label><select id="settings-model"></select>
-          <label for="output-mode">Plafond par appel</label><select id="output-mode"><option value="auto">Automatique · jusqu’à 8 192 tokens</option><option value="manual">Valeur personnalisée</option></select>
-          <div id="output-manual" hidden>
-            <label for="output-tokens">Nombre maximal de tokens</label><input id="output-tokens" type="number" min="1" max="5000000" step="1" value="8192" inputmode="numeric" aria-describedby="output-help" disabled>
-            <label for="output-tokens-slider" class="output-slider-label">Ajuster avec le curseur</label><input id="output-tokens-slider" class="output-tokens-slider" type="range" min="1" max="5000000" step="1" value="8192" aria-valuetext="8 192 tokens" aria-describedby="output-help" disabled>
-            <div class="output-slider-bounds" aria-hidden="true"><span>1</span><span>5 000 000 tokens</span></div>
-          </div>
-          <p id="output-help">Le plafond est réduit si nécessaire pour laisser la place au contexte. L’estimation inclut l’historique, les fichiers et les outils.</p>
-          <label class="settings-check"><input id="output-all-sessions" type="checkbox"><span>Appliquer à chaque session de ce modèle</span></label>
-          <p>Décoché : uniquement cette conversation, y compris après réouverture. Coché : valeur par défaut pour les conversations de ce modèle. Un réglage propre à une autre conversation reste prioritaire.</p>
-          <p id="output-current" role="status"></p>
-          <button id="output-save" class="primary" type="submit">Enregistrer le plafond</button>
-          <p id="output-result" role="status"></p>
-          <p id="output-error" class="error" role="alert" hidden></p>
-        </form>
-      </section>
-      <section aria-labelledby="comfy-title"><h2 id="comfy-title">Images avec ComfyUI</h2>
-        <p>Le compagnon utilise ComfyUI installé sur le PC ou le réseau local. Les images apparaissent dans la conversation.</p>
-        <form id="comfy-settings-form">
-          <label class="settings-check"><input id="comfy-enabled" type="checkbox"><span>Activer ComfyUI pour ce compagnon</span></label>
-          <label for="comfy-url">Adresse du serveur ComfyUI</label><input id="comfy-url" type="url" placeholder="http://127.0.0.1:8188" required autocomplete="off" spellcheck="false" aria-describedby="comfy-url-help">
-          <p id="comfy-url-help">Adresse vue depuis le PC qui héberge le compagnon. Exemple réseau : http://192.168.1.197:8188.</p>
-          <label for="comfy-workflow">Modèle d’image</label><select id="comfy-workflow"></select>
-          <fieldset class="comfy-loras"><legend>Jusqu’à deux LoRA pour ce modèle</legend>
-            <p>La liste vient de ComfyUI et comprend ses dossiers supplémentaires et ses téléchargements. Utilise des LoRA SDXL / Illustrious pour HassakuXL, ou Krea2 pour Krea2. Leur présence dans la liste ne garantit pas leur compatibilité.</p>
-            <div class="comfy-lora-row"><div><label for="comfy-lora-1">LoRA 1</label><select id="comfy-lora-1"><option value="">Aucun LoRA</option></select></div><div class="comfy-lora-strength"><label for="comfy-lora-1-strength">Force du LoRA 1<output id="comfy-lora-1-value" for="comfy-lora-1-strength" aria-hidden="true">1,00</output></label><input id="comfy-lora-1-strength" type="range" min="-2" max="20" step="0.05" value="1"></div></div>
-            <div class="comfy-lora-row"><div><label for="comfy-lora-2">LoRA 2</label><select id="comfy-lora-2"><option value="">Aucun LoRA</option></select></div><div class="comfy-lora-strength"><label for="comfy-lora-2-strength">Force du LoRA 2<output id="comfy-lora-2-value" for="comfy-lora-2-strength" aria-hidden="true">1,00</output></label><input id="comfy-lora-2-strength" type="range" min="-2" max="20" step="0.05" value="1"></div></div>
-            <p>Force 0 : LoRA désactivé. Les deux choix et leurs forces sont conservés séparément pour chaque modèle.</p>
-            <button id="comfy-loras-refresh" class="file-action" type="button">Actualiser les LoRA de ComfyUI</button><p id="comfy-loras-status" role="status"></p>
-          </fieldset>
-          <p>Le modèle choisi conserve son workflow et ses réglages. Free Memory after Workflow (/free) libère les modèles ComfyUI après la sauvegarde de chaque image. Chaque message nécessite aussi l’option Images dans le menu Outils.</p>
-          <p id="comfy-experimental">La chaîne Hassaku vers Krea2 reste expérimentale et n’est pas proposée comme workflow automatique.</p>
-          <div class="settings-actions"><button id="comfy-test" class="file-action" type="button">Tester la connexion et les modèles</button><button id="comfy-save" class="primary" type="submit">Enregistrer ComfyUI</button></div>
-          <p id="comfy-result" role="status"></p><p id="comfy-error" class="error" role="alert" hidden></p>
-        </form>
-      </section>
-      <section aria-labelledby="capabilities-title"><h2 id="capabilities-title">Capacités du compagnon</h2><p>Les outils disponibles dépendent du projet choisi et des options du message.</p><dl id="settings-capabilities" class="settings-capabilities"></dl></section>
-    </div>
+</section>
+<section id="settings-page-maintenance" class="settings-page" data-settings-section="maintenance" aria-labelledby="settings-heading-maintenance" hidden><h2 id="settings-heading-maintenance" tabindex="-1">Maintenance et aide</h2><p class="settings-page-description">Installation PC · actions appliquées séparément.</p><section class="settings-maintenance-actions"><h3>Entretenir le compagnon</h3><div class="settings-actions">        <button id="updates-open" class="conversation-help" type="button" hidden>Mises à jour du compagnon <span id="updates-badge" class="updates-badge" hidden>Disponible</span></button>
+        <button id="diagnostics-open" class="conversation-help" type="button">Diagnostic de connexion</button>
+<button id="settings-help" class="file-action" type="button">Comment fonctionne ce compagnon ?</button></div><p>Une mise à jour, un retrait de certificat ou un effacement de brouillon déjà confirmé ne sont pas annulés en fermant les paramètres.</p><div id="diagnostics-result" class="diagnostics-result" role="status" hidden></div></section>      <section aria-labelledby="capabilities-title"><h2 id="capabilities-title">Capacités du compagnon</h2><p>Les outils disponibles dépendent du projet choisi et des options du message.</p><dl id="settings-capabilities" class="settings-capabilities"></dl></section>
+<details class="settings-pc-config"><summary>Configuration avancée sur le PC</summary><p>Adresses des moteurs, clés de recherche, interpréteurs et limites du serveur se règlent sur le PC, selon le guide Configuration. Le contexte chargé se règle dans Bionic. Aucun de ces réglages n’est modifiable depuis cet écran.</p></details></section></div></div>
   </section>
   <dialog id="models-dialog" class="models-dialog" aria-labelledby="models-title" aria-describedby="models-description">
     <div class="models-header"><h2 id="models-title">Modèles chargés</h2><button id="models-close" class="icon-button" aria-label="Fermer les modèles chargés" type="button"></button></div>

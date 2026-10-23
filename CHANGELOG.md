@@ -2,6 +2,8 @@
 
 ## À venir
 
+- Paramètres regroupés par tâche, avec recherche locale des réglages et indications de portée. Brouillons, diagnostic, certificats, modèles et mises à jour restent accessibles depuis leurs destinations et raccourcis.
+- Les formulaires de plafond et de ComfyUI proposent une annulation et signalent les saisies non enregistrées. La fermeture permet de poursuivre, d'abandonner ou de conserver ces saisies dans l'onglet, sans conserver les secrets de certificat.
 - Lecture des réponses : titres, listes ordonnées et imbriquées, citations et tableaux Markdown ; blocs de code avec langage, copie exacte et sélection manuelle si le presse-papiers est indisponible. Le code affiché reste passif.
 - Les informations secondaires sont regroupées dans « Détails du tour ». Le plafond ordinaire y est replié ; les réductions, réponses coupées, erreurs et validations restent visibles. « Régler le plafond » ouvre la cible connue du tour, ou demande de choisir le modèle si sa provenance n'a pas été relevée.
 - La lecture conserve la sélection, le focus et les volets pendant les mises à jour. Remonter dans le fil suspend le suivi automatique ; « Revenir à la réponse » permet de retrouver la suite.

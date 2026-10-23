@@ -291,7 +291,7 @@ try {
       assert.equal(await page.locator('#toast').isVisible(), false, 'truncation must not create a redundant toast');
       await page.locator('#model').selectOption('reading-a');
       await streaming.getByRole('button', { name: 'Régler le plafond', exact: true }).click(); await page.locator('#output-current').waitFor();
-      await page.waitForFunction(() => document.querySelector('#output-current').textContent.includes('Contexte du modèle'));
+      await page.waitForFunction(() => !document.querySelector('#output-save').disabled && document.querySelector('#output-effective').textContent.includes('Contexte chargé'));
       assert.equal(await page.locator('#settings-model').inputValue(), 'reading-b', 'target uses known request model, despite current composer a');
       assert.equal(api.preferenceQueries.at(-1).model, 'reading-b'); assert.equal(api.preferenceQueries.at(-1).id, chatId); assert.equal(api.preferenceQueries.at(-1).projectId, projectId);
       await page.locator('#settings-close').click(); await streaming.locator('.message-truncated').scrollIntoViewIfNeeded();

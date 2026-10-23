@@ -88,6 +88,10 @@ Le smoke n’est **pas activé automatiquement en CI**. Playwright n’est pas u
 
 Le nouveau module `public/message-text.js` est servi par la liste explicite d'actifs statiques ; le test HTTP de `test/server.test.mjs` vérifie cette route et son type JavaScript sans ouvrir de port. Les sources/tests/smoke font partie du manifeste fermé de distribution. Le renderer est un sous-ensemble volontaire du Markdown, pas une implémentation exhaustive de CommonMark ; HTML brut et images Markdown distantes restent du texte passif.
 
+### Navigation des paramètres
+
+`node scripts/browser-settings.mjs` utilise les mêmes variables Playwright que les autres smokes. Il charge l'interface avec une API entièrement synthétique et vérifie les destinations, la recherche, le clavier, les formulaires et leurs limites à 320/390/1280 px. Les actions certificat et maintenance sont simulées ; ce parcours ne valide ni un import système de certificat, ni une mise à jour réelle, ni un moteur ou un téléphone physique. Les tests de portée et de réponses tardives sont complétés par `node --test test/settings-ui.test.mjs`.
+
 ### Mesurer les parcours des chats
 
 ```sh

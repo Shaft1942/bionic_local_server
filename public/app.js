@@ -49,7 +49,12 @@ $('models-open-sidebar').prepend(icon('models'));
 $('conversation-options-toggle').append(icon('more'));
 $('new-chat').append(icon('plus'), document.createTextNode('Nouveau chat web'));
 const state = { projects: [], sessions: [], projectId: null, chat: null, sending: false, loading: false, uploading: false, status: null, viewSeq: 0, projectSeq: 0, authenticated: false, authEpoch: 0, viewKey: null, draftReasoning: {}, draftFileProfile: null, draftFileAccess: null, draftWebAccess:null, draftWebApproval:null, draftScriptAccess:null, draftImageAccess:null, draftImageWorkflowId:null, sessionsPartial:false, sessionWarnings:[] };
-const companionSettings = createCompanionSettings({api,getState:()=>state,node,onChange:()=>setSending()});
+const companionSettings = createCompanionSettings({api,getState:()=>state,node,onChange:()=>setSending(),onNavigate:target=>{
+  $('app').classList.add('thread-open');
+  if(target==='help') { $('info').hidden=false; $('info-button').setAttribute('aria-expanded','true'); $('info-body').scrollTop=0; $('info-close').focus({preventScroll:true}); return; }
+  if(target==='tools'||target==='image') { composerFiles.open=true; const control=$(target==='image'?'agent-images':'agent-files'); (control.disabled?composerFilesToggle:control).focus({preventScroll:true}); composerFiles.scrollIntoView({block:'nearest'}); }
+  else { const control=$('model'); (control.disabled?$('prompt'):control).focus({preventScroll:true}); control.scrollIntoView({block:'nearest'}); }
+}});
 const textDraftStore = createMessageDraftStore({ storage: { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value), removeItem: key => localStorage.removeItem(key) } });
 const chats = new Map(), drafts = readDrafts(), jobs = readJobs();
 const projectTree = createProjectTree({
@@ -185,12 +190,14 @@ function recoverUpdateDrafts(instanceId) {
 }
 const updatesPanel = initUpdates({ api, isAuthenticated: () => state.authenticated, toast,
   beforeInstall: async () => {
+    if (companionSettings.hasUnsaved()) throw new Error('Enregistre ou annule les saisies des paramètres avant d’installer la mise à jour.');
     if (state.uploading || conversationMove.busy || fileBrowser.isWorking() || fileBrowser.hasUnsavedChanges()) throw new Error('Enregistre le fichier ouvert et attends la fin des opérations avant d’installer.');
     const info = await api('/api/ping');
     rememberUpdateDrafts(info.instanceId);
     return true;
   },
   beforeReload: info => {
+    if (companionSettings.hasUnsaved()) throw new Error('La mise à jour est installée. Enregistre ou annule les saisies des paramètres avant d’actualiser.');
     if (fileBrowser.hasUnsavedChanges()) throw new Error('Enregistre le fichier ouvert avant d’actualiser.');
     const saved = JSON.parse(sessionStorage.getItem(updateRecoveryKey) || 'null');
     if (saved?.instanceId && saved.instanceId !== info?.instanceId) throw new Error('L’instance du serveur a changé. Reconnexion automatique refusée.');
@@ -1119,6 +1126,7 @@ function hidePrivateViews() {
   pendingMessageText.clear(); responseModels.clear(); readingView = null; followingReply = true;
   $('reply-follow-bar').hidden = true;
   companionSettings.reset();
+  ++diagnosticsRevision; $('diagnostics-result').replaceChildren(); $('diagnostics-result').hidden = true; $('diagnostics-open').disabled = false;
   updatesPanel.stop();
   try { textDraftStore.clear(); } catch { toast('Impossible d’effacer la copie locale du brouillon. Efface les données de ce site dans le navigateur.'); } $('draft-duration').value='0'; sessionSignature=''; observedGenerations.clear(); announcedEvents.clear();
   closeInfo();
@@ -1232,6 +1240,10 @@ window.addEventListener('pagehide', saveDraft);
 window.addEventListener('storage', event=>{if(textDraftStore.handlesStorageKey(event.key)){try{if(textDraftStore.synchronize()){applyDraftRevocation();rememberDrafts();if(state.authenticated)renderChat();}}catch{draftFailure();}}});
 $('models-open-sidebar').addEventListener('click', openModels);
 $('models-open-thread').addEventListener('click', openModels);
+$('settings-models-loaded').addEventListener('click', openModels);
+$('draft-settings-open').addEventListener('click',event=>companionSettings.openPage(event,'reading','draft-duration'));
+$('diagnostics-shortcut').addEventListener('click',event=>companionSettings.openPage(event,'maintenance','diagnostics-open'));
+$('updates-shortcut').addEventListener('click',event=>companionSettings.openPage(event,'maintenance','updates-open'));
 $('models-refresh').addEventListener('click', refreshLoadedModels);
 $('models-close').addEventListener('click', () => $('models-dialog').close());
 
@@ -1240,7 +1252,19 @@ async function visitSource(origin,button) { const previous={projectId:state.proj
 $('draft-duration').addEventListener('change',()=>{saveDraft();try{textDraftStore.setDuration($('draft-duration').value,drafts);setText($('draft-status'),textDraftStore.duration?'Messages non envoyés conservés sur cet appareil pour la durée choisie.':'Messages conservés uniquement dans cet onglet.');}catch{draftFailure();}});
 $('draft-download').addEventListener('click',downloadMessageDraft);
 $('draft-clear').addEventListener('click',()=>{try{textDraftStore.clear();for(const [key,draft]of drafts)drafts.set(key,{...draft,text:'',failed:[]});$('prompt').value='';$('draft-duration').value='0';rememberDrafts();renderChat();setText($('draft-status'),'Textes des brouillons effacés.');}catch{draftFailure();}});
-$('diagnostics-open').addEventListener('click',async()=>{const button=$('diagnostics-open'),panel=$('diagnostics-result');button.disabled=true;panel.hidden=false;panel.textContent='Vérification…';try{const result=await api('/api/diagnostics');panel.replaceChildren(node('p','','Diagnostic volontaire, sans message ni modèle exécuté.'),node('pre','',JSON.stringify(result,null,2)));const download=node('button','file-action','Télécharger le diagnostic');download.type='button';download.addEventListener('click',()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:'application/json'}));const a=node('a');a.href=url;a.download='diagnostic-bionic.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});panel.append(download);}catch(e){panel.textContent=e.message;}finally{button.disabled=false;}});
+let diagnosticsRevision=0;
+$('diagnostics-open').addEventListener('click',async()=>{
+  const button=$('diagnostics-open'),panel=$('diagnostics-result'),ticket=++diagnosticsRevision,epoch=state.authEpoch,revision=companionSettings.revision();
+  const current=()=>ticket===diagnosticsRevision&&epoch===state.authEpoch&&state.authenticated&&companionSettings.isCurrent(revision);
+  button.disabled=true;panel.hidden=false;panel.textContent='Vérification…';
+  try{
+    const result=await api('/api/diagnostics');if(!current())return;
+    panel.replaceChildren(node('p','','Diagnostic volontaire, sans message ni modèle exécuté.'),node('pre','',JSON.stringify(result,null,2)));
+    const download=node('button','file-action','Télécharger le diagnostic');download.type='button';
+    download.addEventListener('click',()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:'application/json'}));const a=node('a');a.href=url;a.download='diagnostic-bionic.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});panel.append(download);
+  }catch(e){if(current())panel.textContent=e.message;}
+  finally{if(ticket===diagnosticsRevision){button.disabled=false;if(!current()){panel.replaceChildren();panel.hidden=true;}}}
+});
 
 start().catch(e => { if (!/Connecte-toi/.test(e.message)) $('login-error').textContent = e.message; });
 

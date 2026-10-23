@@ -54,6 +54,18 @@ La suppression ne touche ni les fichiers du projet, ni les imports, ni les copie
 
 Le renommage et la suppression sont indisponibles pendant une réponse ou tant que ce chat a des messages en attente. Attendez leur fin ou arrêtez la réponse et retirez les attentes avant de recommencer. Les autres chats peuvent continuer à répondre.
 
+## Retrouver les paramètres
+
+**Paramètres** regroupe six rubriques : Conversations et affichage, Modèles et réponses, Outils et autorisations, Images et ComfyUI, Connexion et appareils, Maintenance et aide. Sur téléphone, **Rubriques** revient à la liste. **Fermer** et Échap ramènent au déclencheur. La recherche locale comprend aussi des synonymes comme « tokens », « longueur » ou « certificat » ; elle recherche les intitulés et les portées, sans indexer les valeurs personnelles.
+
+Les choix du prochain envoi restent dans le composeur : modèle, effort, outils et profil d'image. Les paramètres en montrent le résumé et permettent de rejoindre ces contrôles canoniques. **Voir les modèles chargés** agit sur les instances en mémoire du PC. Les brouillons sont dans **Conversations et affichage**, le diagnostic et les mises à jour dans **Maintenance et aide**. Les actions de classement du chat et les opérations sur les fichiers restent dans leurs espaces habituels.
+
+Dans **Modèles et réponses**, le modèle sélectionné cible uniquement le plafond. **Ce chat uniquement** crée une exception pour ce modèle ; **Automatique** est aussi une exception explicite, distincte du défaut du modèle. Avant un premier envoi ou depuis un historique natif, le réglage local est préparé dans l'onglet. **Défaut de ce modèle** enregistre le défaut global et retire l'exception du chat courant ; les exceptions des autres chats restent prioritaires. Le contexte chargé et l'origine sont affichés lorsqu'ils sont connus. Le plafond effectif exact dépend du contexte de chaque appel ; il n'est pas prédit comme une capacité garantie dans cet écran.
+
+**Annuler la saisie** restaure le dernier réglage lu ou enregistré du formulaire. Fermer ou changer de cible avec une saisie non soumise propose de continuer, d'abandonner ou de conserver la saisie dans cet onglet. Cette conservation n'enregistre rien sur le PC et ne couvre aucun mot de passe, export ou ticket de certificat. Les actions déjà confirmées — mise à jour, certificat, brouillon effacé — gardent leurs propres effets. **Relire les réglages du PC** recharge explicitement les valeurs serveur.
+
+Dans **Images et ComfyUI**, le service et les deux LoRA de chaque profil concernent l'installation partagée. Le profil du prochain message est un choix séparé. **Tester la connexion et les modèles** n'enregistre pas la saisie et ne lance aucun rendu. Les erreurs et l'indisponibilité restent indiquées.
+
 ## Écrire et changer de chat pendant une réponse
 
 Sur téléphone, le modèle et l’effort se choisissent côte à côte sous le texte. L’envoi se trouve à droite du message ; pendant une réponse, la flèche ajoute le message à la file et le bouton carré arrête la réponse de ce chat. L’aide détaillée de l’effort apparaît quand ce sélecteur est actif et reste associée au champ pour les lecteurs d’écran.
@@ -64,7 +76,7 @@ La zone de saisie reste disponible pendant la génération. Vous pouvez prépare
 
 Le modèle, l’effort, les permissions de fichiers, de web et de scripts et les pièces jointes sont ceux choisis au moment de l’envoi. Modifier un réglage ensuite ne change pas une demande déjà reçue. Les pièces jointes sont copiées à cet instant ; les modifier ensuite sur le PC ne change pas silencieusement la demande déjà acceptée. L’historique transmis au modèle est construit lorsque le tour commence, pour inclure la réponse précédente.
 
-**Nouveau chat web**, les projets et les conversations restent accessibles pendant les réponses. Chaque fil conserve son brouillon et ses pièces jointes en préparation dans la session de l’onglet. Dans les options du chat, **Brouillons sur cet appareil** propose volontairement **1 heure**, **24 heures** ou **7 jours** de conservation locale du seul texte non envoyé. Par défaut, **Cet onglet uniquement** conserve le comportement de session. La durée part de la dernière modification du texte ; les copies expirées sont retirées lors de leur lecture. Les pièces jointes, réglages et textes de l’éditeur de fichiers n’entrent pas dans la conservation durable.
+**Nouveau chat web**, les projets et les conversations restent accessibles pendant les réponses. Chaque fil conserve son brouillon et ses pièces jointes en préparation dans la session de l’onglet. Dans **Paramètres → Conversations et affichage**, accessible aussi depuis les options du chat, **Brouillons sur cet appareil** propose volontairement **1 heure**, **24 heures** ou **7 jours** de conservation locale du seul texte non envoyé. Par défaut, **Cet onglet uniquement** conserve le comportement de session. La durée part de la dernière modification du texte ; les copies expirées sont retirées lors de leur lecture. Les pièces jointes, réglages et textes de l’éditeur de fichiers n’entrent pas dans la conservation durable.
 
 Les textes durables sont propres à cet appareil et à cette installation, sans synchronisation ni envoi automatique. **Effacer mes brouillons** et la déconnexion les retirent sur ce navigateur. **Télécharger ce brouillon** exporte le texte courant. Si le stockage local échoue, le texte visible reste disponible avec une alerte pour le télécharger ; cette conservation n’est pas une sauvegarde garantie.
 
