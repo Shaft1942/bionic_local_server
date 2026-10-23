@@ -46,13 +46,13 @@ In **Settings → Images and ComfyUI**, enter the server address, check required
 
 **Generate this prompt directly** creates a single image from your exact text without preparation by the chat model. Optional ComfyUI cleanup runs after each render; it is separate from unloading text models. See the [English image guide](docs/en/guide.md#images-and-memory).
 
-Set up launching with **Configurer-serveurs.cmd** on the PC. The launcher manages the selected Bionic API and Python ComfyUI instances it controls; a reachable external instance is not automatically adopted. Stopping Bionic stops its API without closing the Desktop app. See [Servers on the PC](docs/en/guide.md#servers-on-the-pc).
+Set up launching in **Settings → Servers on the PC**: detect an installation or choose its folder, review the proposed paths, and save. **Configurer-serveurs.cmd** remains a local alternative. The launcher manages the selected Bionic API and Python ComfyUI instances it controls; a reachable external instance is not automatically adopted. Stopping the Bionic server stops its API without closing the Desktop app. See [Servers on the PC](docs/en/guide.md#servers-on-the-pc).
 
 ## Permissions and access
 
 Under **File tools**, **Write** is the initial choice for a new regular chat: allowed writes happen immediately without approval for each file. Choose **Read** or **None** when editing is unnecessary. Previous versions and project trash do not replace independent backups.
 
-Web access and scripts are disabled by default. You can require approval for each search and URL. **Every script requires approval of its exact code, then runs with the PC account’s permissions: it is not a sandbox.** File permission profiles do not restrict an approved script.
+Web access is enabled for new choices without replacing an explicit disabled setting. Images are enabled when ComfyUI is detected and available. Scripts remain disabled by default. You can require approval for each search and URL. **Every script requires approval of its exact code, then runs with the PC account’s permissions: it is not a sandbox.** File permission profiles do not restrict an approved script.
 
 The companion is intended for a **trusted local network**. HTTP does not encrypt the access code, messages or files. In **Settings → Security and access**, prepare HTTPS and optionally a certificate for each device using mTLS. Do not bypass certificate warnings or expose this port directly to the Internet.
 

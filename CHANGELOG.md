@@ -1,5 +1,13 @@
 # Journal des versions
 
+## 2.5.1-beta.1 — 2026-10-24 — candidate locale
+
+- Les refus avant tout lancement n'immobilisent plus le compagnon. Les véritables effets inconnus restent protégés ; l'ancien refus Bionic avant ouverture est migré sans rejouer une commande.
+- Le contrôle Bionic peut reprendre après redémarrage du compagnon lorsque l'identité complète du même contrôleur, son profil et son API sont revalidés. Un serveur étranger ou une identité ambiguë n'est pas adopté.
+- Paramètres → Serveurs : cartes simplifiées, détails repliés, récupération guidée, arrêt du serveur Bionic explicitant que Desktop reste ouvert ; durée des opérations corrigée.
+- Configuration sur le PC dans les paramètres : détection bornée, choix natif du dossier, validation et enregistrement, chemins avancés si nécessaire. Aucune commande libre et aucune ouverture automatique d'un moteur.
+- Internet activé par défaut pour les nouveaux choix ; images activées lorsque ComfyUI configuré est disponible. Les droits, brouillons et réglages explicitement désactivés restent respectés.
+
 Les entrées décrivent les évolutions du produit. Les comptes rendus de travail, mesures d’un poste, plans et prompts internes ne font pas partie de cette documentation. Les versions effectivement disponibles sont dans les [Releases](https://github.com/Shaft1942/bionic_local_server/releases).
 
 ## 2.5.0 — 2026-10-23

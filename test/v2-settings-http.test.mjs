@@ -109,7 +109,10 @@ test('ComfyUI settings HTTP routes persist selected endpoint and workflow while 
   assert.deepEqual((await f.request('/api/comfy/settings')).json(), persisted);
   const bytes = await fs.readFile(path.join(f.root, 'data', 'comfy-settings.json'), 'utf8');
   assert.equal(JSON.parse(bytes).workflowId, 'hassaku_illustrious');
-  assert.equal(f.requests.length, 0); assert.equal(f.modelCalls, 0);
+  assert.equal(persisted.available, true);
+  assert(f.requests.length > 0);
+  assert(f.requests.every(item => item.route === '/system_stats' && item.method === 'GET'));
+  assert.equal(f.modelCalls, 0);
 });
 
 test('ComfyUI connection HTTP check is read-only, validates models and never submits a prompt', async t => {

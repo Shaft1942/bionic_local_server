@@ -29,7 +29,7 @@ Dans le navigateur, **Paramètres → Langue et brouillons → Langue de l’int
 
 Le bouton facultatif **Configurer les serveurs** ouvre l’assistant local de lancement dans une fenêtre du PC. Il prépare les chemins des installations compatibles Bionic et ComfyUI, sans télécharger de moteur ni en démarrer un. Une fois le profil enregistré, ouvrez **Paramètres → Serveurs sur le PC → Relire la configuration**. Bionic, ComfyUI et leurs modèles restent à installer séparément. Voir [Serveurs sur le PC](local-services.md).
 
-L’installation initiale ne configure ni n’active ComfyUI, ses LoRA ou les lanceurs à votre place. Une reconfiguration dans **Ce dossier** conserve les profils de lancement, les choix ComfyUI et les données déjà présents. Les mises à jour disposent d’un parcours distinct.
+L’installation initiale ne télécharge aucun moteur ou LoRA et ne prépare pas les profils de lancement à votre place. La détection légère de ComfyUI est permise par défaut ; les images ne sont cochées que si son API est disponible, sans génération automatique. La préparation assistée des serveurs est également accessible dans les paramètres de l’application sur le PC. Une reconfiguration dans **Ce dossier** conserve les profils de lancement, les choix ComfyUI et les données déjà présents. Les mises à jour disposent d’un parcours distinct.
 
 ## Annuler et entretenir
 

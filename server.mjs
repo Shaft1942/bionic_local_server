@@ -19,6 +19,7 @@ import { createBionicStore } from './lib/bionic-store.mjs';
 import { loadSettings } from './lib/config.mjs';
 import { createModelService } from './lib/model-service.mjs';
 import { createLocalServiceSupervisor } from './lib/local-service-supervisor.mjs';
+import { createLocalServiceSetup } from './lib/local-service-setup.mjs';
 import { createModelPreferences, validateModelId, validateOutputPreferences, outputBudget, estimateRequestTokens, CONTEXT_RESERVE_TOKENS } from './lib/model-preferences.mjs';
 import { reasoningRequest } from './lib/reasoning.mjs';
 import { createGenerationMetrics } from './lib/generation-metrics.mjs';
@@ -158,7 +159,7 @@ function cacheLease(id, state, summaryOnly) {
   return state.chat;
 }
 let modelManagementBusy = false;
-let localServices, localServiceBarrier = false;
+let localServices, localSetup, localServiceBarrier = false;
 function assertServiceAdmission() {
   lifecycle.assertAdmission();
   if (localServiceBarrier) throw Object.assign(fail(409, 'Une opération sur les serveurs du PC est en cours. Attends sa fin.'), { code: 'service-operation-active' });
@@ -331,7 +332,7 @@ async function readChat(projectId, id) {
 }
 function apiHeaders() { return process.env.BIONIC_API_TOKEN ? { Authorization: `Bearer ${process.env.BIONIC_API_TOKEN}` } : {}; }
 const modelTransport = options.modelTransport || createModelTransport({ baseUrl: API, headers: apiHeaders, fetchImpl: fetch });
-const projectFileOptions = { backupDirectory: path.join(DATA, 'file-backups'), imageDirectory: path.join(DATA, 'image-attachments'), registryPath: settings.registryPath, extraRoots: settings.extraRoots, python: settings.python, protectedPaths: () => [path.join(ROOT, 'config.launchers.local.json'), path.join(RUNTIME, 'local-services'), path.join(RUNTIME, 'local-service-hosts'), path.join(ROOT, 'scripts', 'local-service-host.py'), ...localServices?.protectedPaths?.() || []] };
+const projectFileOptions = { backupDirectory: path.join(DATA, 'file-backups'), imageDirectory: path.join(DATA, 'image-attachments'), registryPath: settings.registryPath, extraRoots: settings.extraRoots, python: settings.python, protectedPaths: () => [path.join(ROOT, 'config.launchers.local.json'), path.join(RUNTIME, 'local-services'), path.join(RUNTIME, 'local-service-hosts'), path.join(ROOT, 'scripts', 'local-service-host.py'), path.join(ROOT, 'scripts', 'select-local-service-installation.ps1'), ...localServices?.protectedPaths?.() || []] };
 const nativeProjectFiles = options.projectFiles || createProjectFiles(projectFileOptions);
 const projectFiles = options.projectFiles || createProjectFiles({ ...projectFileOptions, rootsProvider: localProjects.rootsFor });
 const workspaceFeatures = createWorkspaceFeatures({ directory: path.join(DATA, 'workspace'), listProjects, listWebChats: webChats, readConversation: readChat, projectFiles, listActivity: async () => (await chatSnapshot()).chats });
@@ -1018,10 +1019,29 @@ async function handleRequest(req, res) {
     }
     if (url.pathname.startsWith('/api/')) {
       if (!auth(req)) throw fail(401, 'Connecte-toi avec le code du PC.');
-      if (url.pathname.startsWith('/api/local-services') || url.pathname.startsWith('/api/local-service-operations/')) {
+      if (url.pathname.startsWith('/api/local-services') || url.pathname.startsWith('/api/local-service-operations/') || url.pathname.startsWith('/api/local-service-setup')) {
         res.setHeader('Cache-Control', 'no-store');
         const session = sessions.get(cookie(req));
         if (!session.localServiceNonce) session.localServiceNonce = randomBytes(32).toString('base64url');
+        if (url.pathname.startsWith('/api/local-service-setup')) {
+          const isLocal=/^(?:127\.|::ffff:127\.)/.test(req.socket.remoteAddress)||req.socket.remoteAddress==='::1';
+          if(req.method==='GET'&&url.pathname==='/api/local-service-setup'&&!isLocal){json(res,200,{canConfigure:false,reasonCode:'setup-local-only',services:[]});return;}
+          if(!isLocal||req.headers['x-local-service-csrf']!==session.localServiceNonce||req.headers.origin&&req.headers.origin!==protocol+'//'+req.headers.host)throw Object.assign(fail(403,'La préparation des serveurs se fait depuis les paramètres ouverts sur ce PC.'),{code:'setup-local-only'});
+          if(req.method==='GET'&&url.pathname==='/api/local-service-setup'){json(res,200,await localSetup.snapshot());return;}
+          if(req.method!=='POST'||req.headers.origin!==protocol+'//'+req.headers.host)throw Object.assign(fail(403,'Préparation refusée. Actualise les paramètres.'),{code:'csrf-refused'});
+          if(!['/api/local-service-setup/discover','/api/local-service-setup/pick','/api/local-service-setup/save'].includes(url.pathname))throw fail(404,'Action de préparation inconnue.');
+          inFlightMutations++;countedMutation=true;assertServiceAdmission();
+          const input=await body(req,16384);assertServiceAdmission();
+          if(url.pathname.endsWith('/save')){
+            const release=reserveLocalService();
+            try{
+              const current=(await localServices.snapshot()).services.find(item=>item.id===input?.serviceId);
+              if(current&&current.configuration?.status==='valid'&&['running','starting','stopping','unknown'].includes(current.process?.state))throw Object.assign(fail(409,'Arrête ou réconcilie ce serveur avant de changer son lancement.'),{code:'setup-service-running'});
+              const saved=await localSetup.save(input);await localServices.reload();json(res,200,saved);
+            }finally{release();}
+          }else json(res,200,await localSetup[url.pathname.endsWith('/pick')?'pick':'discover'](input));
+          return;
+        }
         if (req.method === 'GET' && url.pathname === '/api/local-services') { json(res, 200, { ...await localServices.snapshot(), csrfNonce: session.localServiceNonce }); return; }
         if (req.method === 'GET' && /^\/api\/local-service-operations\/[\w-]{1,100}$/.test(url.pathname)) { json(res, 200, await localServices.operation(url.pathname.split('/').pop())); return; }
         if (req.method !== 'POST' || req.headers.origin !== protocol + '//' + req.headers.host || req.headers['x-local-service-csrf'] !== session.localServiceNonce) throw Object.assign(fail(403, 'Action de serveur refusée. Actualise les paramètres.'), { code: 'csrf-refused' });
@@ -1258,9 +1278,9 @@ async function handleRequest(req, res) {
       if(req.method==='GET'&&url.pathname==='/api/comfy/memory-module'){const module=await defaultFS.readFile(new URL('./comfyui/custom_nodes/free_memory_after_workflow.py',import.meta.url));res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Disposition':'attachment; filename="free_memory_after_workflow.py"','Cache-Control':'no-store'});res.end(module);return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/discover'){json(res,200,await comfyImages.discoverServers(await body(req,4096)));return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/loras'){json(res,200,await comfyImages.listLoras(await body(req,4096)));return;}
-      if(req.method==='GET'&&url.pathname==='/api/comfy/settings'){json(res,200,await comfyImages.getSettings());return;}
+      if(req.method==='GET'&&url.pathname==='/api/comfy/settings'){json(res,200,{...await comfyImages.getSettings(),available:await comfyImages.available?.()===true});return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/queue/resume'){assertServiceAdmission();await body(req,1024);assertServiceAdmission();json(res,200,await comfyImages.resumeQueue());return;}
-      if(req.method==='POST'&&url.pathname==='/api/comfy/settings'){assertServiceAdmission();const input=await body(req,4096);assertServiceAdmission();json(res,200,await comfyImages.updateSettings(input));return;}
+      if(req.method==='POST'&&url.pathname==='/api/comfy/settings'){assertServiceAdmission();const input=await body(req,4096);assertServiceAdmission();const saved=await comfyImages.updateSettings(input);json(res,200,{...saved,available:await comfyImages.available?.()===true});return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/check'){json(res,200,await comfyImages.checkConnection(await body(req,4096)));return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/generate'){assertServiceAdmission();const input=await body(req,20000);assertServiceAdmission();json(res,200,await sendDirectImage(input));return;}
       if(req.method==='GET'&&url.pathname==='/api/capabilities'){
@@ -1362,6 +1382,7 @@ async function handleRequest(req, res) {
   } finally { if (countedMutation) inFlightMutations--; }
 }
 localServices = options.localServiceSupervisor || await (options.localServiceSupervisorFactory || createLocalServiceSupervisor)({ root: ROOT, platform: options.localServicePlatform || process.platform, connections: () => ({ bionicUrl: API, comfyUrl: comfyImages.getSettings?.().url || settings.comfyUrl }), fetchImpl: options.localServiceFetchImpl || fetch, bionicHeaders: apiHeaders, reserve: reserveLocalService });
+localSetup=options.localServiceSetup||createLocalServiceSetup({root:ROOT,platform:options.localServicePlatform||process.platform,connections:()=>({bionicUrl:API,comfyUrl:comfyImages.getSettings?.().url||settings.comfyUrl}),...options.localServiceSetupOptions});
 const server = http.createServer(handle);
 server.requestTimeout = settings.requestTimeoutMs || 180000;
 server.headersTimeout = 15000;

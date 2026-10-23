@@ -115,13 +115,60 @@ test('protected paths reflect current valid launch profiles without entering DTO
   assert.equal(JSON.stringify(await f.supervisor.snapshot()).includes('E:/fixture/'), false);
 });
 
-test('Bionic successful receipt loses ownership across companion restart', async t => {
+test('Bionic successful receipt keeps control after adapter revalidates it across companion restart', async t => {
   const f = await fixture(t);
   const start = await f.supervisor.action('bionic', intent(await revision(f.supervisor))); await done(f.supervisor, start.id); await f.supervisor.close();
   const restarted = await createLocalServiceSupervisor({ root: f.root, profilesLoader: async () => f.profiles, adapters: { observe: async () => ({ process: { state: 'running' }, api: { state: 'ready' }, model: { state: 'unknown' }, activity: { state: 'idle' } }) } });
   t.after(() => restarted.close());
   const service = (await restarted.snapshot()).services[0];
-  assert.equal(service.process.state, 'unknown'); assert.equal(service.actions.stop.allowed, false); assert.equal(service.actions.start.allowed, false);
+  assert.equal(service.process.state, 'running'); assert.equal(service.actions.stop.allowed, true); assert.equal(service.actions.restart.allowed, true); assert.equal(service.actions.start.allowed, false);
+});
+
+test('proven pre-effect failure is terminal and releases admission across restart', async t => {
+  const f = await fixture(t, { adapters: { async start() { throw Object.assign(new Error('synthetic refusal'), { code: 'desktop_start_required', effectAttempted: false }); } } });
+  const op = await f.supervisor.action('bionic', intent(await revision(f.supervisor)));
+  assert.equal((await done(f.supervisor, op.id)).status, 'failed');
+  assert.doesNotThrow(() => f.supervisor.assertAdmission()); assert.equal(f.supervisor.activeCount(), 0); assert.equal(f.counts().reserved, 0);
+  await f.supervisor.close();
+  const restarted = await createLocalServiceSupervisor({ root: f.root, profilesLoader: async () => f.profiles, adapters: { observe: async () => ({ process: { state: 'external' }, api: { state: 'unavailable' }, model: {}, activity: {} }) } });
+  t.after(() => restarted.close());
+  assert.equal((await restarted.operation(op.id)).status, 'failed'); assert.doesNotThrow(() => restarted.assertAdmission());
+});
+
+test('upgrade only clears the legacy refusal proven before Desktop spawn', async t => {
+  for (const resultCode of ['desktop_start_required', 'desktop_start_unconfirmed', 'identity_unconfirmed', 'interrupted']) {
+    const root = await mkdtemp(join(tmpdir(), 'launcher-legacy-')); t.after(() => rm(root, { recursive: true, force: true }));
+    await mkdir(join(root, 'runtime/local-services'), { recursive: true });
+    await writeFile(join(root, 'runtime/local-services/operations.json'), JSON.stringify({ version: 1, receipts: {}, operations: [{ id: 'legacy', serviceId: 'bionic', action: 'start', status: 'unknown', phase: 'reconcile', resultCode }] }));
+    const supervisor = await createLocalServiceSupervisor({ root, profilesLoader: async () => ({ errors: {} }), adapters: {} }); t.after(() => supervisor.close());
+    assert.equal((await supervisor.operation('legacy')).status, resultCode === 'desktop_start_required' ? 'failed' : 'unknown');
+    if (resultCode === 'desktop_start_required') assert.doesNotThrow(() => supervisor.assertAdmission()); else assert.throws(() => supervisor.assertAdmission());
+  }
+});
+
+test('restart with confirmed stop and refused new start releases admission without restoring old receipt', async t => {
+  let calls = 0;
+  const f = await fixture(t, { adapters: { async start() { if (++calls === 1) return { profileFingerprint: 'fixture-profile', apiPort: 1235 }; throw Object.assign(new Error('no recipe'), { code: 'desktop_start_required', effectAttempted: false }); } } });
+  const first = await f.supervisor.action('bionic', intent(await revision(f.supervisor))); await done(f.supervisor, first.id);
+  f.setReady(true);
+  const op = await f.supervisor.action('bionic', intent(await revision(f.supervisor), '22345678-1234-1234-1234-123456789abc', 'restart'));
+  assert.equal((await done(f.supervisor, op.id)).status, 'failed'); assert.doesNotThrow(() => f.supervisor.assertAdmission());
+  const journal = JSON.parse(await readFile(join(f.root, 'runtime/local-services/operations.json'))); assert.equal(journal.receipts.bionic, undefined); assert.equal(f.counts().stops, 1);
+});
+
+test('Bionic reload reconciles an interrupted completed start only with its correlated receipt', async t => {
+  const f = await fixture(t); const op = await f.supervisor.action('bionic', intent(await revision(f.supervisor))); await done(f.supervisor, op.id); await f.supervisor.close();
+  const filename = join(f.root, 'runtime/local-services/operations.json');
+  const journal = JSON.parse(await readFile(filename)); journal.operations[0].status = 'running'; journal.receipts.bionic.ownershipExpired = true;
+  await writeFile(filename, JSON.stringify(journal));
+  const adapters = { observe: async () => ({ process: { state: 'running' }, api: { state: 'ready' }, model: {}, activity: { state: 'idle' } }) };
+  const restarted = await createLocalServiceSupervisor({ root: f.root, profilesLoader: async () => f.profiles, adapters }); t.after(() => restarted.close());
+  assert.equal((await restarted.operation(op.id)).status, 'unknown'); await restarted.reload();
+  assert.equal((await restarted.operation(op.id)).status, 'succeeded'); assert.doesNotThrow(() => restarted.assertAdmission());
+  await restarted.close();
+  delete journal.receipts.bionic.supervisorOperationId; await writeFile(filename, JSON.stringify(journal));
+  const unrelated = await createLocalServiceSupervisor({ root: f.root, profilesLoader: async () => f.profiles, adapters }); t.after(() => unrelated.close());
+  await unrelated.reload(); assert.equal((await unrelated.operation(op.id)).status, 'unknown'); assert.throws(() => unrelated.assertAdmission());
 });
 
 test('activity changing after confirmation prevents stop and restart launch', async t => {

@@ -11,10 +11,10 @@ Ouvrez **Outils** près de la saisie. Les choix sont indépendants, conservés a
 | Choix | Portée | État initial d’un chat ordinaire |
 | --- | --- | --- |
 | **Outils fichiers : Aucun / Lecture / Modification** | Désactiver les outils directs, autoriser leur lecture ou ajouter les mutations du dossier de travail | Modification |
-| **Rechercher et lire Internet** | Recherches et extraits de pages publiques depuis le PC | Désactivé |
+| **Rechercher et lire Internet** | Recherches et extraits de pages publiques depuis le PC | Activé pour les nouveaux choix |
 | **Valider chaque recherche et URL avant envoi** | Accord sur les données et la destination exactes de chaque outil web | Désactivé |
 | **Scripts sur le PC, avec validation** | Propositions de scripts à approuver une par une | Désactivé |
-| **Générer des images avec ComfyUI** | Accès aux profils d’image configurés, avec quantité de 1 à 5 | Désactivé |
+| **Générer des images avec ComfyUI** | Accès aux profils d’image configurés, avec quantité de 1 à 5 | Activé si ComfyUI est détecté et disponible |
 
 Les droits du projet restent nécessaires. Un déplacement de chat désactive fichiers et scripts ; **Sans projet** ne permet ni ces outils ni imports. Les images ont leurs réglages distincts : [Images ComfyUI](comfyui.md).
 

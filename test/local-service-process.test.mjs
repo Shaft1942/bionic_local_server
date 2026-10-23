@@ -24,7 +24,18 @@ async function fixture(t, source) {
 test('invalid receipts never make network calls or signal a PID', async () => {
   const backend = createLocalServiceProcess({ root: os.tmpdir(), fetchImpl() { throw new Error('unexpected transport'); } });
   assert.equal((await backend.requestStop({ pid: process.pid })).reasonCode, 'INVALID_PROCESS_RECEIPT');
-  await assert.rejects(backend.launch({ id: 'bionic' }), /UNSUPPORTED_PROCESS_PROFILE/);
+  await assert.rejects(backend.launch({ id: 'bionic' }), { message: 'UNSUPPORTED_PROCESS_PROFILE', effectAttempted: false });
+});
+
+test('Comfy validation failures certify no spawn, while a spawn boundary failure stays uncertain', async t => {
+  const f = await fixture(t); let spawned = 0;
+  f.profile.pythonPath = process.execPath;
+  const backend = createLocalServiceProcess({ root: f.root, spawnImpl() { spawned++; throw new Error('synthetic spawn failure'); } });
+  await assert.rejects(backend.launch({ ...f.profile, entryPath: path.join(f.root, 'missing.py') }), { code: 'ENOENT', effectAttempted: false });
+  await assert.rejects(backend.launch({ ...f.profile, fileIdentity: { replaced: true } }), { message: 'PROCESS_PROFILE_CHANGED', effectAttempted: false });
+  assert.equal(spawned, 0);
+  await assert.rejects(backend.launch(f.profile), { message: 'synthetic spawn failure', effectAttempted: true }); assert.equal(spawned, 1);
+  backend.close(); await assert.rejects(backend.launch(f.profile), { message: 'PROCESS_BACKEND_CLOSED', effectAttempted: false });
 });
 
 test('authenticated control never accepts a different operation or PID and reports lost scope', async () => {

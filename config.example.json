@@ -10,6 +10,6 @@
   "shutdownTimeoutMs": 15000,
   "requestTimeoutMs": 180000,
   "comfyUrl": "http://127.0.0.1:8188",
-  "comfyEnabled": false,
+  "comfyEnabled": true,
   "comfyWorkflowId": "krea2_turbo"
 }

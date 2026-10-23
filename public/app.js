@@ -886,9 +886,9 @@ function renderChat({ preserveComposer = false } = {}) {
   if (!preserveComposer) {
   $('agent-files').value = unassignedProject() ? 'none' : state.draftFileProfile ?? fileProfile(chat);
   $('agent-web-approval').checked = state.draftWebApproval ?? chat?.webApproval ?? false;
-  $('agent-web').checked = state.draftWebAccess ?? chat?.webAccess ?? false;
+  $('agent-web').checked = state.draftWebAccess ?? chat?.webAccess ?? true;
   $('agent-scripts').checked = unassignedProject() ? false : state.draftScriptAccess ?? chat?.scriptAccess ?? false;
-  $('agent-images').checked = state.draftImageAccess ?? chat?.imageAccess ?? false;
+  $('agent-images').checked = state.draftImageAccess ?? chat?.imageAccess ?? companionSettings.imageDefaultEnabled();
   }
   $('thread-title').textContent = chat?.name || appT('app.newChat');
   $('thread-subtitle').textContent = (project?.name || appT('app.projectFallback')) + (chat?.source === 'bionic' ? appT('app.historySubtitle') : appT('app.webSubtitle'));
@@ -974,6 +974,7 @@ function setSending() {
   for (const id of ['files-open-sidebar', 'attach-file', 'upload-file','upload-attach-file']) $(id).disabled = locked || !state.projectId || unassignedProject();
   $('agent-files').disabled = locked || unassignedProject();
   $('fork-chat').disabled = locked || !state.chat?.id;
+  $('agent-images').checked=state.draftImageAccess??state.chat?.imageAccess??companionSettings.imageDefaultEnabled();
   $('agent-images').disabled = locked || !companionSettings.enabled(); $('agent-web').disabled = locked; $('agent-scripts').disabled = locked || unassignedProject();
   companionSettings.imagePermission();
   $('image-workflow').disabled = locked || !companionSettings.enabled();
