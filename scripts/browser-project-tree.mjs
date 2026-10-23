@@ -98,7 +98,7 @@ try {
         return route.fulfill({ status: data.error ? 404 : 200, contentType: 'application/json', body: JSON.stringify(data) });
       }
       const file = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-      if (!/^(?:locales\/(?:fr|en)\/(?:ui|app|settings|components)\.js|[\w.-]+)$/.test(file)) return route.abort();
+      if (!/^(?:locales\/(?:fr|en)\/(?:ui|app|settings|components|local-services)\.js|[\w.-]+)$/.test(file)) return route.abort();
       return route.fulfill({ contentType: file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.html') ? 'text/html' : file.endsWith('.svg') ? 'image/svg+xml' : 'application/json', body: await fs.readFile(path.join(root, 'public', file)) });
     });
     const started = performance.now();

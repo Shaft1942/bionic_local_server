@@ -80,7 +80,7 @@ try {
         } catch (error) { errors.push(error.message); return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: error.message }) }); }
       }
       const file = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-      if (!/^(?:locales\/(?:fr|en)\/(?:ui|app|settings|components)\.js|[a-z0-9.-]+)$/i.test(file)) return route.abort();
+      if (!/^(?:locales\/(?:fr|en)\/(?:ui|app|settings|components|local-services)\.js|[a-z0-9.-]+)$/i.test(file)) return route.abort();
       return route.fulfill({ contentType: file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.html') ? 'text/html' : file.endsWith('.svg') ? 'image/svg+xml' : 'application/json', body: await fs.readFile(path.join(root, 'public', file)) });
     });
     try {

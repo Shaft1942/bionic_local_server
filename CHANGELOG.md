@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.4.2-beta.2 — 2026-10-23 — candidat cumulatif local
+
+- Réunit le lanceur Bionic/ComfyUI avec toutes les fonctions images de la 2.4.1-beta.2 : quantité 1–5, mémoire par demande, file commune, annulation, relance, galerie/ZIP et Livrables → Génération.
+- Conserve les fonctions FR/EN, projets et fiabilité de la 2.4.0-beta.3 via l’assemblage local 2.5.
+- Protège aussi la relance, la reprise de file, les attentes GPU et les images incertaines pendant les opérations sur les serveurs.
+
 ## 2.5.0-beta.1 — 2026-10-23 — préparation locale
 
 - Réunit la 2.4.0-beta.3 et la 2.4.1-beta.2 : interactions, certificats, projets locaux, stockage fiable, interface FR/EN et version dans les paramètres ; séries 1 à 5, file commune, politiques mémoire, annulation, relance, galerie et ZIP.
@@ -22,6 +28,13 @@
 - Génération en série : préparation des prompts en un appel, cartes séparées et file FIFO commune aux conversations (douze images maximum), sans calculs image simultanés. Le nettoyage ComfyUI facultatif reste appliqué après chaque image.
 - Choix mémoire : conserver les modèles texte pour continuer à discuter, ou les décharger avant le lot et différer les nouvelles inférences jusqu'à sa fin. Reprise explicite après une soumission incertaine, sans rejeu automatique ; suivi des jobs distants et protection GPU rétablis après redémarrage.
 - Images ComfyUI : confirmation de lancement produite par le compagnon sans seconde inférence de conclusion. Les lots mêlant image et autres outils attendent la fin du rendu avant leur synthèse texte ; les soumissions incertaines ne sont pas relancées.
+## 2.4.2-beta.1 — 2026-10-23 — candidat local
+
+- Nouvelle rubrique Serveurs sur le PC : états processus/API/modèles/travaux, démarrage explicite et confirmations d'arrêt/redémarrage, en français et en anglais.
+- Recette Bionic via CLI à hôte explicitement sélectionné : contrôle de l'API, application desktop conservée à l'arrêt. Démarrage à froid possible avec le chemin local du Desktop.
+- Recette ComfyUI Python possédée : contrôleur coopératif authentifié, preuve de périmètre Windows et survie au redémarrage du compagnon. Une instance Desktop ouverte ailleurs n'est pas adoptée.
+- Profils préparés uniquement sur le PC, intentions persistées/idempotentes, refus pendant travaux/maintenance, incertitudes non rejouées et nouveaux fichiers privés exclus des outils fichiers et des exports.
+- Futurs moteurs prévus par les contrats internes ; aucun moteur supplémentaire implémenté. Voir docs/local-services.md pour la portée dédiée et les limites de qualification.
 
 ## 2.4.0-beta.3 — 2026-10-23
 

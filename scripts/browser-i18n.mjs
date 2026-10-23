@@ -171,6 +171,7 @@ async function searchSettings(page, language) {
   await page.locator('#interface-language').waitFor({ state: 'visible' });
 }
 async function checkContent(page, language) {
+  await page.waitForFunction(expected => document.getElementById('thread-title')?.textContent === expected, chatName);
   const reply = message(page, replyId), user = message(page, userId);
   assert.equal(await page.locator('#thread-title').textContent(), chatName);
   assert.equal(await reply.locator('.message-code pre code').textContent(), code);

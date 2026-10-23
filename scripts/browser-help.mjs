@@ -90,7 +90,7 @@ try {
           return await route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) });
         }
         const file = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-        const catalog = /^locales\/(?:fr|en)\/(?:ui|app|settings|components)\.js$/.test(file);
+        const catalog = /^locales\/(?:fr|en)\/(?:ui|app|settings|components|local-services)\.js$/.test(file);
         if (!/^[a-z0-9.-]+$/i.test(file) && !catalog) throw Error('Unexpected static route ' + url.pathname);
         return await route.fulfill({ contentType: file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.html') ? 'text/html' : file.endsWith('.svg') ? 'image/svg+xml' : 'application/json', body: await fs.readFile(path.join(root, 'public', file)) });
       } catch (error) {

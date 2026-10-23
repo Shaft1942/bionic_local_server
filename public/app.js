@@ -370,7 +370,7 @@ async function api(route, options = {}) {
   const j = await r.json().catch(() => ({ error: appT('app.invalidServerResponse') }));
   if (route === '/api/updates/install' && !r.ok) { try { sessionStorage.removeItem(updateRecoveryKey); } catch {} }
   if (r.status === 401 && !updatesPanel.isRestarting()) hidePrivateViews();
-  if (!r.ok) throw Object.assign(new Error(j.error || appT('app.httpError', { status: r.status })), { status: r.status });
+  if (!r.ok) throw Object.assign(new Error(j.error || appT('app.httpError', { status: r.status })), { status: r.status, code: j.code });
   if (route === '/api/comfy/settings' && epoch === state.authEpoch && state.authenticated) {
     $('comfy-storage-warning').hidden = j.degraded !== true;
     if (j.degraded === true) setAppLabel('comfy-storage-warning', 'app.beta24.imageStorageDegraded');

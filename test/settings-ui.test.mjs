@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 
-const source=(await Promise.all(['i18n.js','locales/fr/ui.js','locales/en/ui.js','locales/fr/settings.js','locales/en/settings.js','locales/fr/components.js','locales/en/components.js','certificates.js','help.js','settings.js'].map(file=>fs.readFile(new URL('../public/'+file,import.meta.url),'utf8')))).join('\n');
+const source=(await Promise.all(['i18n.js','locales/fr/ui.js','locales/en/ui.js','locales/fr/settings.js','locales/en/settings.js','locales/fr/components.js','locales/en/components.js','locales/fr/local-services.js','locales/en/local-services.js','certificates.js','help.js','settings.js'].map(file=>fs.readFile(new URL('../public/'+file,import.meta.url),'utf8')))).join('\n');
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const defaultComfy={enabled:false,url:'http://127.0.0.1:8188',workflowId:'krea2_turbo',activeJobs:0,workflows:[{id:'krea2_turbo',label:'Krea 2 Turbo'}]};
 
 /** A small DOM boundary keeps scope and asynchronous transport tests independent of a browser. */
 function fixture(intercept=()=>undefined) {
-  const elements=new Map(),writes=[],navigations=[],globalEvents={};
+  const elements=new Map(),writes=[],navigations=[],globalEvents={},serviceCalls=[];
   const document={activeElement:null,getElementById:element,querySelectorAll:selector=>['[data-settings-page]','#settings-nav [data-settings-page]'].includes(selector)?[...elements.values()].filter(value=>value.dataset.settingsPage):[]};
   function element(id) {
     if(!elements.has(id)) {
@@ -25,7 +25,7 @@ function fixture(intercept=()=>undefined) {
     }
     return elements.get(id);
   }
-  for(const page of ['reading','models','tools','images','connection','maintenance','help'])element('nav-'+page).dataset.settingsPage=page;
+  for(const page of ['reading','models','tools','images','servers','connection','maintenance','help'])element('nav-'+page).dataset.settingsPage=page;
   const state={authenticated:true,authEpoch:1,projectId:'p',chat:null,viewKey:'p|new',status:{models:[{id:'m',name:'Modèle M'}]}};
   element('model').value='m';document.activeElement=element('settings-open-sidebar');
   const api=async(route,options)=>{
@@ -38,14 +38,32 @@ function fixture(intercept=()=>undefined) {
     if(route==='/api/capabilities')return {items:[{name:'Capacité actuelle',description:'Description actuelle.'}]};
     throw Error('Unexpected API route '+route);
   };
-  const context=vm.createContext({document,Intl,URL,URLSearchParams,structuredClone,addEventListener:(name,callback)=>globalEvents[name]=callback});
+  const context=vm.createContext({document,Intl,URL,URLSearchParams,structuredClone,addEventListener:(name,callback)=>globalEvents[name]=callback,createLocalServices:()=>({setVisible:visible=>serviceCalls.push({visible}),openService:id=>serviceCalls.push({id}),reset:()=>serviceCalls.push({reset:true})})});
   vm.runInContext(source,context);
   let nodes=0;const settings=context.createCompanionSettings({api,getState:()=>state,node:(tag,className,textContent)=>Object.assign(element('node-'+nodes++),{tag,className,textContent}),onChange(){},onNavigate:target=>navigations.push(target)});
   const fire=(id,type='click')=>element(id).listeners[type]({currentTarget:element(id),preventDefault(){}});
   const open=()=>fire('settings-open-sidebar');
   async function saveOutput(value,all=false){element('output-mode').value=value===null?'auto':'manual';element('output-tokens').value=value??8192;element('output-all-sessions').value=all?'model':'session';return fire('output-settings-form','submit');}
-  return {state,document,element,settings,writes,navigations,globalEvents,fire,open,saveOutput};
+  return {state,document,element,settings,writes,navigations,globalEvents,serviceCalls,fire,open,saveOutput};
 }
+
+test('server navigation and authentication reset preserve image request options until reset',async()=>{
+  const f=fixture(route=>route==='/api/comfy/settings'?{...defaultComfy,enabled:true}:undefined);
+  f.state.draftImageAccess=true;f.state.draftImageCount=5;f.state.draftImageModelPolicy='alternate';
+  await f.open();await tick();
+  await f.settings.openService('comfyui');
+  assert.equal(f.element('settings-page-servers').hidden,false);
+  assert.ok(f.serviceCalls.some(call=>call.visible===true));
+  assert.ok(f.serviceCalls.some(call=>call.id==='comfyui'));
+  const request=f.settings.decorate({model:'m',imageAccess:true});
+  assert.equal(request.imageCount,5);assert.equal(request.imageModelPolicy,'alternate');
+  await f.settings.openPage({currentTarget:f.element('settings-open-sidebar')},'images');
+  assert.equal(f.element('settings-page-images').hidden,false);
+  assert.equal(f.element('image-count').value,'5');
+  f.settings.reset();
+  assert.ok(f.serviceCalls.some(call=>call.reset===true));
+  assert.equal(f.serviceCalls.at(-1).visible,false);
+});
 
 test('LoRA form keeps two choices and strengths independently when switching image models',async()=>{
   const data={...defaultComfy,enabled:true,workflows:[{id:'krea2_turbo',label:'Krea2'},{id:'hassaku_illustrious',label:'HassakuXL'}],loraProfiles:{krea2_turbo:[],hassaku_illustrious:[]}};
@@ -354,11 +372,11 @@ test('output shortcut uses its known model, and unknown provenance focuses the m
 function editOutput(f,value){f.element('output-mode').value='manual';f.fire('output-mode','change');f.element('output-tokens').value=String(value);f.fire('output-tokens','input');}
 const persistedWrites=f=>f.writes.filter(write=>['/api/model-preferences','/api/comfy/settings'].includes(write.route));
 
-test('six pages and local search keep form edits, expose scope and never submit values',async()=>{
+test('eight pages and local search keep form edits, expose scope and never submit values',async()=>{
   const f=fixture();await f.open();editOutput(f,4567);await f.fire('nav-images');
   assert.equal(f.element('settings-page-images').hidden,false);assert.equal(f.element('settings-page-models').hidden,true);assert.equal(f.element('output-tokens').value,'4567');
   assert.equal(f.element('settings-view').dataset.settingsIndex,'false');await f.fire('settings-back');assert.equal(f.element('settings-view').dataset.settingsIndex,'true');
-  for(const query of ['tokens','permissions','LoRA','certificat','brouillons','renommer','corbeille','python']){f.element('settings-search').value=query;await f.fire('settings-search','input');assert(f.element('settings-results').children.length>0,query);}
+  for(const query of ['tokens','permissions','LoRA','certificat','brouillons','renommer','corbeille','python','redémarrer']){f.element('settings-search').value=query;await f.fire('settings-search','input');assert(f.element('settings-results').children.length>0,query);}
   f.element('settings-search').value='tokens';await f.fire('settings-search','input');const result=f.element('settings-results').children[0];assert.equal(result.children[1].textContent,'Chat ou défaut du modèle');await result.listeners.click();
   assert.equal(f.element('settings-page-models').hidden,false);assert.equal(f.element('output-tokens').value,'4567');assert.equal(f.document.activeElement,f.element('output-mode'));assert.equal(persistedWrites(f).length,0);
 });

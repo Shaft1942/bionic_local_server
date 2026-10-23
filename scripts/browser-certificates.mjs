@@ -40,7 +40,7 @@ try{
       if(url.origin!==origin)return route.abort();
       if(!url.pathname.startsWith('/api/')){
         const file=url.pathname==='/'?'index.html':url.pathname.slice(1);
-        const catalog=/^locales\/(?:fr|en)\/(?:ui|app|settings|components)\.js$/.test(file);
+        const catalog=/^locales\/(?:fr|en)\/(?:ui|app|settings|components|local-services)\.js$/.test(file);
         if(!/^[\w.-]+$/.test(file)&&!catalog)return route.abort();
         return route.fulfill({contentType:file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.html')?'text/html':'image/svg+xml',body:file==='app.js'?bootstrap:await fs.readFile(path.join(root,'public',file))});
       }

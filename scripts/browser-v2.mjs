@@ -17,7 +17,7 @@ try{
     const defaults=new Map();let sentChat;
     await context.route('**/*',async route=>{
       const request=route.request(),url=new URL(request.url());if(url.origin!==origin)return route.abort();
-      if(!url.pathname.startsWith('/api/')){const file=url.pathname==='/'?'index.html':url.pathname.slice(1);if(!/^(?:locales\/(?:fr|en)\/(?:ui|app|settings|components)\.js|[\w.-]+)$/.test(file))return route.abort();return route.fulfill({contentType:file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.html')?'text/html':'image/svg+xml',body:await fs.readFile(path.join(root,'public',file))});}
+      if(!url.pathname.startsWith('/api/')){const file=url.pathname==='/'?'index.html':url.pathname.slice(1);if(!/^(?:locales\/(?:fr|en)\/(?:ui|app|settings|components|local-services)\.js|[\w.-]+)$/.test(file))return route.abort();return route.fulfill({contentType:file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.html')?'text/html':'image/svg+xml',body:await fs.readFile(path.join(root,'public',file))});}
       const input=request.postData()?JSON.parse(request.postData()):null;let data={};
       if(url.pathname==='/api/status')data={ok:true,models,addresses:[]};
       else if(url.pathname==='/api/projects')data={projects:[{id:'p1',name:'Projet de test',sessionsCount:0}]};

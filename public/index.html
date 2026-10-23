@@ -18,6 +18,8 @@
   <script src="/locales/en/settings.js" defer></script>
   <script src="/locales/fr/components.js" defer></script>
   <script src="/locales/en/components.js" defer></script>
+  <script src="/locales/fr/local-services.js" defer></script>
+  <script src="/locales/en/local-services.js" defer></script>
   <script src="/i18n-bootstrap.js" defer></script>
   <script src="/project-tree.js" defer></script>
   <script src="/message-drafts.js" defer></script>
@@ -27,6 +29,7 @@
   <script src="/comfy-images.js" defer></script>
   <script src="/certificates.js" defer></script>
   <script src="/help.js" defer></script>
+  <script src="/local-services.js" defer></script>
   <script src="/settings.js" defer></script>
   <script src="/message-text.js" defer></script>
   <script src="/app.js" defer></script>
@@ -161,6 +164,7 @@
 <button type="button" data-settings-page="models" aria-controls="settings-page-models"><span data-i18n="ui.3380ed656b52">Modèles et réponses</span><small data-i18n="ui.6aff86b5871b">Modèle, effort, plafond de sortie</small></button>
 <button type="button" data-settings-page="tools" aria-controls="settings-page-tools"><span data-i18n="ui.11ba9f887f4a">Outils et autorisations</span><small data-i18n="ui.3b8a73d515cf">Permissions du prochain envoi</small></button>
 <button type="button" data-settings-page="images" aria-controls="settings-page-images"><span data-i18n="ui.94ced0d50f87">Images et ComfyUI</span><small data-i18n="ui.0a038d31b0ca">Service global et profils LoRA</small></button>
+<button type="button" data-settings-page="servers" aria-controls="settings-page-servers"><span data-i18n="settings.launcher.title">Serveurs sur le PC</span><small data-i18n="settings.launcher.subtitle">Démarrage, arrêt et état</small></button>
 <button type="button" data-settings-page="connection" aria-controls="settings-page-connection"><span data-i18n="ui.a4f20a55636a">Sécurité et accès</span><small data-i18n="ui.99ee57725f28">Sécurité et certificats</small></button>
 <button id="settings-maintenance-nav" type="button" data-settings-page="maintenance" aria-controls="settings-page-maintenance"><span data-i18n="ui.17ccfa5b681e">Maintenance</span><small data-i18n="ui.ab4dbe55a8af">Mises à jour et diagnostic</small></button><button id="settings-help-nav" type="button" data-settings-page="help" aria-controls="settings-page-help"><span data-i18n="ui.2e3054e12ff4">Aide</span><small data-i18n="ui.92bae7b17605">Guide, usages et limites</small></button></nav><button id="settings-reload" class="settings-reload file-action" type="button" data-i18n="ui.34e9209ac284">Relire les réglages du PC</button></aside><div class="settings-body"><section id="settings-page-reading" class="settings-page" data-settings-section="reading" aria-labelledby="settings-heading-reading"><h2 id="settings-heading-reading" tabindex="-1" data-i18n="ui.21267aa80587">Langue et brouillons</h2><p class="settings-page-description" data-i18n="ui.0f6aa2ad636b">Cet appareil · langue de l’interface et brouillons de ce navigateur.</p><div class="settings-language"><label for="interface-language" data-i18n="ui.language.label">Langue de l’interface</label><select id="interface-language" aria-describedby="interface-language-help interface-language-status"></select><p id="interface-language-help" data-i18n="ui.language.help">Ce choix concerne cet appareil. Il ne modifie pas la langue des réponses du modèle.</p><p id="interface-language-status" role="status"></p></div><h3 data-i18n="ui.966c141aab5b">Messages non envoyés</h3>        <div class="settings-drafts"><label for="draft-duration" data-i18n="ui.94260297044a">Conserver les messages non envoyés</label><select id="draft-duration"><option value="0" data-i18n="ui.f70109588ffa">Cet onglet uniquement</option><option value="3600000" data-i18n="ui.9fbd78bd1979">1 heure</option><option value="86400000" data-i18n="ui.139dc478b59e">24 heures</option><option value="604800000" data-i18n="ui.5ce6303bdc6b">7 jours</option></select><p data-i18n="ui.9c2507449d62">La durée part de la dernière modification du texte. Aucun fichier joint ni contenu de l’éditeur n’est conservé durablement. Déconnexion et « Effacer » retirent les copies locales. Ce stockage n’est pas une sauvegarde garantie.</p><div class="workspace-actions"><button id="draft-download" class="file-action" type="button" data-i18n="ui.ef830d59872a">Télécharger ce brouillon</button><button id="draft-clear" class="file-action" type="button" data-i18n="ui.ff3e142d1c63">Effacer mes brouillons</button></div><p id="draft-status" role="status"></p></div>
 <p data-i18n="ui.84e112edb486">Les réponses affichent automatiquement titres, listes, tableaux et blocs de code. Les informations du tour s’ouvrent depuis « Détails du tour ».</p></section>
@@ -239,6 +243,15 @@
           <p id="comfy-storage-warning" class="listing-warning" role="status" hidden></p>
         </form>
       </section>
+</section>
+<section id="settings-page-servers" class="settings-page" data-settings-section="servers" aria-labelledby="settings-heading-servers" hidden>
+  <h2 id="settings-heading-servers" tabindex="-1" data-i18n="settings.launcher.title">Serveurs sur le PC</h2>
+  <p class="settings-page-description" data-i18n="settings.launcher.scope">Installation PC · partagé entre les conversations</p>
+  <p data-i18n="settings.launcher.intro">Ces actions concernent les moteurs du PC. Le compagnon reste accessible.</p>
+  <p id="local-services-status" role="status" aria-live="polite" aria-atomic="true"></p>
+  <div id="local-services-list"></div>
+  <div class="settings-actions"><button id="local-services-reload" class="file-action" type="button" data-i18n="settings.launcher.reload">Relire la configuration</button></div>
+  <details id="launcher-setup-guide" class="local-service-details"><summary id="launcher-setup-title" tabindex="0" data-i18n="settings.launcher.setupTitle">Préparer le lancement sur le PC</summary><p data-i18n="settings.launcher.setupSteps">Sur le PC du compagnon, ouvre Configurer-serveurs.ps1 et suis le guide docs/local-services.md. Seules les installations prises en charge peuvent être configurées. Enregistrer ne démarre aucun moteur. Sur téléphone, effectue cette préparation sur le PC, puis reviens ici.</p></details>
 </section>
 <section id="settings-page-connection" class="settings-page" data-settings-section="connection" aria-labelledby="settings-heading-connection" hidden><h2 id="settings-heading-connection" tabindex="-1" data-i18n="ui.a4f20a55636a">Sécurité et accès</h2><p class="settings-page-description" data-i18n="ui.fa6c2d5bac28">Installation PC · sécurité des connexions, certificats et accès des appareils.</p>      <section aria-labelledby="certificate-title" class="certificate-section">
         <div class="certificate-heading"><h2 id="certificate-title" tabindex="-1" data-i18n="ui.17547c7051f4">Sécurité des connexions</h2><button id="certificate-refresh" class="file-action" type="button" data-i18n="ui.9231047eb073">Actualiser l’état</button></div>

@@ -18,6 +18,7 @@ import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto';
 import { createBionicStore } from './lib/bionic-store.mjs';
 import { loadSettings } from './lib/config.mjs';
 import { createModelService } from './lib/model-service.mjs';
+import { createLocalServiceSupervisor } from './lib/local-service-supervisor.mjs';
 import { createModelPreferences, validateModelId, validateOutputPreferences, outputBudget, estimateRequestTokens, CONTEXT_RESERVE_TOKENS } from './lib/model-preferences.mjs';
 import { reasoningRequest } from './lib/reasoning.mjs';
 import { createGenerationMetrics } from './lib/generation-metrics.mjs';
@@ -157,13 +158,30 @@ function cacheLease(id, state, summaryOnly) {
   return state.chat;
 }
 let modelManagementBusy = false;
+let localServices, localServiceBarrier = false;
+function assertServiceAdmission() {
+  lifecycle.assertAdmission();
+  if (localServiceBarrier) throw Object.assign(fail(409, 'Une opération sur les serveurs du PC est en cours. Attends sa fin.'), { code: 'service-operation-active' });
+  localServices?.assertAdmission();
+}
+function reserveLocalService() {
+  if (localServiceBarrier || updatePreparing || updateMaintenance || lifecycle.status().stopping) throw Object.assign(fail(409, 'Une opération de maintenance est en cours.'), { code: 'maintenance' });
+  const work = activeWork(); delete work.localServices;
+  if (Object.values(work).some(Boolean) || inFlightMutations > 1 || comfyImages.lifecycleStatus?.().uncertain) throw Object.assign(fail(409, 'Des travaux sont actifs ou leur état est incertain. Attends leur fin.'), { code: 'service-busy' });
+  localServiceBarrier = true;
+  return () => { localServiceBarrier = false; };
+}
 const updater = options.updateService || await createUpdateService({ root: ROOT, currentVersion: APP_VERSION, fetchImpl: options.updateFetchImpl || globalThis.fetch, ...options.updateServiceOptions });
 const installer = options.updateInstaller || { prepareUpdate, launchUpdate };
 const updatePlatform = options.updatePlatform || process.platform;
 let updatePreparing = false, updateMaintenance = false, inFlightMutations = 0;
 let installation = { status: 'idle', message: '' };
 function activeWork() {
+  const gpu = gpuScheduler.snapshot();
   return { security: Number(certificateWeb.busy || !!certificateTransport?.status().candidate), conversations: busy.size, generations: active.size,
+    localServices: localServices?.activeCount() || 0, pendingModelLoads: modelService?.pendingCount?.() || 0,
+    gpuWork: gpu.activeModels + gpu.activeImages + gpu.queuedModels + gpu.queuedImages,
+    uncertainImages: comfyImages.lifecycleStatus?.().uncertain || 0,
     modelManagement: Number(modelManagementBusy), admissions: acceptanceLocks.size, images: comfyImages.getSettings?.()?.activeJobs || 0,
     requests: [...chatRequests.values()].filter(request => ['starting', 'queued', 'running'].includes(request.status)).length,
     queued: [...chatStates.values()].reduce((n, { chat }) => n + Number(chat.generation?.status === 'running') + (chat.queue || []).filter(item => item.status === 'queued').length, 0) };
@@ -313,7 +331,7 @@ async function readChat(projectId, id) {
 }
 function apiHeaders() { return process.env.BIONIC_API_TOKEN ? { Authorization: `Bearer ${process.env.BIONIC_API_TOKEN}` } : {}; }
 const modelTransport = options.modelTransport || createModelTransport({ baseUrl: API, headers: apiHeaders, fetchImpl: fetch });
-const projectFileOptions = { backupDirectory: path.join(DATA, 'file-backups'), imageDirectory: path.join(DATA, 'image-attachments'), registryPath: settings.registryPath, extraRoots: settings.extraRoots, python: settings.python };
+const projectFileOptions = { backupDirectory: path.join(DATA, 'file-backups'), imageDirectory: path.join(DATA, 'image-attachments'), registryPath: settings.registryPath, extraRoots: settings.extraRoots, python: settings.python, protectedPaths: () => [path.join(ROOT, 'config.launchers.local.json'), path.join(RUNTIME, 'local-services'), path.join(RUNTIME, 'local-service-hosts'), path.join(ROOT, 'scripts', 'local-service-host.py'), ...localServices?.protectedPaths?.() || []] };
 const nativeProjectFiles = options.projectFiles || createProjectFiles(projectFileOptions);
 const projectFiles = options.projectFiles || createProjectFiles({ ...projectFileOptions, rootsProvider: localProjects.rootsFor });
 const workspaceFeatures = createWorkspaceFeatures({ directory: path.join(DATA, 'workspace'), listProjects, listWebChats: webChats, readConversation: readChat, projectFiles, listActivity: async () => (await chatSnapshot()).chats });
@@ -329,6 +347,7 @@ async function ownedImage(input) {
   return { chat, message, job: comfyImages.get(input.jobId) };
 }
 async function retryImage(input) {
+  assertServiceAdmission();
   if (!input || typeof input !== 'object' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(input.requestId || '') || !['same', 'new'].includes(input.seedMode)) throw fail(400, 'Identifiant de relance ou choix de graine invalide.');
   return withConversationManagement({ projectId: input.projectId, id: input.chatId }, async () => {
     const { chat } = await ownedImage(input);
@@ -552,7 +571,7 @@ async function recoverDirectImage(chat, reply) {
   return true;
 }
 async function sendDirectImage(data) {
-  lifecycle.assertAdmission();
+  assertServiceAdmission();
   if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).some(key => !['requestId','projectId','sessionId','prompt','workflowId','negativePrompt','seed','format'].includes(key))) throw fail(400, 'Demande image invalide.');
   const requestId = data.requestId;
   if (!validRequestId(requestId)) throw fail(400, 'Identifiant de demande invalide.');
@@ -586,7 +605,7 @@ async function sendDirectImage(data) {
       const selection = comfyImages.resolveSelection?.(data.workflowId);
       let chat, reply;
       await withAcceptanceLock(data.projectId + ':' + (data.sessionId || requestId), async () => {
-        lifecycle.assertAdmission();
+        assertServiceAdmission();
         chat = data.sessionId ? await readWeb(data.sessionId) : { id: 'web-' + randomUUID(), projectId: data.projectId, name: data.prompt.trim().slice(0,65), source: 'web', readOnly: false, messages: [], updatedAt: Date.now() };
         if (chat.projectId !== data.projectId) throw fail(404, 'Conversation introuvable dans ce projet.');
         if (busy.has(chat.id) || active.has(chat.id) || chat.queue?.some(item => item.status === 'queued')) throw fail(409, 'Attends la fin de la réponse avant de générer une image dans cette conversation.');
@@ -624,7 +643,7 @@ async function sendDirectImage(data) {
   return lifecycle.track(work);
 }
 async function sendChat(req, res, data) {
-  lifecycle.assertAdmission();
+  assertServiceAdmission();
   const requestId = data.requestId === undefined ? randomUUID() : data.requestId;
   if (!validRequestId(requestId)) throw fail(400, 'Identifiant de demande invalide.');
   if (await findChatRequest(data.projectId, requestId)) throw fail(409, 'Ce message a déjà été reçu. Rouvre sa conversation pour retrouver la réponse.');
@@ -661,7 +680,7 @@ async function sendChat(req, res, data) {
     const key = data.sessionId ? data.projectId + ':' + data.sessionId : 'new:' + requestId;
     let execute;
     await withAcceptanceLock(key, async () => {
-      lifecycle.assertAdmission();
+      assertServiceAdmission();
       if (modelManagementBusy) throw fail(409, 'Un modèle est en cours de déchargement. Attends la fin pour envoyer ton message.');
       let chat;
       if (data.sessionId && webId(data.sessionId)) {
@@ -762,6 +781,7 @@ async function generateChat(res, chat, item, request) {
   let admitted = false;
   const admitModel = async () => {
     const admissionStartedAt = Date.now();
+    assertServiceAdmission();
     if (request) request.phase = 'waiting-resource';
     let releaseGpu=()=>{},releaseResource=()=>{},release=()=>{};
     admitted = true;
@@ -773,7 +793,8 @@ async function generateChat(res, chat, item, request) {
       queuedMs += Date.now() - admissionStartedAt;
       // Keep the GPU reservation until any non-cancellable cold load settles.
       // Refresh after admission, including queued turns and tool continuations.
-      selectedModel = modelService.forInference ? await modelService.forInference(item.model) : (await models()).find(model => model.id === item.model);
+      assertServiceAdmission();
+      selectedModel = modelService.forInference ? await modelService.forInference(item.model, { signal: controller.signal }) : (await models()).find(model => model.id === item.model);
       if(controller.signal.aborted)throw fail(409,'Demande arrêtée pendant le chargement du modèle.');
       if (!selectedModel) throw fail(400, 'Sélectionne un modèle local disponible.');
     } catch (error) { try { await modelService.awaitPendingLoad?.(item.model); } finally { releaseUpstream(); } throw error; }
@@ -929,6 +950,7 @@ async function generateChat(res, chat, item, request) {
 
 const STATIC = { '/': 'index.html', '/i18n-bootstrap.js':'i18n-bootstrap.js', "/i18n.js":"i18n.js", "/locales/fr/ui.js":"locales/fr/ui.js", "/locales/fr/app.js":"locales/fr/app.js", "/locales/fr/settings.js":"locales/fr/settings.js", "/locales/fr/components.js":"locales/fr/components.js", "/locales/en/ui.js":"locales/en/ui.js", "/locales/en/app.js":"locales/en/app.js", "/locales/en/settings.js":"locales/en/settings.js", "/locales/en/components.js":"locales/en/components.js", '/app.js': 'app.js', '/message-text.js':'message-text.js', '/settings.js':'settings.js', '/help.js':'help.js', '/certificates.js':'certificates.js', '/project-tree.js':'project-tree.js', '/project-tree.css':'project-tree.css', '/comfy-images.js':'comfy-images.js', '/updates.js': 'updates.js', '/message-drafts.js': 'message-drafts.js', '/files.js': 'files.js', '/workspace.js': 'workspace.js', '/style.css': 'style.css', '/manifest.webmanifest': 'manifest.webmanifest', '/icon.svg': 'icon.svg' };
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml' };
+Object.assign(STATIC, { '/local-services.js': 'local-services.js', '/locales/fr/local-services.js': 'locales/fr/local-services.js', '/locales/en/local-services.js': 'locales/en/local-services.js' });
 function handle(req, res) { return lifecycle.track(withScanCycle(() => handleRequest(req, res))); }
 async function handleRequest(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -996,6 +1018,26 @@ async function handleRequest(req, res) {
     }
     if (url.pathname.startsWith('/api/')) {
       if (!auth(req)) throw fail(401, 'Connecte-toi avec le code du PC.');
+      if (url.pathname.startsWith('/api/local-services') || url.pathname.startsWith('/api/local-service-operations/')) {
+        res.setHeader('Cache-Control', 'no-store');
+        const session = sessions.get(cookie(req));
+        if (!session.localServiceNonce) session.localServiceNonce = randomBytes(32).toString('base64url');
+        if (req.method === 'GET' && url.pathname === '/api/local-services') { json(res, 200, { ...await localServices.snapshot(), csrfNonce: session.localServiceNonce }); return; }
+        if (req.method === 'GET' && /^\/api\/local-service-operations\/[\w-]{1,100}$/.test(url.pathname)) { json(res, 200, await localServices.operation(url.pathname.split('/').pop())); return; }
+        if (req.method !== 'POST' || req.headers.origin !== protocol + '//' + req.headers.host || req.headers['x-local-service-csrf'] !== session.localServiceNonce) throw Object.assign(fail(403, 'Action de serveur refusée. Actualise les paramètres.'), { code: 'csrf-refused' });
+        if (updatePreparing || updateMaintenance || lifecycle.status().stopping) throw Object.assign(fail(409, 'Une opération de maintenance est en cours.'), { code: 'maintenance' });
+        inFlightMutations++; countedMutation = true;
+        const input = await body(req, 4096);
+        if (url.pathname === '/api/local-services/configuration/reload') {
+          if (!input || Array.isArray(input) || typeof input !== 'object' || Object.keys(input).length) throw fail(400, 'Aucune valeur de configuration ne peut être transmise par le navigateur.');
+          const release = reserveLocalService();
+          try { json(res, 200, { ...await localServices.reload(), csrfNonce: session.localServiceNonce }); } finally { release(); }
+          return;
+        }
+        const match = /^\/api\/local-services\/(bionic|comfyui)\/actions$/.exec(url.pathname);
+        if (!match) throw fail(404, 'Action inconnue.');
+        json(res, 202, await localServices.action(match[1], input)); return;
+      }
       if (req.method === 'GET' && url.pathname === '/api/security/status') { res.setHeader('Cache-Control', 'no-store'); json(res, 200, await certificateWeb.status(req, sessions.get(cookie(req)))); return; }
       if (req.method === 'GET' && url.pathname === '/api/security/authority') {
         const download = await certificateWeb.authorityCertificate();
@@ -1006,9 +1048,12 @@ async function handleRequest(req, res) {
         if (!url.pathname.startsWith('/api/updates/') || url.pathname === '/api/updates/preferences') { inFlightMutations++; countedMutation = true; }
       }
       if (req.method === 'POST' && url.pathname === '/api/security/actions') {
+        assertServiceAdmission();
         if (updatePreparing || updateMaintenance) throw fail(409, 'Attends la fin de la mise à jour avant de modifier les connexions.');
         res.setHeader('Cache-Control', 'no-store');
-        json(res, 200, await certificateWeb.action(req, sessions.get(cookie(req)), await body(req, 8192))); return;
+        const input = await body(req, 8192);
+        assertServiceAdmission();
+        json(res, 200, await certificateWeb.action(req, sessions.get(cookie(req)), input)); return;
       }
       if (req.method === 'POST' && url.pathname === '/api/security/proof') {
         const input = new URLSearchParams((await receiveBody(req, { limit: 2048, timeoutMs: 15000 })).toString('utf8'));
@@ -1097,13 +1142,15 @@ async function handleRequest(req, res) {
         json(res, 200, { models: await modelService.list(), generationActive: busy.size > 0, unloading: modelManagementBusy }); return;
       }
       if (req.method === 'POST' && url.pathname === '/api/models/unload') {
+        assertServiceAdmission();
         if (busy.size > 0) throw fail(409, 'Une réponse est en cours dans le compagnon. Arrête-la ou attends sa fin avant de décharger un modèle.');
         if (modelManagementBusy) throw fail(409, 'Un déchargement est déjà en cours.');
         const input = await body(req, 2048);
+        assertServiceAdmission();
         if (busy.size > 0 || modelManagementBusy) throw fail(409, 'Le modèle est en cours d’utilisation. Réessaie après la fin de l’opération.');
         modelManagementBusy = true;
         let releaseModel=()=>{};
-        try { releaseModel=await gpuScheduler.acquireModel();json(res, 200, await modelService.unload(input.instanceId)); }
+        try { releaseModel=await gpuScheduler.acquireModel();assertServiceAdmission();json(res, 200, await modelService.unload(input.instanceId)); }
         finally { releaseModel();modelManagementBusy = false; }
         return;
       }
@@ -1212,10 +1259,10 @@ async function handleRequest(req, res) {
       if(req.method==='POST'&&url.pathname==='/api/comfy/discover'){json(res,200,await comfyImages.discoverServers(await body(req,4096)));return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/loras'){json(res,200,await comfyImages.listLoras(await body(req,4096)));return;}
       if(req.method==='GET'&&url.pathname==='/api/comfy/settings'){json(res,200,await comfyImages.getSettings());return;}
-      if(req.method==='POST'&&url.pathname==='/api/comfy/queue/resume'){await body(req,1024);json(res,200,await comfyImages.resumeQueue());return;}
-      if(req.method==='POST'&&url.pathname==='/api/comfy/settings'){json(res,200,await comfyImages.updateSettings(await body(req,4096)));return;}
+      if(req.method==='POST'&&url.pathname==='/api/comfy/queue/resume'){assertServiceAdmission();await body(req,1024);assertServiceAdmission();json(res,200,await comfyImages.resumeQueue());return;}
+      if(req.method==='POST'&&url.pathname==='/api/comfy/settings'){assertServiceAdmission();const input=await body(req,4096);assertServiceAdmission();json(res,200,await comfyImages.updateSettings(input));return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/check'){json(res,200,await comfyImages.checkConnection(await body(req,4096)));return;}
-      if(req.method==='POST'&&url.pathname==='/api/comfy/generate'){json(res,200,await sendDirectImage(await body(req,20000)));return;}
+      if(req.method==='POST'&&url.pathname==='/api/comfy/generate'){assertServiceAdmission();const input=await body(req,20000);assertServiceAdmission();json(res,200,await sendDirectImage(input));return;}
       if(req.method==='GET'&&url.pathname==='/api/capabilities'){
         json(res,200,{version:APP_VERSION,items:[
           {name:'Modèles et réponses',description:'Modèles servis par Bionic. Plafond automatique de 8 192 tokens, adapté au contexte estimé à chaque appel ; réglage par modèle ou conversation.'},
@@ -1235,7 +1282,8 @@ async function handleRequest(req, res) {
         await persistChat(chat); json(res, 200, job); return;
       }
       if (req.method === 'POST' && url.pathname === '/api/comfy/generation/retry') {
-        json(res, 200, await retryImage(await body(req, 4096))); return;
+        assertServiceAdmission();const input=await body(req,4096);assertServiceAdmission();
+        json(res, 200, await retryImage(input)); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/comfy/generations') {
         const projectId = url.searchParams.get('projectId'); await requireImageProject(projectId);
@@ -1277,7 +1325,7 @@ async function handleRequest(req, res) {
         const image=await comfyImages.image(id);
         res.writeHead(200,{'Content-Type':image.mime,'Content-Length':image.bytes.length,...(url.searchParams.get('download')==='1'?{'Content-Disposition':'attachment; filename="Krea2-'+id+'.png"'}:{})});res.end(image.bytes);return;
       }
-      if (req.method === 'POST' && url.pathname === '/api/chat') { await sendChat(req, res, await body(req)); return; }
+      if (req.method === 'POST' && url.pathname === '/api/chat') { assertServiceAdmission();const input=await body(req);assertServiceAdmission();await sendChat(req, res, input); return; }
       if (req.method === 'POST' && url.pathname === '/api/cancel') {
         const d = await body(req);
         const request = d.requestId ? chatRequests.get(d.requestId) : null;
@@ -1308,11 +1356,12 @@ async function handleRequest(req, res) {
     throw fail(404, 'Page introuvable.');
   } catch (e) {
     if (e.status === 408 || e.status === 413) { res.setHeader('Connection','close'); res.once?.('finish', () => req.destroy?.()); }
-    if (!res.headersSent) json(res, e.status || 500, { error: e.status ? e.message : 'Lecture impossible. Réessaie puis consulte le journal du serveur.' });
+    if (!res.headersSent) json(res, e.status || 500, { error: e.status ? e.message : 'Lecture impossible. Réessaie puis consulte le journal du serveur.', ...(typeof e.code === 'string' && /^[a-z][a-z0-9_-]{0,79}$/.test(e.code) ? { code: e.code } : {}) });
     else res.end();
     if (!e.status) console.error(JSON.stringify({ time: new Date().toISOString(), requestId, error: e.code || e.name || 'Error' }));
   } finally { if (countedMutation) inFlightMutations--; }
 }
+localServices = options.localServiceSupervisor || await (options.localServiceSupervisorFactory || createLocalServiceSupervisor)({ root: ROOT, platform: options.localServicePlatform || process.platform, connections: () => ({ bionicUrl: API, comfyUrl: comfyImages.getSettings?.().url || settings.comfyUrl }), fetchImpl: options.localServiceFetchImpl || fetch, bionicHeaders: apiHeaders, reserve: reserveLocalService });
 const server = http.createServer(handle);
 server.requestTimeout = settings.requestTimeoutMs || 180000;
 server.headersTimeout = 15000;
@@ -1323,6 +1372,7 @@ function close() {
   for (const request of chatRequests.values()) if (request.status === 'starting') { request.cancelRequested = true; request.controller?.abort(); }
   for (const job of active.values()) job.controller.abort();
   const finalize = (async () => {
+    await localServices.close();
     await comfyImages.close();
     await lifecycle.settle();
     // Generators may enqueue their last checkpoint only after cancellation settles.
@@ -1341,7 +1391,7 @@ function close() {
   return closing;
 }
 if (options.enableUpdateScheduling) server.once('listening', () => updater.start());
-return { server, handle, close, config, settings, certificateStore, attachCertificateTransport: controller => { certificateTransport = controller; }, clearSecuritySessions: () => { certificateWeb.clear(); sessions.clear(); }, refreshSecurityAddresses, readWeb, webChats, chatSnapshot, conversationModelContext, sendChat, chatStates, persistChat, measurements, inferenceGate, gpuScheduler, coordinator, lifecycle, activeWork, updater, addresses:localIPs, withScanCycle };
+return { server, handle, close, config, settings, certificateStore, attachCertificateTransport: controller => { certificateTransport = controller; }, clearSecuritySessions: () => { certificateWeb.clear(); sessions.clear(); }, refreshSecurityAddresses, readWeb, webChats, chatSnapshot, conversationModelContext, sendChat, chatStates, persistChat, measurements, inferenceGate, gpuScheduler, coordinator, lifecycle, activeWork, updater, localServices, addresses:localIPs, withScanCycle };
 }
 
 if (process.argv[1] && (process.platform === 'win32' ? path.resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase() : path.resolve(process.argv[1]) === fileURLToPath(import.meta.url))) {

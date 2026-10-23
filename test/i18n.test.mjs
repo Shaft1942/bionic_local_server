@@ -76,7 +76,7 @@ test('all shipped catalogues share keys and parameters, and every explicit HTML 
   const catalogues = { fr: {}, en: {} };
   const recorder = Object.freeze({ ...i18n, register(language, entries) { Object.assign(catalogues[language], entries); i18n.register(language, entries); } });
   context.BionicI18n = recorder;
-  for (const language of ['fr', 'en']) for (const domain of ['ui', 'app', 'settings', 'components']) {
+  for (const language of ['fr', 'en']) for (const domain of ['ui', 'app', 'settings', 'components', 'local-services']) {
     vm.runInContext(await fs.readFile(new URL(`../public/locales/${language}/${domain}.js`, import.meta.url), 'utf8'), context);
   }
   assert.deepEqual(Object.keys(catalogues.fr).sort(), Object.keys(catalogues.en).sort());
