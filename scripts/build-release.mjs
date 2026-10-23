@@ -3,11 +3,15 @@ import { createHash } from 'node:crypto';
 import { crc32 } from 'node:zlib';
 import path from 'node:path';
 import { collectReleaseFiles, repositoryRoot } from './release-files.mjs';
+import { compareUpdateVersions, parseUpdateVersion, updateChannelForVersion } from '../lib/update-version.mjs';
 const files = await collectReleaseFiles();
 const pkg = JSON.parse(files.find(file => file.path === 'package.json').bytes.toString('utf8'));
-if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(pkg.version)) throw new Error('Version invalide.');
+const channel = updateChannelForVersion(pkg.version), args = process.argv.slice(2);
+if (args.length && (args.length !== 2 || args[0] !== '--channel' || args[1] !== channel)) throw new Error('Le canal demandé doit correspondre à la version du paquet (stable ou beta).');
 const compatibility = JSON.parse(files.find(file => file.path === 'update-compatibility.json')?.bytes.toString('utf8') || 'null');
-if (!compatibility || compatibility.schemaVersion !== 1 || !/^\d+\.\d+\.\d+$/.test(compatibility.minInstalledVersion) || !Number.isInteger(compatibility.nodeMajorMin) || compatibility.nodeMajorMin < 24 || (compatibility.nodeMajorMax !== null && (!Number.isInteger(compatibility.nodeMajorMax) || compatibility.nodeMajorMax < compatibility.nodeMajorMin)) || !Array.isArray(compatibility.platforms) || compatibility.platforms.length !== 1 || compatibility.platforms[0] !== 'win32') throw new Error('Compatibilité des mises à jour invalide.');
+if (!compatibility || compatibility.schemaVersion !== 1 || !Number.isInteger(compatibility.nodeMajorMin) || compatibility.nodeMajorMin < 24 || (compatibility.nodeMajorMax !== null && (!Number.isInteger(compatibility.nodeMajorMax) || compatibility.nodeMajorMax < compatibility.nodeMajorMin)) || !Array.isArray(compatibility.platforms) || compatibility.platforms.length !== 1 || compatibility.platforms[0] !== 'win32') throw new Error('Compatibilité des mises à jour invalide.');
+parseUpdateVersion(compatibility.minInstalledVersion);
+if (compatibility.maxInstalledVersion != null && compareUpdateVersions(compatibility.minInstalledVersion, compatibility.maxInstalledVersion) > 0) throw new Error('Bornes de compatibilité des mises à jour incohérentes.');
 const prefix = `bionic-mobile-v${pkg.version}/`, local = [], central = [];
 let offset = 0;
 for (const file of files) {
@@ -32,5 +36,5 @@ for (const file of [destination,sums,updateManifest]) { const info = await lstat
 const sha256 = createHash('sha256').update(archive).digest('hex');
 await writeFile(destination,archive);
 await writeFile(sums,sha256+'  '+name+'\n');
-await writeFile(updateManifest, JSON.stringify({ ...compatibility, version: pkg.version, archive: name, sha256 }, null, 2) + '\n');
+await writeFile(updateManifest, JSON.stringify({ ...compatibility, channel, version: pkg.version, archive: name, sha256 }, null, 2) + '\n');
 console.log(`Archive propre : dist/${name} (${files.length} fichiers). Empreinte : dist/SHA256SUMS.txt. Compatibilité : dist/update-manifest.json`);

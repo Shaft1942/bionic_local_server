@@ -8,7 +8,11 @@ La vérification transmet à GitHub une demande publique de liste de versions et
 
 ## Choisir
 
-Ouvrez **Mises à jour** dans les options du chat ou avec l'icône de la barre latérale. Une indication discrète apparaît si une version compatible est disponible ; aucune fenêtre ne s'ouvre automatiquement.
+Ouvrez **Paramètres → Maintenance et aide → Mises à jour**, ou utilisez l'icône de la barre latérale. Une indication discrète apparaît si une version compatible est disponible ; aucune fenêtre ne s'ouvre automatiquement.
+
+Le **canal de publication** vaut **Stable** par défaut, même après installation d'un ZIP bêta. Le choix **Bêta** ajoute les versions d'essai `X.Y.Z-beta.N` aux stables compatibles plus récentes. Le choix s'applique au PC pour tous les appareils connectés et reste indépendant de la vérification automatique. Changer le canal n'installe rien ; si les vérifications automatiques sont désactivées, utilisez **Vérifier maintenant**.
+
+Après une bêta, revenir à Stable attend une version stable plus récente ; cela ne réinstalle pas une ancienne version. Par exemple, `2.2.0-beta.1` peut recevoir `2.2.0`, mais pas `2.1.0`.
 
 - **Installer et redémarrer** : après votre confirmation explicite, le serveur télécharge et vérifie l'archive, prépare une sauvegarde des sources, arrête cette instance et la redémarre. Reconnectez-vous avec votre code habituel si nécessaire.
 - **Plus tard** : ferme la proposition et masque son indication dans l'onglet pour la session en cours. Rien n'est téléchargé ni installé. Une vérification manuelle peut la réafficher.
@@ -19,11 +23,11 @@ Les réglages de vérification et le refus sont communs à l'installation. Toute
 
 ## Compatibilité et sauts de versions
 
-Une version proposée doit être stable, supérieure à celle installée, disposer des trois pièces jointes attendues et d'un manifeste de protocole connu. Le serveur examine la liste paginée des Releases et compare les numéros, pas seulement leur date. Il ne propose qu'une version : la plus récente dont les conditions sont satisfaites. Il n'impose pas les versions intermédiaires.
+Une version proposée doit appartenir au canal choisi, être supérieure à celle installée, disposer des trois pièces jointes attendues et d'un manifeste de protocole connu. Le canal Stable exclut les préversions ; Bêta accepte aussi les stables. Le serveur examine la liste paginée des Releases et compare les numéros, pas seulement leur date : `beta.10` vient après `beta.2`, et la stable vient après les bêtas du même numéro. Il ne propose qu'une version : la plus récente dont les conditions sont satisfaites. Il n'impose pas les versions intermédiaires.
 
 `update-manifest.json` déclare la version de départ minimale, une borne maximale éventuelle, les versions majeures de Node.js autorisées, les systèmes pris en charge et l'empreinte de l'archive. Une version plus récente incompatible est ignorée au profit de la plus récente compatible. Une incompatibilité ou une absence de métadonnées ne constitue pas une preuve qu'une installation manuelle fonctionnerait.
 
-Le protocole 1 installe automatiquement **sous Windows**, avec Node.js 24 ou ultérieur si la Release l'autorise, dans un dossier extrait du ZIP. Un checkout contenant `.git` reste consultable mais refuse l'installation automatique : utilisez Git. Les préversions, brouillons et anciennes Releases sans manifeste ne sont pas proposés. Les vérifications sont bornées en durée, taille et pagination ; si ces limites empêchent une sélection certaine, une erreur est affichée et aucune version n'est choisie.
+Le protocole 1 installe automatiquement **sous Windows**, avec Node.js 24 ou ultérieur si la Release l'autorise, dans un dossier extrait du ZIP. Un checkout contenant `.git` reste consultable mais refuse l'installation automatique : utilisez Git. Les brouillons, préversions autres que les bêtas numérotées et anciennes Releases sans manifeste ne sont pas proposés. Une bêta doit être marquée comme préversion sur GitHub et porter le canal bêta dans son manifeste. Les vérifications sont bornées en durée, taille et pagination ; si ces limites empêchent une sélection certaine, une erreur est affichée et aucune version n'est choisie.
 
 ## Préservation et arrêt
 
@@ -48,6 +52,8 @@ Le retour de version du programme n'annule jamais les modifications déjà effec
 ## Premier déploiement
 
 La Release 1.8.0 ne possède pas ce mécanisme. Installez manuellement la première version qui le contient en suivant [Sauvegarde et mise à jour](sauvegarde-mise-a-jour.md). Les publications suivantes doivent joindre `update-manifest.json`, le ZIP et `SHA256SUMS.txt`. Une archive construite localement ou une branche de développement n'est pas une Release publiée.
+
+La stable **2.1.0** publiée ne possède pas le sélecteur de canal et ignore les préversions. Pour rejoindre la première bêta, suivez la même procédure manuelle avec sauvegarde. Activez ensuite le canal Bêta pour recevoir les préversions suivantes. La publication de la bêta conserve la stable 2.1.0 et son téléchargement habituels.
 
 ## Numérotation des versions de développement V2
 

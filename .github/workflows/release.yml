@@ -17,13 +17,25 @@ jobs:
         with:
           node-version: '24'
       - name: Vérifier la version du tag
-        run: node -e "const p=require('./package.json'); if(process.env.GITHUB_REF_NAME !== 'v'+p.version) process.exit(1)"
+        id: version
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { updateChannelForVersion } from './lib/update-version.mjs';
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const channel = updateChannelForVersion(pkg.version);
+          if (process.env.GITHUB_REF_NAME !== 'v' + pkg.version) throw new Error('Le tag doit correspondre à package.json.');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'channel=' + channel + '\n');
+          NODE
       - run: npm run check
       # Use the same bounded file concurrency as branch verification.
       - run: node --test --test-concurrency=2 test/*.test.mjs
       - run: python -B test/comfy-memory-node.test.py
       - run: npm run check:export
-      - run: npm run release
+      - name: Construire le canal choisi
+        env:
+          RELEASE_CHANNEL: ${{ steps.version.outputs.channel }}
+        run: npm run release -- --channel "$RELEASE_CHANNEL"
       - name: Préparer les notes de version
         run: |
           node --input-type=module <<'NODE'
@@ -33,10 +45,17 @@ jobs:
           if (!section) throw new Error('Notes absentes pour la version du tag.');
           const changes = section.slice(section.indexOf('\n') + 1).trim().replace(/\]\((docs\/[^)]+)\)/g, (_, target) => '](https://github.com/Shaft1942/bionic_local_server/blob/v' + pkg.version + '/' + target + ')');
           const archive = 'bionic-mobile-v' + pkg.version + '.zip';
-          const notes = '## Installation Windows\n\nTéléchargez **' + archive + '** ci-dessous, extrayez entièrement le ZIP puis double-cliquez sur **Installer.cmd**. L’assistant détecte Node.js ou propose son téléchargement portable avec votre accord. Bionic doit être installé séparément.\n\n## Nouveautés\n\n' + changes + '\n\n## Mise à jour\n\nDepuis 1.9.0, utilisez les mises à jour proposées dans le compagnon. Les installations plus anciennes suivent la procédure manuelle du README, avec sauvegarde des données. Node.js 24 minimum ; le runtime portable n’est pas inclus dans le ZIP.\n\nL’archive ne contient ni conversations, ni clés, ni configuration personnelle. SHA256SUMS.txt et update-manifest.json sont joints pour le contrôle de l’archive et de sa compatibilité.\n';
+          const beta = pkg.version.includes('-beta.');
+          const notice = beta ? '**Version beta : version d’essai du canal beta, à choisir volontairement.**\n\n' : '';
+          const update = beta ? 'Depuis la stable 2.1.0, le premier accès à la beta nécessite la procédure manuelle du README, avec sauvegarde des données : cette stable ne possède pas encore le choix du canal. Après cette installation, choisissez beta dans les paramètres des mises à jour pour recevoir les préversions suivantes. ' : 'Depuis 1.9.0, utilisez les mises à jour proposées dans le compagnon. Les installations plus anciennes suivent la procédure manuelle du README, avec sauvegarde des données. ';
+          const notes = notice + '## Installation Windows\n\nTéléchargez **' + archive + '** ci-dessous, extrayez entièrement le ZIP puis double-cliquez sur **Installer.cmd**. L’assistant détecte Node.js ou propose son téléchargement portable avec votre accord. Bionic doit être installé séparément.\n\n## Nouveautés\n\n' + changes + '\n\n## Mise à jour\n\n' + update + 'Node.js 24 minimum ; le runtime portable n’est pas inclus dans le ZIP.\n\nL’archive ne contient ni conversations, ni clés, ni configuration personnelle. SHA256SUMS.txt et update-manifest.json sont joints pour le contrôle de l’archive et de sa compatibilité.\n';
           fs.writeFileSync('dist/RELEASE_NOTES.md', notes);
           NODE
       - name: Publier le ZIP et son empreinte
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.zip dist/SHA256SUMS.txt dist/update-manifest.json --verify-tag --title "Bionic Mobile $GITHUB_REF_NAME" --notes-file dist/RELEASE_NOTES.md
+          RELEASE_CHANNEL: ${{ steps.version.outputs.channel }}
+        run: |
+          flags=(--latest)
+          if [ "$RELEASE_CHANNEL" = beta ]; then flags=(--prerelease --latest=false); fi
+          gh release create "$GITHUB_REF_NAME" dist/*.zip dist/SHA256SUMS.txt dist/update-manifest.json --verify-tag --title "Bionic Mobile $GITHUB_REF_NAME" --notes-file dist/RELEASE_NOTES.md "${flags[@]}"

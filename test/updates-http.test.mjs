@@ -18,9 +18,9 @@ class Response extends EventEmitter {
 }
 async function fixture(t, overrides={}) {
   const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'bionic-update-http-'))),calls=[];
-  let enabled=true,ignored=null,checking=false,restarts=0,cookie;
+  let enabled=true,channel='stable',ignored=null,checking=false,restarts=0,cookie;
   const candidate={version:'1.10.0',url:'https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.10.0',notes:'Synthetic'};
-  const service={status:()=>({currentVersion:'1.9.0',enabled,checking,ignoredVersion:ignored,candidate:ignored?null:candidate}),start(){calls.push('start');},stop(){calls.push('stop');},async check(){calls.push('check');},async ignore(v){assert.equal(v,candidate.version);ignored=v;calls.push('ignore');},async setEnabled(v){enabled=v;calls.push('preferences');},async prepareInstall(version){calls.push('download');assert.equal(version,candidate.version);return{archive:Buffer.from('synthetic'),metadata:{version}};},...overrides.service};
+  const service={status:()=>({currentVersion:'1.9.0',installedChannel:'stable',channel,enabled,checking,ignoredVersion:ignored,candidate:ignored?null:candidate}),start(){calls.push('start');},stop(){calls.push('stop');},async check(){calls.push('check');},async ignore(v){assert.equal(v,candidate.version);ignored=v;calls.push('ignore');},async setPreferences(change){if('enabled'in change)enabled=change.enabled;if('channel'in change)channel=change.channel;calls.push('preferences');},async prepareInstall(version){calls.push('download');assert.equal(version,candidate.version);return{archive:Buffer.from('synthetic'),metadata:{version}};},...overrides.service};
   const installer={async prepareUpdate(){calls.push('prepare');return{version:candidate.version};},async launchUpdate(){calls.push('launch');},...overrides.installer};
   const app=await createCompanion({root,settings:{port:8769,apiUrl:'http://127.0.0.1:1235',bionicRoot:root,registryPath:path.join(root,'registry.json'),extraRoots:[],python:'python'},nativeStore:{listProjects:async()=>[],listSessions:async()=>[]},comfyService:overrides.comfyService,updateService:service,updateInstaller:installer,updatePlatform:'win32',enableUpdateScheduling:true,onUpdateRestart:()=>{restarts++;}});
   async function request(url,input,options={}) {
@@ -49,6 +49,44 @@ test('checking, refusing and disabling checks never prepare or install an archiv
   assert.equal((await f.request('/api/updates/preferences',{enabled:false})).json().enabled,false);
   assert.equal((await f.request('/api/updates/ignore',{version:'1.10.0'})).json().candidate,null);
   assert.deepEqual(f.calls,['check','preferences','ignore']);
+});
+
+test('publication channel is authenticated, validated and saved atomically with automatic checks',async t=>{
+  const f=await fixture(t);
+  assert.equal((await f.request('/api/updates/preferences',{channel:'beta'})).statusCode,401);
+  await f.login();
+  assert.equal((await f.request('/api/updates/preferences',{channel:'beta'},{headers:{origin:'http://foreign.invalid'}})).statusCode,403);
+  for(const input of [{channel:'preview'},{channel:null},{channel:'beta',enabled:'yes'},{channel:'beta',extra:true},{},null,[]])assert.equal((await f.request('/api/updates/preferences',input)).statusCode,400);
+  assert.deepEqual(f.calls,[]);
+  const result=await f.request('/api/updates/preferences',{enabled:false,channel:'beta'});
+  assert.equal(result.statusCode,200);assert.equal(result.json().channel,'beta');assert.equal(result.json().enabled,false);assert.equal(result.json().canInstall,true);
+  assert.deepEqual(f.calls,['preferences']);
+});
+
+test('a preference body in flight prevents installation before download',async t=>{
+  const f=await fixture(t);await f.login();let release;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const preference=f.request('/api/updates/preferences',null,{source:Readable.from((async function*(){await gate;yield Buffer.from('{"channel":"beta"}');})())});
+  await sleep(10);
+  assert.equal((await f.request('/api/updates/install',{version:'1.10.0',confirm:true})).statusCode,409);
+  release();assert.equal((await preference).statusCode,200);assert(!f.calls.includes('download'));
+});
+
+test('an unfinished durable preference save prevents installation',async t=>{
+  let release,entered;const gate=new Promise(resolve=>{release=resolve;}),saving=new Promise(resolve=>{entered=resolve;});
+  const f=await fixture(t,{service:{async setPreferences(){entered();await gate;}}});await f.login();
+  const preference=f.request('/api/updates/preferences',{channel:'beta'});await saving;
+  assert.equal((await f.request('/api/updates/install',{version:'1.10.0',confirm:true})).statusCode,409);
+  release();await preference;assert(!f.calls.includes('download'));
+});
+
+test('channel changes are refused throughout installation preparation',async t=>{
+  let release,entered;const gate=new Promise(resolve=>{release=resolve;}),preparing=new Promise(resolve=>{entered=resolve;});
+  const f=await fixture(t,{installer:{async prepareUpdate(){entered();await gate;return{};}}});await f.login();
+  const installation=f.request('/api/updates/install',{version:'1.10.0',confirm:true});await preparing;
+  assert.equal((await f.request('/api/updates/preferences',{channel:'beta'})).statusCode,409);
+  assert.equal((await f.request('/api/updates')).json().channel,'stable');assert(!f.calls.includes('preferences'));
+  release();assert.equal((await installation).statusCode,202);
 });
 
 test('automatic checks start when the server starts listening and stop with it',async t=>{

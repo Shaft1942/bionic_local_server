@@ -119,11 +119,11 @@ function updateHasWork() {
     [...chatRequests.values()].some(request => ['starting', 'queued', 'running'].includes(request.status)) ||
     [...chatStates.values()].some(({ chat }) => chat.generation?.status === 'running' || chat.queue?.some(item => item.status === 'queued'));
 }
-async function updateStatus() {
+async function updateStatus(ownMutation = false) {
   const checkout = await fs.lstat(path.join(ROOT, '.git')).then(() => true, error => { if (error.code === 'ENOENT') return false; throw error; });
   const unavailableReason = updatePlatform !== 'win32' ? 'L’installation automatique est disponible sur Windows. Télécharge la Release pour une mise à jour manuelle.' :
     checkout ? 'Ce dossier est un checkout Git. Mets-le à jour avec Git ; l’installateur automatique est réservé aux archives téléchargées.' :
-    updateHasWork() || inFlightMutations > 0 ? 'Attends la fin des réponses, des accords et des opérations en cours avant d’installer.' : '';
+    updateHasWork() || inFlightMutations > (ownMutation ? 1 : 0) ? 'Attends la fin des réponses, des accords et des opérations en cours avant d’installer.' : '';
   return { ...updater.status(), installation: { ...installation }, canInstall: !unavailableReason && !updatePreparing && !updateMaintenance, unavailableReason };
 }
 async function installUpdate(version) {
@@ -759,7 +759,7 @@ async function handleRequest(req, res) {
       }
       if (!['GET', 'HEAD'].includes(req.method) && url.pathname !== '/api/updates/install') {
         if (updateMaintenance) throw fail(503, 'Le serveur redémarre pour une mise à jour. Réessaie après reconnexion.');
-        if (!url.pathname.startsWith('/api/updates/')) { inFlightMutations++; countedMutation = true; }
+        if (!url.pathname.startsWith('/api/updates/') || url.pathname === '/api/updates/preferences') { inFlightMutations++; countedMutation = true; }
       }
       if (req.method === 'POST' && url.pathname === '/api/security/actions') {
         if (updatePreparing || updateMaintenance) throw fail(409, 'Attends la fin de la mise à jour avant de modifier les connexions.');
@@ -783,8 +783,10 @@ async function handleRequest(req, res) {
       if (req.method === 'POST' && url.pathname === '/api/updates/check') { await updater.check({ manual: true }); json(res, 200, await updateStatus()); return; }
       if (req.method === 'POST' && url.pathname === '/api/updates/preferences') {
         const input = await body(req, 1024);
-        if (typeof input.enabled !== 'boolean') throw fail(400, 'Indique si les vérifications automatiques sont activées.');
-        await updater.setEnabled(input.enabled); json(res, 200, await updateStatus()); return;
+        if (!input || typeof input !== 'object' || Array.isArray(input) || !Object.keys(input).length || Object.keys(input).some(key => !['enabled', 'channel'].includes(key)) ||
+          ('enabled' in input && typeof input.enabled !== 'boolean') || ('channel' in input && !['stable', 'beta'].includes(input.channel))) throw fail(400, 'Indique un canal stable ou bêta, ou le choix des vérifications automatiques.');
+        if (updatePreparing || updateMaintenance) throw fail(409, 'Attends la fin de la mise à jour avant de modifier ses préférences.');
+        await updater.setPreferences(input); json(res, 200, await updateStatus(true)); return;
       }
       if (req.method === 'POST' && url.pathname === '/api/updates/ignore') {
         const input = await body(req, 1024); await updater.ignore(input.version); json(res, 200, await updateStatus()); return;

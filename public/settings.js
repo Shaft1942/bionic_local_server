@@ -27,7 +27,7 @@ function createCompanionSettings({api,getState,node,onChange,onNavigate}) {
     ['Préparer HTTPS','connection','certificate-prepare','hôtes noms dns certificat serveur preuve vérifier','Installation'],
     ['Certificat de cet appareil','connection','certificate-device-name','client p12 créer télécharger renouveler retirer révoquer','Appareil concerné'],
     ['Actualiser les certificats','connection','certificate-refresh','état appareils autorité','Lecture du serveur'],
-    ['Mises à jour du compagnon','maintenance','updates-open','version installer redémarrer vérifier automatique ignorer','Installation'],
+    ['Mises à jour du compagnon','maintenance','updates-open','version installer redémarrer vérifier automatique ignorer canal publication stable bêta beta','Installation'],
     ['Diagnostic de connexion','maintenance','diagnostics-open','rapport télécharger bionic moteur outils config pc','Action ponctuelle'],
     ['Aide et capacités','maintenance','settings-help','fonctionnement limites connexion api port python configuration','Information'],
     ['Organiser une conversation','tools','settings-heading-tools','renommer déplacer supprimer branche classement historique source','Actions du fil'],

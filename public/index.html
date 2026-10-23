@@ -252,7 +252,10 @@
         <p id="updates-unavailable" hidden></p>
         <div class="updates-actions"><button id="updates-install" class="primary" type="button">Installer et redémarrer</button><button id="updates-later" class="file-action" type="button">Plus tard</button><button id="updates-ignore" class="updates-text-action" type="button">Ignorer cette version</button></div>
       </section>
-      <div class="updates-preferences"><label for="updates-enabled"><input id="updates-enabled" type="checkbox"><span>Vérifier automatiquement</span></label><p>À chaque démarrage du serveur, puis toutes les 24 heures de fonctionnement. L’installation reste soumise à ton accord.</p></div>
+      <div class="updates-preferences">
+        <div class="updates-channel"><label for="updates-channel">Canal de publication</label><select id="updates-channel" aria-describedby="updates-channel-scope updates-channel-note"><option value="stable">Stable</option><option value="beta">Bêta</option></select><p id="updates-channel-scope">Ce choix s’applique au compagnon installé sur ce PC, pour tous les appareils connectés.</p><p id="updates-channel-note">Stable propose les versions publiées pour un usage courant.</p></div>
+        <label for="updates-enabled"><input id="updates-enabled" type="checkbox"><span>Vérifier automatiquement</span></label><p>À chaque démarrage du serveur, puis toutes les 24 heures de fonctionnement. L’installation reste soumise à ton accord.</p>
+      </div>
       <div class="updates-check-row"><button id="updates-check" class="file-action" type="button">Vérifier maintenant</button><p id="updates-checked"></p></div>
     </div>
   </dialog>

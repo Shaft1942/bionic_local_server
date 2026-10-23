@@ -92,6 +92,8 @@ Le nouveau module `public/message-text.js` est servi par la liste explicite d'ac
 
 `node scripts/browser-settings.mjs` utilise les mêmes variables Playwright que les autres smokes. Il charge l'interface avec une API entièrement synthétique et vérifie les destinations, la recherche, le clavier, les formulaires et leurs limites à 320/390/1280 px. Les actions certificat et maintenance sont simulées ; ce parcours ne valide ni un import système de certificat, ni une mise à jour réelle, ni un moteur ou un téléphone physique. Les tests de portée et de réponses tardives sont complétés par `node --test test/settings-ui.test.mjs`.
 
+`node scripts/browser-update-channels.mjs` vérifie le choix Stable/Bêta, son enregistrement, les erreurs et réponses tardives, la vérification manuelle et le retour à Stable à 320/1280 px, avec une API synthétique qui intercepte toutes les requêtes. `node --test test/update-service.test.mjs test/updates-http.test.mjs test/updates-ui.test.mjs test/update-version.test.mjs` couvre le filtrage et l'ordre des versions, la migration des préférences et les changements de canal concurrents. Ces contrôles ne publient aucune Release et n'utilisent aucune installation personnelle.
+
 ### Mesurer les parcours des chats
 
 ```sh
