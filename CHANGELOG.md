@@ -1,5 +1,58 @@
 # Journal des versions
 
+## 2.3.0 — 2026-10-23
+
+- Publication stable du contenu validé de 2.2.1-beta.4, sans changement fonctionnel supplémentaire. Les préversions restent disponibles dans l’historique GitHub.
+- Paramètres organisés par usage, avec Maintenance et Aide séparées, guide audité en huit thèmes et onze raccourcis préservant les saisies et le focus.
+- Configuration ComfyUI guidée : recherche du serveur, diagnostic des modèles et nœuds, nettoyage mémoire facultatif et module fourni avec installation expliquée.
+- Améliorations de lecture des conversations et barre système dans la colonne des projets ; canaux de mise à jour Stable/Bêta avec préférences conservées.
+- Le manifeste de mise à jour déclare le canal stable. La 2.3.0 est proposée aux installations compatibles des canaux Stable et Bêta ; aucun passage par une préversion n’est requis.
+- Validation de la beta.4 : 610 tests, parcours navigateur synthétiques à 320/390/1280 px et revue indépendante. Aucun nouveau rendu, modèle, GPU ou téléphone physique qualifié par la promotion stable.
+
+
+## 2.2.1-beta.4 — 2026-10-23
+
+- Paramètres : Maintenance et Aide sont deux rubriques distinctes. Maintenance conserve mises à jour, diagnostic et configuration PC ; Aide regroupe le guide et les capacités.
+- Guide intégré audité contre le code puis corrigé : conversations, fichiers et pièces jointes, permissions web/scripts, ComfyUI et mémoire facultative, connexion, dépannage et mises à jour.
+- Les anciens accès d’aide ouvrent la même page. Les raccourcis du guide conservent les saisies et ciblent les bons réglages, avec recherche et navigation clavier.
+- Conservation des ajouts de la beta.3 ; les métaprompts et rapports d’audit des agents restent dans le socle de développement.
+
+
+## 2.2.1-beta.3 — 2026-10-23
+
+- Paramètres → Images : configuration guidée en trois étapes, recherche des serveurs locaux (ports 8188/8000 et adresse saisie), diagnostic séparé du serveur, des fichiers de modèles et des nœuds, avec instructions et dossiers attendus.
+- Nettoyage mémoire facultatif, désactivé sur installation neuve ; choix existant conservé et figé avec chaque demande. Sans nettoyage, aucun module custom ni sortie IMAGE de SaveImage n'est requis.
+- Module mémoire téléchargeable depuis les paramètres authentifiés, installation manuelle expliquée ; effets après rendu, coût du rechargement et absence de garantie de gain explicités.
+- Conservation des parcours de paramètres, lecture et canaux de mise à jour de la beta.2.
+
+
+## 2.2.1-beta.2 — 23 octobre 2026
+
+- Barre de statut, modèles chargés et paramètres limitée à la colonne des projets et conversations ; la conversation retrouve toute sa hauteur.
+- Informations et indications de mise à jour exclusivement dans les paramètres.
+- Déconnexion déplacée dans Connexion et appareils, avec protection des saisies de paramètres non enregistrées.
+
+## 2.2.1-beta.1 — 23 octobre 2026
+
+- Mises à jour intégrées aux paramètres, dans Maintenance et aide, avec canal Stable ou Bêta, version et état de vérification.
+- Paramètres et Modèles chargés réunis dans la barre du bas avec Reconnexion au PC et Déconnecter ; accès par icônes nommées, sans doublons dans l'en-tête.
+- Reprise des optimisations CI : contrôles Windows/Linux sur les PR et main, lancement manuel pour les branches de travail, annulation des contrôles obsolètes et délai maximal de 15 minutes. Le workflow de publication conserve ses règles.
+
+## 2.2.0-beta.1 — 23 octobre 2026
+
+- Deux canaux dans Paramètres → Maintenance et aide → Mises à jour : stable par défaut et bêta sur choix explicite, partagé par l'installation PC. La vérification automatique reste indépendante du canal.
+- Le canal stable exclut les préversions ; le canal bêta reçoit les bêtas et les stables compatibles plus récentes. Un retour au canal stable attend une stable supérieure à la bêta installée, sans retour automatique à une ancienne version.
+- Publication bêta distincte sur GitHub, avec archive, empreinte et manifeste contrôlés. La stable 2.1.0 déjà publiée reste la référence stable ; le premier passage depuis cette version exige une installation manuelle de la bêta, car son vérificateur ignore les préversions.
+
+- Les icônes de copie et de création de branche sont regroupées à droite de chaque message. La création de branche est directement accessible.
+
+- Durée, tokens générés et débit visibles à droite de « Détails du tour » replié. Copie des prompts, réponses et blocs de code par icône accessible, avec texte source exact et repli manuel.
+- Paramètres regroupés par tâche, avec recherche locale des réglages et indications de portée. Brouillons, diagnostic, certificats, modèles et mises à jour restent accessibles depuis leurs destinations et raccourcis.
+- Les formulaires de plafond et de ComfyUI proposent une annulation et signalent les saisies non enregistrées. La fermeture permet de poursuivre, d'abandonner ou de conserver ces saisies dans l'onglet, sans conserver les secrets de certificat.
+- Lecture des réponses : titres, listes ordonnées et imbriquées, citations et tableaux Markdown ; blocs de code avec langage, copie exacte et sélection manuelle si le presse-papiers est indisponible. Le code affiché reste passif.
+- Les informations secondaires sont regroupées dans « Détails du tour ». Le plafond ordinaire y est replié ; les réductions, réponses coupées, erreurs et validations restent visibles. « Régler le plafond » ouvre la cible connue du tour, ou demande de choisir le modèle si sa provenance n'a pas été relevée.
+- La lecture conserve la sélection, le focus et les volets pendant les mises à jour. Remonter dans le fil suspend le suivi automatique ; « Revenir à la réponse » permet de retrouver la suite.
+
 ## 2.1.0 — 23 octobre 2026
 
 - Paramètres → Sécurité des connexions : préparer HTTPS, télécharger l’autorité publique, créer et télécharger un certificat client chiffré depuis le navigateur, renouveler et révoquer un appareil. L’activation exige une connexion de preuve ; la récupération après perte de tous les accès reste locale au PC.

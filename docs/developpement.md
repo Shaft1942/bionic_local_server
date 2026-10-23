@@ -82,6 +82,18 @@ Une installation de développement existante peut être réutilisée avec `PLAYW
 
 Le smoke n’est **pas activé automatiquement en CI**. Playwright n’est pas une dépendance d’exécution et aucun navigateur n’est nécessaire au lancement du serveur. Un viewport de 320 px n’est pas un téléphone physique, un clavier natif, un lecteur d’écran ni un test Wi-Fi.
 
+### Lecture des conversations
+
+`node --test test/message-text.test.mjs` vérifie le rendu DOM passif, les liens, listes/tableaux, bornes sur textes malformés et la copie exacte, y compris CRLF et code non clôturé. `node scripts/browser-reading.mjs` exerce ensuite l'interface à 320, 390 et 1280 px : contenus mêlés, refus d'une validation, états d'erreur, image, presse-papiers simulé, streaming NDJSON contrôlé, sélection/focus/détails, défilement et accès au plafond du bon modèle/chat. Toutes les requêtes sont interceptées ; aucun serveur utilisateur ni moteur n'est contacté. Les variables de runtime et de captures ci-dessus sont réutilisées.
+
+Le nouveau module `public/message-text.js` est servi par la liste explicite d'actifs statiques ; le test HTTP de `test/server.test.mjs` vérifie cette route et son type JavaScript sans ouvrir de port. Les sources/tests/smoke font partie du manifeste fermé de distribution. Le renderer est un sous-ensemble volontaire du Markdown, pas une implémentation exhaustive de CommonMark ; HTML brut et images Markdown distantes restent du texte passif.
+
+### Navigation des paramètres
+
+`node scripts/browser-settings.mjs` utilise les mêmes variables Playwright que les autres smokes. Il charge l'interface avec une API entièrement synthétique et vérifie les destinations, la recherche, le clavier, les formulaires et leurs limites à 320/390/1280 px. Les actions certificat et maintenance sont simulées ; ce parcours ne valide ni un import système de certificat, ni une mise à jour réelle, ni un moteur ou un téléphone physique. Les tests de portée et de réponses tardives sont complétés par `node --test test/settings-ui.test.mjs`.
+
+`node scripts/browser-update-channels.mjs` vérifie le choix Stable/Bêta, son enregistrement, les erreurs et réponses tardives, la vérification manuelle et le retour à Stable à 320/1280 px, avec une API synthétique qui intercepte toutes les requêtes. `node --test test/update-service.test.mjs test/updates-http.test.mjs test/updates-ui.test.mjs test/update-version.test.mjs` couvre le filtrage et l'ordre des versions, la migration des préférences et les changements de canal concurrents. Ces contrôles ne publient aucune Release et n'utilisent aucune installation personnelle.
+
 ### Mesurer les parcours des chats
 
 ```sh
@@ -140,3 +152,7 @@ En cas de base occupée, l’adaptateur peut construire un instantané temporair
 Une exécution locale génère `data/`, `runtime/`, `ACCES-PRIVE.txt` et des journaux. Ils ne doivent pas devenir des fixtures, des artefacts CI ou une partie d’une release. Le fichier local de configuration et les jetons d’environnement restent privés.
 
 Avant une proposition de publication, suivez [Publication](publication.md). Ne copiez pas tout un dossier actif vers une archive, même si `.gitignore` existe.
+
+### Vérifier l’aide embarquée
+
+`npm run test:browser:help` exécute `scripts/browser-help.mjs` sur une API synthétique : séparation Maintenance/Aide, guide au clavier, raccourcis, saisies conservées, retours de focus et débordements à 320/390/1280 px. Playwright et ses options sont ceux des autres parcours. Aucun service personnel ni modèle n’est utilisé.

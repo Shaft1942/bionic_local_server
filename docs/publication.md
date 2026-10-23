@@ -2,13 +2,40 @@
 
 [Retour au README](../README.md)
 
+## Canaux stable et beta
+
+Le canal **stable** est choisi par défaut dans les paramètres des mises à jour. Le canal **beta** est volontaire : il permet de recevoir les préversions en cours de préparation. Le réglage est conservé dans les données locales et reste indépendant du numéro de la version installée.
+
+Les installations restées en `2.1.0` ne disposent pas du choix du canal. Elles peuvent recevoir directement la stable `2.3.0` par la mise à jour habituelle, puis choisir beta si souhaité. Une installation neuve conserve stable par défaut, même si son ZIP est une beta. Un premier passage manuel vers une préversion reste possible selon la procédure du README, avec sauvegarde des données.
+
+| Canal | Version et tag | Publication GitHub |
+| --- | --- | --- |
+| Stable | `X.Y.Z`, tag `vX.Y.Z` | Release normale, marquée comme dernière stable (`--latest`) |
+| Beta | `X.Y.Z-beta.N`, tag `vX.Y.Z-beta.N` | Préversion (`--prerelease`), jamais dernière stable (`--latest=false`) |
+
+`N` est un entier positif sans zéro initial. Les autres préversions (`alpha`, `rc`), métadonnées de build et numéros avec zéro initial sont refusés. L'ordre est numérique : `2.2.0-beta.2 < 2.2.0-beta.10 < 2.2.0`. Une version stable et sa beta ne doivent jamais partager le même tag.
+
+Le canal beta peut également recevoir une stable plus récente. Revenir au canal stable change les prochaines versions recherchées ; cela ne réinstalle pas une version plus ancienne. Par exemple, une installation `2.2.0-beta.1` attend une stable ultérieure compatible, telle que `2.2.0`, si la dernière stable est encore `2.1.0`. Ce mécanisme conserve les contrôles de compatibilité et les protections des données de l'installateur.
+
+Pour construire et vérifier explicitement chaque canal :
+
+```sh
+# package.json déclare 2.2.0
+npm run release -- --channel stable
+
+# package.json déclare 2.2.0-beta.1
+npm run release -- --channel beta
+```
+
+Le canal demandé doit correspondre à `package.json`. Sans option, `npm run release` déduit le canal de cette version. Le workflow applique la même validation avant les tests et vérifie que le tag correspond exactement au paquet. Les notes du `CHANGELOG.md` doivent comporter une section pour le numéro complet, suffixe beta compris. Une préversion utilise une nouvelle version et un nouveau tag pour chaque livraison.
+
 ## Contrat des mises à jour à partir de 1.9.0
 
 `npm run release` produit désormais trois pièces jointes : le ZIP, `SHA256SUMS.txt` et `update-manifest.json`. Le workflow de publication joint les trois à la Release ; une version sans ce manifeste reste téléchargeable manuellement mais n'est pas proposée automatiquement.
 
 Avant un tag, examinez `update-compatibility.json` : `schemaVersion: 1`, `minInstalledVersion`, borne `maxInstalledVersion` facultative, `nodeMajorMin`, `nodeMajorMax` et `platforms`. Ces champs sont une déclaration de compatibilité à vérifier par le mainteneur, pas une déduction fiable du seul numéro de version. Gardez la borne minimale de la plus ancienne version depuis laquelle la mise à jour directe a été validée ; n'imposez pas une version intermédiaire inutilement. Un changement incompatible doit relever cette borne ou annoncer une mise à jour manuelle. Le protocole inconnu sera refusé par les anciens vérificateurs.
 
-Le générateur ajoute au manifeste le numéro du paquet, le nom du ZIP et son SHA-256. Ne modifiez pas ces champs à la main après génération. Le manifeste est une pièce jointe extérieure au ZIP afin d'éviter une empreinte circulaire. Avant publication, vérifiez les tests Windows/Ubuntu du commit choisi et un parcours d'installation depuis la version minimale annoncée, avec données synthétiques et récupération. Les empreintes vérifient la cohérence des pièces jointes ; elles ne constituent pas une signature indépendante du compte qui publie la Release.
+Le générateur ajoute au manifeste le canal explicite (`channel: "stable"` ou `channel: "beta"`), le numéro du paquet, le nom du ZIP et son SHA-256. Les anciens manifestes `schemaVersion: 1` sans canal restent acceptés pour les versions stables ; une beta exige un canal explicite concordant. Les bornes de compatibilité et la version installée utilisent le même ordre stable/beta. Ne modifiez pas ces champs à la main après génération. Le manifeste est une pièce jointe extérieure au ZIP afin d'éviter une empreinte circulaire. Avant publication, vérifiez les tests Windows/Ubuntu du commit choisi et un parcours d'installation depuis la version minimale annoncée, avec données synthétiques et récupération. Les empreintes vérifient la cohérence des pièces jointes ; elles ne constituent pas une signature indépendante du compte qui publie la Release.
 
 La publication de 1.9.0 est déclenchée volontairement par son tag après les contrôles de la branche. La Release 1.8.0 est conservée ; l'installation initiale de ce mécanisme depuis 1.8.0 nécessite une mise à jour manuelle.
 
@@ -100,7 +127,7 @@ Une publication future nécessite une instruction distincte, un numéro de versi
 
 La note doit dire ce qui est nouveau, comment installer et mettre à jour, ce qui a été testé et les limitations connues. Les versions de Bionic et les systèmes non vérifiés ne doivent pas être présentés comme compatibles par défaut.
 
-Le workflow `release.yml` automatise cette procédure lors de l’envoi d’un tag `v*` : il vérifie que le tag correspond à la version du paquet, lance les tests, construit l’archive depuis le manifeste et crée une Release avec le ZIP, `SHA256SUMS.txt` et `update-manifest.json`. L’envoi de ce tag déclenche donc une publication téléchargeable ; ne l’effectuez qu’après revue des sources. Les vérifications ordinaires des branches et pull requests disposent seulement d’un accès en lecture au dépôt.
+Le workflow `release.yml` automatise cette procédure lors de l’envoi d’un tag `v*` : il vérifie que le tag correspond à une version stable ou beta valide du paquet, lance les tests, construit l’archive depuis le manifeste et crée la Release du canal choisi avec le ZIP, `SHA256SUMS.txt` et `update-manifest.json`. Une beta est publiée comme préversion sans déplacer la dernière stable. L’envoi de ce tag déclenche donc une publication téléchargeable ; ne l’effectuez qu’après revue des sources. Les vérifications ordinaires des branches et pull requests disposent seulement d’un accès en lecture au dépôt.
 
 GitHub peut distribuer le code et les archives, mais **GitHub Pages n’héberge pas le serveur Node.js de cette application**. Chaque personne télécharge et exécute sa propre copie sur son PC avec Bionic. Aucun serveur central n’est nécessaire à cette distribution.
 

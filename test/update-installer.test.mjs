@@ -120,6 +120,24 @@ test('compatibility: latest may skip versions, but cannot cross installed/Node/p
   assert.throws(() => validateUpdateMetadata({ ...manifest, nodeMajorMax: 24 }, { currentVersion: '1.9.0', platform: 'win32', nodeMajor: 25 }), /Node/);
 });
 
+test('install stable to beta, numbered beta to beta and beta to stable with exact backups', async t => {
+  const root = await fixture(t, sourceFiles('2.1.0'));
+  let currentVersion = '2.1.0';
+  for (const version of ['2.2.0-beta.1', '2.2.0-beta.10', '2.2.0']) {
+    const archive = zip(sourceFiles(version), version);
+    const manifest = { ...metadata(archive), version, channel: version.includes('-beta.') ? 'beta' : 'stable', minInstalledVersion: '2.1.0', archive: `bionic-mobile-v${version}.zip` };
+    const prepared = await prepareUpdate({ root, archive, metadata: manifest, currentVersion, instanceId: 'synthetic-instance', port: 12345, platform: 'win32' });
+    const restarts = [];
+    await applyPreparedUpdate(prepared, { restart: async (_plan, next) => { restarts.push(next); return { pid: 321 }; } });
+    assert.deepEqual(restarts, [version]);
+    assert.equal(JSON.parse(await fs.readFile(path.join(root, 'package.json'))).version, version);
+    assert.equal(await fs.readFile(path.join(prepared.jobRoot, 'backup/package.json'), 'utf8'), packageFile(currentVersion));
+    assert.equal(JSON.parse(await fs.readFile(path.join(root, 'runtime/update-baseline.json'))).version, version);
+    await assertPrivate(root);
+    currentVersion = version;
+  }
+});
+
 test('prepare and install preserve all private/custom files and keep an exact source backup', async t => {
   const prepared = await plan(t, { oldFiles: sourceFiles('1.9.0', { 'docs/obsolete.md': 'LOCAL OLD SOURCE' }), newFiles: sourceFiles('1.10.0', { 'docs/new.md': 'NEW SOURCE' }) });
   assert.equal(prepared.baselineVerified, false); assert.equal(prepared.warnings.length, 1);

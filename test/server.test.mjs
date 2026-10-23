@@ -13,6 +13,8 @@ const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'bionic-mobi
 const sourceRoot=fileURLToPath(new URL('../',import.meta.url));
 const fileRoot=path.join(root,'project-files');await fs.mkdir(fileRoot,{recursive:true});await fs.writeFile(path.join(fileRoot,'notes.md'),'Synthetic project file.');
 const otherFileRoot=path.join(root,'other-project-files');await fs.mkdir(otherFileRoot);
+// Each independent scenario needs a fresh single-link file, not an earlier inode.
+async function resetAgentFixture(){const file=path.join(fileRoot,'agent.md');await fs.rm(file,{force:true});await fs.writeFile(file,'before',{flag:'wx'});}
 await fs.writeFile(path.join(root,'files-registry.json'),JSON.stringify({projects:[['p1',{projectWorkingDirectoryPath:fileRoot}],['p2',{projectWorkingDirectoryPath:otherFileRoot}]]}));
 process.env.BIONIC_MOBILE_PROJECT_REGISTRY=path.join(root,'files-registry.json');process.env.BIONIC_MOBILE_EXTRA_ROOTS='[]';
 await fs.writeFile(path.join(root,'fixture-store.mjs'),`export function createBionicStore(){return {listProjects:async()=>[{id:'p1',name:'Synthetic',sessionsCount:1},{id:'p2',name:'Other synthetic',sessionsCount:0}],listSessions:async id=>{if(id==='p2')return [];if(id!=='p1')throw Object.assign(new Error('Invalid'),{status:400});return [{id:'native-1',projectId:'p1',name:'Synthetic native',updatedAt:1}]},getConversation:async(projectId,id)=>{if(projectId!=='p1'||id!=='native-1')throw Object.assign(new Error('Missing'),{status:404});return {id,projectId,name:'Synthetic native',source:'bionic',messages:[{id:'m0',role:'user',text:'Synthetic historical text'}]}}}};`);
@@ -60,7 +62,12 @@ async function waitForCondition(condition,timeoutMs=5000){const deadline=perform
 const findings=[];
 const runId=randomUUID(),backgroundRequestId=runId+'-checkpoint';
 try {
- let r=await request('/api/projects');findings.push({test:'unauthenticated API blocked',pass:r.statusCode===401,status:r.statusCode});
+ await fs.mkdir(path.join(root,'public'),{recursive:true});
+ const messageAsset=await fs.readFile(path.join(sourceRoot,'public/message-text.js'),'utf8');
+ await fs.writeFile(path.join(root,'public/message-text.js'),messageAsset);
+ let r=await request('/message-text.js');findings.push({test:'conversation renderer is served through the explicit static asset allowlist with JavaScript MIME',pass:r.statusCode===200&&r.parts.map(String).join('')===messageAsset&&/^text\/javascript/.test(r.headers['Content-Type']||r.headers['content-type']||'')});
+ r=await request('/unlisted-reading.js');findings.push({test:'new conversation renderer does not expose arbitrary static paths',pass:r.statusCode===404});
+ r=await request('/api/projects');findings.push({test:'unauthenticated API blocked',pass:r.statusCode===401,status:r.statusCode});
  r=await request('/api/conversation/move',{method:'POST',body:{projectId:'p1',id:'native-1',targetProjectId:'p2'}});findings.push({test:'conversation move requires authentication',pass:r.statusCode===401});
  for(const action of ['rename','delete']){r=await request('/api/conversation/'+action,{method:'POST',body:{projectId:'p1',id:'native-1',name:'Forbidden'}});findings.push({test:'conversation '+action+' requires authentication',pass:r.statusCode===401})}
  r=await request('/api/file?projectId=p1&rootId=project&path=notes.md');findings.push({test:'file contents require login',pass:r.statusCode===401});
@@ -79,7 +86,7 @@ try {
  r=await request('/api/file/upload?projectId=p1&name=phone.txt',{method:'POST',headers:{cookie},raw:Buffer.from('second')});findings.push({test:'duplicate phone filename gets a distinct project path',pass:r.statusCode===201&&JSON.parse(r.text()).path!==imported.path});
  r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('HTTP_FAIL_INITIAL'),attachments:[{rootId:'project',path:imported.path,hash:imported.hash}]}});const rejectedReceipt=r.records().at(-1).contextReceipt;
  findings.push({test:'an initial upstream rejection never claims confirmed attachment transmission',pass:r.records().at(-1).type==='error'&&rejectedReceipt.initialTransmitted===false&&rejectedReceipt.attachments[0].eligible===true&&rejectedReceipt.attachments[0].transmitted===false&&rejectedReceipt.attachments[0].preview==='Imported from phone.'});
- await fs.writeFile(path.join(fileRoot,'agent.md'),'before');r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_EDIT'),fileAccess:true}});const agentRecords=r.records();
+ await resetAgentFixture();r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_EDIT'),fileAccess:true}});const agentRecords=r.records();
  findings.push({test:'streamed model tools read, save and resume generation with persisted action log',pass:agentRecords.at(-1).type==='done'&&agentRecords.filter(e=>e.type==='action').length===2&&agentRecords.some(e=>e.action?.backupId)&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='after'});
  const changedAction=agentRecords.find(e=>e.action?.backupId).action,agentChatId=agentRecords.find(e=>e.type==='start').id;
  const agentReceipt=JSON.parse(await fs.readFile(path.join(root,'data/chats',agentChatId+'.json'),'utf8')).messages.at(-1).contextReceipt;
@@ -91,7 +98,7 @@ try {
  findings.push({test:'a successful read followed by an upstream error preserves its excerpt without claiming confirmed retransmission',pass:r.records().at(-1).type==='error'&&r.records().at(-1).contextReceipt.initialTransmitted&&r.records().at(-1).contextReceipt.toolReads[0].text==='after'&&r.records().at(-1).contextReceipt.toolReads[0].transmitted===false});
  r=await request('/api/file/restore',{method:'POST',headers:{cookie},body:{projectId:'p1',rootId:'project',path:changedAction.path,hash:changedAction.hash,backupId:changedAction.backupId,chatId:agentChatId,actionId:changedAction.id}});const restoredChat=JSON.parse(await fs.readFile(path.join(root,'data/chats',agentChatId+'.json'),'utf8'));
  findings.push({test:'chat restore persists its completed state and restores the earlier bytes',pass:r.statusCode===200&&restoredChat.messages.at(-1).actions.some(a=>a.id===changedAction.id&&a.restored)&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='before'});
- await fs.writeFile(path.join(fileRoot,'agent.md'),'before');r=await send('UNSOLICITED_TOOL');findings.push({test:'file tools disabled means no tool execution despite unsolicited calls',pass:r.records().some(e=>e.type==='error')&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='before'});
+ await resetAgentFixture();r=await send('UNSOLICITED_TOOL');findings.push({test:'file tools disabled means no tool execution despite unsolicited calls',pass:r.records().some(e=>e.type==='error')&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='before'});
  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1cAAAAASUVORK5CYII=','base64');r=await request('/api/file/upload?projectId=p1&name=photo.png',{method:'POST',headers:{cookie},raw:png});const photo=JSON.parse(r.text());
  r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL image'),attachments:[{rootId:'project',path:photo.path,hash:photo.hash}]}});findings.push({test:'imported image is sent as an immutable data URL to a vision model',pass:r.records().at(-1).type==='done'&&Array.isArray(lastUpstreamBody.messages.at(-1).content)&&lastUpstreamBody.messages.at(-1).content.some(p=>p.image_url?.url.startsWith('data:image/png;base64,'))});
  r=await request('/data/config.json',{headers:{cookie}});findings.push({test:'config not statically exposed',pass:r.statusCode===404,status:r.statusCode});
@@ -133,7 +140,7 @@ try {
  releasePre();await preJob;r=await request('/api/conversation?projectId=p1&id='+receipt.id,{headers:{cookie}});const resumed=JSON.parse(r.text());
  findings.push({test:'a detached reply completes on disk and can be recovered without resending',pass:resumed.generation.status==='completed'&&resumed.messages.at(-1).complete&&resumed.messages.at(-1).text==='Synthetic reply'});
  r=await request('/api/chat-request?projectId=another&requestId='+preId,{headers:{cookie}});findings.push({test:'request recovery is scoped to its project',pass:r.statusCode===404});
- await fs.writeFile(path.join(fileRoot,'agent.md'),'before');const agentRes=new Res();const agentJob=handle(req('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_DETACHED'),fileAccess:true,requestId:runId+'-agent'}}),agentRes);
+ await resetAgentFixture();const agentRes=new Res();const agentJob=handle(req('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_DETACHED'),fileAccess:true,requestId:runId+'-agent'}}),agentRes);
  for(let i=0;i<50&&!releaseAgent;i++)await sleep(10);agentRes.destroyed=true;agentRes.emit('close');releaseAgent();await agentJob;
  const detachedAgentId=agentRes.records().find(e=>e.type==='start').id;r=await request('/api/conversation?projectId=p1&id='+detachedAgentId,{headers:{cookie}});const detachedAgent=JSON.parse(r.text());
  findings.push({test:'file actions and their backup journal also continue after the phone closes',pass:detachedAgent.generation.status==='completed'&&detachedAgent.messages.at(-1).actions.some(a=>a.backupId)&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='after'});
@@ -161,7 +168,7 @@ try {
  r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL should never execute',id),requestId:queuedCancel}});
  r=await request('/api/file?projectId=p1&rootId=project&path=notes.md',{headers:{cookie}});const queuedFile=JSON.parse(r.text());
  r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL queued snapshot',id),requestId:queuedSnapshot,attachments:[{rootId:'project',path:'notes.md',hash:queuedFile.hash,selection:{start:0,end:7,discarded:true},discarded:true}],reasoning:'on'}});
- await fs.writeFile(path.join(fileRoot,'agent.md'),'before');
+ await resetAgentFixture();
  r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_EDIT',id),requestId:queuedTool,fileAccess:true}});
  findings.push({test:'a queued file action does not edit the project before its turn starts',pass:r.records().at(-1).type==='queued'&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='before'});
  const onDiskQueue=JSON.parse(await fs.readFile(path.join(root,'data/chats',id+'.json'),'utf8'));
@@ -275,7 +282,7 @@ try {
  const newNativeList=JSON.parse((await request('/api/sessions?projectId=p2',{headers:{cookie}})).text()).sessions;
  findings.push({test:'native move changes only companion placement and preserves original store identity',pass:r.statusCode===200&&movedNative.nativeProjectId==='p1'&&movedNative.projectId==='p2'&&movedNative.messages[0].text==='Synthetic historical text'&&!oldNativeList.some(s=>s.id==='native-1')&&newNativeList.some(s=>s.id==='native-1')});
  r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL relocated native','native-1'),projectId:'p2'}});findings.push({test:'replying to a relocated native conversation imports its real original history',pass:r.statusCode===200&&lastUpstreamBody.messages.some(message=>message.content==='Synthetic historical text')});
- await fs.writeFile(path.join(fileRoot,'agent.md'),'before');r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_EDIT'),fileAccess:true}});const moveWebId=r.records().find(e=>e.type==='start').id;
+ await resetAgentFixture();r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_EDIT'),fileAccess:true}});const moveWebId=r.records().find(e=>e.type==='start').id;
  const beforeMove=JSON.parse((await request('/api/conversation?projectId=p1&id='+moveWebId,{headers:{cookie}})).text());const oldAction=beforeMove.messages.at(-1).actions.find(action=>action.backupId);
  await fs.writeFile(path.join(otherFileRoot,'agent.md'),'after');
  r=await request('/api/deliverables',{method:'POST',headers:{cookie},body:{projectId:'p1',chatId:moveWebId,messageId:beforeMove.messages.at(-1).id,kind:'message'}});const retainedPin=JSON.parse(r.text());
@@ -310,7 +317,7 @@ try {
  const hiddenList=JSON.parse((await request('/api/sessions?projectId=p2',{headers:{cookie}})).text()).sessions;
  const beforeHiddenReply=upstreamCount;const hiddenReply=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL hidden history','native-1'),projectId:'p2'}});
  findings.push({test:'native delete persists a companion-only hide and blocks future replies without touching Bionic source bytes',pass:r.statusCode===200&&nativeDeleted.localOnly===true&&hiddenNative.statusCode===404&&!hiddenList.some(item=>item.id==='native-1')&&hiddenReply.statusCode===404&&upstreamCount===beforeHiddenReply&&await fs.readFile(path.join(root,'fixture-store.mjs'),'utf8')===originalNativeStore&&JSON.parse(await fs.readFile(path.join(root,'data','conversation-locations.json'),'utf8')).native.find(item=>item.id==='native-1').deletedAt>0});
- await fs.writeFile(path.join(fileRoot,'agent.md'),'before');
+ await resetAgentFixture();
  const managedRequest=runId+'-managed';r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('AGENT_EDIT'),requestId:managedRequest,fileAccess:true}});const managedId=r.records().find(event=>event.type==='start').id;
  const managedBefore=JSON.parse((await request('/api/conversation?projectId=p1&id='+managedId,{headers:{cookie}})).text());
  for(const name of ['', '   ', 'a'.repeat(121), 'Deux\nlignes', 2]){r=await request('/api/conversation/rename',{method:'POST',headers:{cookie},body:{projectId:'p1',id:managedId,name}});assert.equal(r.statusCode,400)}

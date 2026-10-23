@@ -119,11 +119,11 @@ function updateHasWork() {
     [...chatRequests.values()].some(request => ['starting', 'queued', 'running'].includes(request.status)) ||
     [...chatStates.values()].some(({ chat }) => chat.generation?.status === 'running' || chat.queue?.some(item => item.status === 'queued'));
 }
-async function updateStatus() {
+async function updateStatus(ownMutation = false) {
   const checkout = await fs.lstat(path.join(ROOT, '.git')).then(() => true, error => { if (error.code === 'ENOENT') return false; throw error; });
   const unavailableReason = updatePlatform !== 'win32' ? 'L’installation automatique est disponible sur Windows. Télécharge la Release pour une mise à jour manuelle.' :
     checkout ? 'Ce dossier est un checkout Git. Mets-le à jour avec Git ; l’installateur automatique est réservé aux archives téléchargées.' :
-    updateHasWork() || inFlightMutations > 0 ? 'Attends la fin des réponses, des accords et des opérations en cours avant d’installer.' : '';
+    updateHasWork() || inFlightMutations > (ownMutation ? 1 : 0) ? 'Attends la fin des réponses, des accords et des opérations en cours avant d’installer.' : '';
   return { ...updater.status(), installation: { ...installation }, canInstall: !unavailableReason && !updatePreparing && !updateMaintenance, unavailableReason };
 }
 async function installUpdate(version) {
@@ -690,7 +690,7 @@ async function generateChat(res, chat, item, request) {
   }
 }
 
-const STATIC = { '/': 'index.html', '/app.js': 'app.js', '/settings.js':'settings.js', '/certificates.js':'certificates.js', '/project-tree.js':'project-tree.js', '/project-tree.css':'project-tree.css', '/comfy-images.js':'comfy-images.js', '/updates.js': 'updates.js', '/message-drafts.js': 'message-drafts.js', '/files.js': 'files.js', '/workspace.js': 'workspace.js', '/style.css': 'style.css', '/manifest.webmanifest': 'manifest.webmanifest', '/icon.svg': 'icon.svg' };
+const STATIC = { '/': 'index.html', '/app.js': 'app.js', '/message-text.js':'message-text.js', '/settings.js':'settings.js', '/help.js':'help.js', '/certificates.js':'certificates.js', '/project-tree.js':'project-tree.js', '/project-tree.css':'project-tree.css', '/comfy-images.js':'comfy-images.js', '/updates.js': 'updates.js', '/message-drafts.js': 'message-drafts.js', '/files.js': 'files.js', '/workspace.js': 'workspace.js', '/style.css': 'style.css', '/manifest.webmanifest': 'manifest.webmanifest', '/icon.svg': 'icon.svg' };
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml' };
 function handle(req, res) { return scanCycles.run({}, () => handleRequest(req, res)); }
 async function handleRequest(req, res) {
@@ -759,7 +759,7 @@ async function handleRequest(req, res) {
       }
       if (!['GET', 'HEAD'].includes(req.method) && url.pathname !== '/api/updates/install') {
         if (updateMaintenance) throw fail(503, 'Le serveur redémarre pour une mise à jour. Réessaie après reconnexion.');
-        if (!url.pathname.startsWith('/api/updates/')) { inFlightMutations++; countedMutation = true; }
+        if (!url.pathname.startsWith('/api/updates/') || url.pathname === '/api/updates/preferences') { inFlightMutations++; countedMutation = true; }
       }
       if (req.method === 'POST' && url.pathname === '/api/security/actions') {
         if (updatePreparing || updateMaintenance) throw fail(409, 'Attends la fin de la mise à jour avant de modifier les connexions.');
@@ -783,8 +783,10 @@ async function handleRequest(req, res) {
       if (req.method === 'POST' && url.pathname === '/api/updates/check') { await updater.check({ manual: true }); json(res, 200, await updateStatus()); return; }
       if (req.method === 'POST' && url.pathname === '/api/updates/preferences') {
         const input = await body(req, 1024);
-        if (typeof input.enabled !== 'boolean') throw fail(400, 'Indique si les vérifications automatiques sont activées.');
-        await updater.setEnabled(input.enabled); json(res, 200, await updateStatus()); return;
+        if (!input || typeof input !== 'object' || Array.isArray(input) || !Object.keys(input).length || Object.keys(input).some(key => !['enabled', 'channel'].includes(key)) ||
+          ('enabled' in input && typeof input.enabled !== 'boolean') || ('channel' in input && !['stable', 'beta'].includes(input.channel))) throw fail(400, 'Indique un canal stable ou bêta, ou le choix des vérifications automatiques.');
+        if (updatePreparing || updateMaintenance) throw fail(409, 'Attends la fin de la mise à jour avant de modifier ses préférences.');
+        await updater.setPreferences(input); json(res, 200, await updateStatus(true)); return;
       }
       if (req.method === 'POST' && url.pathname === '/api/updates/ignore') {
         const input = await body(req, 1024); await updater.ignore(input.version); json(res, 200, await updateStatus()); return;
@@ -951,6 +953,8 @@ async function handleRequest(req, res) {
         const chat = record.id ? chatStates.get(record.id)?.chat : undefined;
         json(res, 200, { projectId: record.projectId, id: record.id, status: record.status, message: record.message, ...(chat ? { position: queuePosition(chat, requestId) } : {}) }); return;
       }
+      if(req.method==='GET'&&url.pathname==='/api/comfy/memory-module'){const module=await defaultFS.readFile(new URL('./comfyui/custom_nodes/free_memory_after_workflow.py',import.meta.url));res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Disposition':'attachment; filename="free_memory_after_workflow.py"','Cache-Control':'no-store'});res.end(module);return;}
+      if(req.method==='POST'&&url.pathname==='/api/comfy/discover'){json(res,200,await comfyImages.discoverServers(await body(req,4096)));return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/loras'){json(res,200,await comfyImages.listLoras(await body(req,4096)));return;}
       if(req.method==='GET'&&url.pathname==='/api/comfy/settings'){json(res,200,await comfyImages.getSettings());return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/settings'){json(res,200,await comfyImages.updateSettings(await body(req,4096)));return;}

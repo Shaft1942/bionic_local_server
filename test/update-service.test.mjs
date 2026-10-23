@@ -16,6 +16,9 @@ function release(version, overrides = {}) {
   const assets = Object.entries(payloads).map(([name, bytes]) => ({ name, browser_download_url: `${BASE}v${version}/${name}`, digest: `sha256:${sha(bytes)}` }));
   return { release: { tag_name: `v${version}`, draft: false, prerelease: false, body: `Notes ${version}`, published_at: '2026-10-21T12:00:00Z', assets, ...overrides.release }, payloads, metadata };
 }
+function betaRelease(version, overrides = {}) {
+  return release(version, { ...overrides, release: { prerelease: true, ...overrides.release }, metadata: { channel: 'beta', ...overrides.metadata } });
+}
 function network(fixtures, { pages, intercept } = {}) {
   const calls = [];
   const fetchImpl = async (url, options) => {
@@ -44,6 +47,82 @@ test('offers only the latest stable compatible semantic version over multiple sk
   assert.equal(result.candidate.version, '1.10.0');
   assert.equal(result.currentVersion, '1.8.0');
   assert.equal(result.error, null);
+});
+
+test('stable is the default even when a beta is installed and excludes all beta releases',async t=>{
+  const fixtures=[release('2.1.0'),betaRelease('2.2.0-beta.1'),release('2.2.0')];
+  const {service}=await setup(t,fixtures,{currentVersion:'2.2.0-beta.1'});
+  assert.equal(service.status().channel,'stable');assert.equal(service.status().installedChannel,'beta');
+  assert.equal((await service.check()).candidate.version,'2.2.0');
+});
+
+test('beta is opt-in, orders numeric beta revisions and still offers newer stable versions',async t=>{
+  const fixtures=[release('2.1.0'),betaRelease('2.2.0-beta.2'),betaRelease('2.2.0-beta.10')];
+  const {service}=await setup(t,fixtures,{currentVersion:'2.1.0'});
+  assert.equal((await service.check()).candidate,null);
+  await service.setChannel('beta');assert.equal(service.status().candidate,null);
+  const result=await service.check();assert.equal(result.candidate.version,'2.2.0-beta.10');assert.equal(result.candidate.channel,'beta');
+  fixtures.push(release('2.2.0'));assert.equal((await service.check()).candidate.version,'2.2.0');
+});
+
+test('channel and version must agree with prerelease flag and metadata',async t=>{
+  const fixtures=[betaRelease('5.0.0-beta.1',{release:{prerelease:false}}),betaRelease('4.0.0-beta.1',{metadata:{channel:undefined}}),betaRelease('3.0.0-beta.1',{metadata:{channel:'stable'}}),release('2.0.0',{metadata:{channel:'beta'}}),release('1.9.0',{release:{prerelease:true}})];
+  const {service}=await setup(t,fixtures);await service.setChannel('beta');assert.equal((await service.check()).candidate,null);
+});
+
+test('returning from beta to stable never proposes a downgrade',async t=>{
+  const fixtures=[release('2.1.0'),betaRelease('2.2.0-beta.2')];
+  const {service}=await setup(t,fixtures,{currentVersion:'2.2.0-beta.1'});
+  await service.setChannel('beta');await service.check();await service.setChannel('stable');
+  assert.equal((await service.check()).candidate,null);await assert.rejects(service.prepareInstall('2.1.0'),/plus disponible/);
+  fixtures.push(release('2.2.0'));assert.equal((await service.check()).candidate.version,'2.2.0');
+});
+
+test('legacy preferences migrate to stable while a durable beta choice survives restart',async t=>{
+  const {root,fetchImpl}=await setup(t);await mkdir(path.join(root,'data'),{recursive:true});
+  await writeFile(path.join(root,'data/update-state.json'),JSON.stringify({schemaVersion:1,enabled:false,ignoredVersion:'1.9.0'}));
+  const migrated=await createUpdateService({root,currentVersion:'2.1.0',fetchImpl});t.after(()=>migrated.stop());
+  assert.equal(migrated.status().channel,'stable');assert.equal(migrated.status().enabled,false);assert.equal(migrated.status().ignoredVersion,'1.9.0');
+  await migrated.setChannel('beta');
+  const restored=await createUpdateService({root,currentVersion:'2.1.0',fetchImpl});t.after(()=>restored.stop());
+  assert.equal(restored.status().channel,'beta');assert.equal(restored.status().enabled,false);
+});
+
+test('invalid channels are rejected and failed storage never applies a channel change',async t=>{
+  const {service,root}=await setup(t,[release('1.9.0')]);await service.check();
+  for(const channel of ['preview',null,{},true])await assert.rejects(service.setChannel(channel),{status:400});
+  await mkdir(path.join(root,'data/update-state.json'),{recursive:true});
+  await assert.rejects(service.setChannel('beta'),/enregistré/);
+  assert.equal(service.status().channel,'stable');assert.equal(service.status().candidate.version,'1.9.0');
+});
+
+test('concurrent channel and enabled writes preserve both durable preferences',async t=>{
+  const {service,root}=await setup(t);
+  await Promise.all([service.setChannel('beta'),service.setEnabled(false)]);
+  const saved=JSON.parse(await readFile(path.join(root,'data/update-state.json'),'utf8'));
+  assert.equal(saved.channel,'beta');assert.equal(saved.enabled,false);assert.equal(service.status().channel,'beta');
+});
+
+test('a late old-channel check cannot restore a stale candidate or check timestamp',async t=>{
+  let releaseGate,entered;const gate=new Promise(resolve=>{releaseGate=resolve;}),started=new Promise(resolve=>{entered=resolve;});let blocked=true;
+  const {service}=await setup(t,[release('1.9.0'),betaRelease('2.0.0-beta.1')],{intercept:async url=>{if(blocked&&url.startsWith(API+'?')){blocked=false;entered();await gate;}}});
+  const old=service.check();await started;await service.setChannel('beta');releaseGate();await old;
+  assert.equal(service.status().candidate,null);assert.equal(service.status().lastCheckedAt,null);
+  assert.equal((await service.check()).candidate.version,'2.0.0-beta.1');
+});
+
+test('a check requested after switching channel waits for the old request and uses the new channel',async t=>{
+  let releaseGate,entered;const gate=new Promise(resolve=>{releaseGate=resolve;}),started=new Promise(resolve=>{entered=resolve;});let blocked=true;
+  const {service}=await setup(t,[release('1.9.0'),betaRelease('2.0.0-beta.1')],{intercept:async url=>{if(blocked&&url.startsWith(API+'?')){blocked=false;entered();await gate;}}});
+  const old=service.check();await started;await service.setChannel('beta');const fresh=service.check();releaseGate();await old;
+  assert.equal((await fresh).candidate.version,'2.0.0-beta.1');
+});
+
+test('channel changes during archive download invalidate installation preparation',async t=>{
+  let releaseGate,entered;const gate=new Promise(resolve=>{releaseGate=resolve;}),started=new Promise(resolve=>{entered=resolve;});
+  const {service}=await setup(t,[betaRelease('2.0.0-beta.1')],{intercept:async url=>{if(url.endsWith('.zip')){entered();await gate;}}});
+  await service.setChannel('beta');const preparing=service.prepareInstall('2.0.0-beta.1');const rejected=assert.rejects(preparing,/plus disponible/);await started;
+  await service.setChannel('stable');releaseGate();await rejected;assert.equal(service.status().candidate,null);
 });
 
 test('compatibility includes platform, Node bounds, and installed version maximum', async t => {

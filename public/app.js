@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const composerFiles = $('composer-files'), composerFilesToggle = $('files-menu-toggle');
 const mobileComposer = matchMedia('(max-width:760px)');
 const conversationMove = { busy: false, action: null, revision: 0 };
+let connectionRefreshing = false;
 function closeComposerFiles(restoreFocus = false) {
   if (!composerFiles.open) return;
   composerFiles.open = false;
@@ -26,6 +27,8 @@ document.addEventListener('pointerdown', event => {
   for (const details of document.querySelectorAll('.message.user .message-extras[open]')) if (!details.contains(event.target)) details.open = false;
 });
 const icons = {
+  settings: '<path d="M10 3h4l.5 2 2 1 2-.5 2 3L19 10v4l1.5 1.5-2 3-2-.5-2 1-.5 2h-4l-.5-2-2-1-2 .5-2-3L5 14v-4L3.5 8.5l2-3 2 .5 2-1Z"/><circle cx="12" cy="12" r="3"/>',
+  branch: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M6 7v10m12-10v2a5 5 0 0 1-5 5H6"/>',
   more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
   refresh: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 18 17"/>',
   plus: '<path d="M12 5v14M5 12h14"/>', search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>',
@@ -42,14 +45,17 @@ const icons = {
   activity: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7M12 7v5l3 2"/>'
 };
 function icon(name) { const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); el.setAttribute('viewBox', '0 0 24 24'); el.setAttribute('aria-hidden', 'true'); el.innerHTML = icons[name]; return el; }
-for (const [id, name] of [['refresh', 'refresh'], ['search-icon', 'search'], ['back', 'back'], ['send', 'send'], ['info-button', 'info'], ['logout', 'logout'], ['reveal', 'eye']]) $(id).append(icon(name));
-for (const [id, name] of [['models-open-thread','models'], ['models-close','close'], ['models-refresh','refresh']]) $(id).append(icon(name));
-$('info-close').append(icon('close'));
+for (const [id, name] of [['refresh', 'refresh'], ['search-icon', 'search'], ['back', 'back'], ['send', 'send'], ['info-button', 'info'], ['reveal', 'eye']]) $(id).append(icon(name));
+for (const [id, name] of [['settings-open-sidebar','settings'], ['reconnect','refresh'], ['models-close','close'], ['models-refresh','refresh']]) $(id).append(icon(name));
 $('models-open-sidebar').prepend(icon('models'));
 $('conversation-options-toggle').append(icon('more'));
 $('new-chat').append(icon('plus'), document.createTextNode('Nouveau chat web'));
 const state = { projects: [], sessions: [], projectId: null, chat: null, sending: false, loading: false, uploading: false, status: null, viewSeq: 0, projectSeq: 0, authenticated: false, authEpoch: 0, viewKey: null, draftReasoning: {}, draftFileProfile: null, draftFileAccess: null, draftWebAccess:null, draftWebApproval:null, draftScriptAccess:null, draftImageAccess:null, draftImageWorkflowId:null, sessionsPartial:false, sessionWarnings:[] };
-const companionSettings = createCompanionSettings({api,getState:()=>state,node,onChange:()=>setSending()});
+const companionSettings = createCompanionSettings({api,getState:()=>state,node,onChange:()=>setSending(),onPageChange:page=>page==='maintenance'?updatesPanel.refresh():undefined,onNavigate:target=>{
+  $('app').classList.add('thread-open');
+  if(target==='tools'||target==='image') { composerFiles.open=true; const control=$(target==='image'?'agent-images':'agent-files'); (control.disabled?composerFilesToggle:control).focus({preventScroll:true}); composerFiles.scrollIntoView({block:'nearest'}); }
+  else { const control=$('model'); (control.disabled?$('prompt'):control).focus({preventScroll:true}); control.scrollIntoView({block:'nearest'}); }
+}});
 const textDraftStore = createMessageDraftStore({ storage: { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value), removeItem: key => localStorage.removeItem(key) } });
 const chats = new Map(), drafts = readDrafts(), jobs = readJobs();
 const projectTree = createProjectTree({
@@ -184,13 +190,16 @@ function recoverUpdateDrafts(instanceId) {
   rememberDrafts();
 }
 const updatesPanel = initUpdates({ api, isAuthenticated: () => state.authenticated, toast,
+  openSettings: opener => companionSettings.openPage({currentTarget:opener},'maintenance','updates-title'),
   beforeInstall: async () => {
+    if (companionSettings.hasUnsaved()) throw new Error('Enregistre ou annule les saisies des paramètres avant d’installer la mise à jour.');
     if (state.uploading || conversationMove.busy || fileBrowser.isWorking() || fileBrowser.hasUnsavedChanges()) throw new Error('Enregistre le fichier ouvert et attends la fin des opérations avant d’installer.');
     const info = await api('/api/ping');
     rememberUpdateDrafts(info.instanceId);
     return true;
   },
   beforeReload: info => {
+    if (companionSettings.hasUnsaved()) throw new Error('La mise à jour est installée. Enregistre ou annule les saisies des paramètres avant d’actualiser.');
     if (fileBrowser.hasUnsavedChanges()) throw new Error('Enregistre le fichier ouvert avant d’actualiser.');
     const saved = JSON.parse(sessionStorage.getItem(updateRecoveryKey) || 'null');
     if (saved?.instanceId && saved.instanceId !== info?.instanceId) throw new Error('L’instance du serveur a changé. Reconnexion automatique refusée.');
@@ -204,10 +213,6 @@ function error(message) { $('message-error').textContent = message || ''; $('mes
 function unassignedProject() { return !!state.projects.find(project => project.id === state.projectId)?.isUnassigned; }
 function closeConversationOptions(focus = false) {
   $('conversation-options').hidden = true; $('conversation-options-toggle').setAttribute('aria-expanded', 'false');
-  if (focus) $('conversation-options-toggle').focus();
-}
-function closeInfo(focus = false) {
-  $('info').hidden = true; $('info-button').setAttribute('aria-expanded', 'false');
   if (focus) $('conversation-options-toggle').focus();
 }
 function updateConversationOptions() {
@@ -472,46 +477,63 @@ async function selectProject(projectId, { clearSearch = false } = {}) {
   renderSessions(); scheduleRecovery();
   return true;
 }
-function inlineText(el, text) {
-  // Only our own DOM nodes are created. Source messages never become HTML.
-  const rx = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g;
-  let end = 0;
-  for (const match of text.matchAll(rx)) {
-    el.append(document.createTextNode(text.slice(end, match.index)));
-    const token = match[0];
-    if (token[0] === '`') el.append(node('code', '', token.slice(1, -1)));
-    else if (token.startsWith('**')) el.append(node('strong', '', token.slice(2, -2)));
-    else { const link = /^\[([^\]]+)\]\((.+)\)$/.exec(token); const a = node('a', '', link[1]); a.href = link[2]; a.target = '_blank'; a.rel = 'noopener noreferrer'; el.append(a); }
-    end = match.index + token.length;
-  }
-  el.append(document.createTextNode(text.slice(end)));
+const renderedMessageText = new WeakMap(), pendingMessageText = new Map(), responseModels = new Map();
+let readingView = null, followingReply = true;
+function readingInteraction(container) {
+  const active = document.activeElement;
+  if (container.contains(active) && active.matches('button,input,textarea,select,summary,a,[contenteditable="true"],[role="textbox"]')) return true;
+  const selected = window.getSelection();
+  return !!selected && !selected.isCollapsed && (container.contains(selected.anchorNode) || container.contains(selected.focusNode));
 }
 function renderText(container, text) {
-  container.replaceChildren();
-  const chunks = text.split(/(```[^\n]*\n[\s\S]*?(?:```|$))/g);
-  for (const chunk of chunks) {
-    if (!chunk) continue;
-    if (chunk.startsWith('```')) { const pre = node('pre'); pre.append(node('code', '', chunk.slice(chunk.indexOf('\n') + 1).replace(/```$/, '').trimEnd())); container.append(pre); continue; }
-    for (const paragraph of chunk.split(/\n\s*\n/)) {
-      if (!paragraph.trim()) continue;
-      const heading = /^(#{1,4})\s+(.+)$/.exec(paragraph.trim());
-      if (heading) { const h = node(heading[1].length <= 2 ? 'h2' : 'h3'); inlineText(h, heading[2]); container.append(h); }
-      else if (paragraph.split('\n').every(line => /^\s*[-*]\s/.test(line))) { const list = node('ul'); for (const line of paragraph.split('\n')) { const li = node('li'); inlineText(li, line.replace(/^\s*[-*]\s+/, '')); list.append(li); } container.append(list); }
-      else { const p = node('p'); inlineText(p, paragraph); container.append(p); }
-    }
+  if (renderedMessageText.get(container) === text) { pendingMessageText.delete(container); return; }
+  // Keep the actual selected/focused DOM alive until reading or copying ends.
+  if (container.isConnected && readingInteraction(container)) { pendingMessageText.set(container, text); return; }
+  pendingMessageText.delete(container);
+  BionicMessageText.render(container, text, { role: container.dataset.messageRole });
+  renderedMessageText.set(container, text);
+}
+function flushMessageText() {
+  const follow = followingReply && !readingInteraction($('messages'));
+  for (const [container, text] of pendingMessageText) {
+    if (!container.isConnected) pendingMessageText.delete(container);
+    else if (!readingInteraction(container)) renderText(container, text);
   }
+  if (follow) scrollBottom(); else updateReplyFollow();
+}
+function nearReplyBottom() {
+  const messages = $('messages');
+  return messages.clientHeight ? messages.scrollHeight - messages.scrollTop - messages.clientHeight < 64 : followingReply;
+}
+function updateReplyFollow() {
+  const waiting = [...pendingMessageText.keys()].some(container => container.isConnected);
+  $('reply-follow-bar').hidden = !state.authenticated || nearReplyBottom() && !waiting || !$('messages').querySelector('.message');
+}
+function responseModelKey(message) { return JSON.stringify([state.projectId, message.requestId || message.localRequestId || '']); }
+function addBudgetWarning(article, message) {
+  const warning = node('section', 'message-truncated');
+  warning.append(node('strong', '', 'Réponse coupée au plafond de tokens'), node('p', '', 'Un script ou document peut être incomplet. Vérifie le plafond avant de poursuivre.'));
+  if (message.outputBudget) warning.append(node('p', 'message-budget', 'Plafond de cet appel : ' + new Intl.NumberFormat('fr-FR').format(message.outputBudget.maxOutputTokens) + ' tokens.'));
+  const model = responseModels.get(responseModelKey(message));
+  const available = model && state.status?.models?.some(item => item.id === model);
+  if (!available) warning.append(node('p', 'message-budget-target', (model ? 'Modèle de cette réponse indisponible.' : 'Modèle de cette réponse non relevé.') + ' Choisis le modèle du prochain envoi dans les paramètres.'));
+  const button = node('button', 'file-action message-budget-open', 'Régler le plafond'); button.type = 'button';
+  button.dataset.workspaceFocus = 'budget:' + (message.id || message.localRequestId || message.requestId || '');
+  button.addEventListener('click', event => companionSettings.openOutput(event, available ? model : null));
+  warning.append(button); article.append(warning);
 }
 function addFileAction(article, action, message) {
   const foreignProject = action.projectId && action.projectId !== state.projectId;
   let log = article.querySelector('.actions-log');
-  if (!log) { log = node('details', 'actions-log'); log.append(node('summary', '', 'Actions sur les fichiers'), node('div', 'action-rows')); article.append(log); }
+  if (!log) { log = node('details', 'actions-log'); log.dataset.disclosureKey = 'actions'; log.append(node('summary', '', 'Actions sur les fichiers'), node('div', 'action-rows')); article.append(log); }
   const row = node('div', 'action-row' + (action.ok ? '' : ' action-failed'));
+  if (action.id) row.dataset.actionId = action.id;
   row.append(node('strong', '', action.ok || action.name==='run_project_script' ? action.message : 'Action en erreur'), node('span', '', (action.path||'')+(action.destination?' vers '+action.destination:'')));
   for(const source of action.webResults || (action.url?[{title:action.url,url:action.url}]:[])){
     try{const url=new URL(source.url);if(!['https:','http:'].includes(url.protocol))continue;const link=node('a','tool-source',action.name==='read_web_page'?'Page source · '+url.host:source.title||source.url);link.href=url.href;link.target='_blank';link.rel='noopener noreferrer';row.append(link);}catch{}
   }
-  if(action.outbound){const sent=node('details','outbound-receipt');sent.append(node('summary','','Données envoyées au web'),node('p','','Hôte : '+(action.outbound.host||'moteur configuré')),node('pre','',JSON.stringify(action.outbound,null,2)));row.append(sent);}
-  if(action.stdout||action.stderr){const output=node('details','tool-output');output.append(node('summary','','Sortie du script'),node('pre','',(action.stdout||'')+(action.stderr?'\n'+action.stderr:'')));row.append(output);}
+  if(action.outbound){const sent=node('details','outbound-receipt');sent.dataset.disclosureKey='outbound:'+action.id;sent.append(node('summary','','Données envoyées au web'),node('p','','Hôte : '+(action.outbound.host||'moteur configuré')),node('pre','',JSON.stringify(action.outbound,null,2)));row.append(sent);}
+  if(action.stdout||action.stderr){const output=node('details','tool-output');output.dataset.disclosureKey='output:'+action.id;output.append(node('summary','','Sortie du script'),node('pre','',(action.stdout||'')+(action.stderr?'\n'+action.stderr:'')));row.append(output);}
   if(!foreignProject&&action.ok&&action.trashId){const restore=node('button','file-action restore-action',action.restored?'Fichier restauré':'Restaurer le fichier');restore.type='button';restore.disabled=state.sending||!!action.restored;if(action.restored)restore.dataset.restored='true';restore.addEventListener('click',async()=>{restore.disabled=true;try{await api('/api/file/restore-trash',{method:'POST',body:JSON.stringify({projectId:state.projectId,chatId:state.chat.id,actionId:action.id})});action.restored=true;restore.textContent='Fichier restauré';restore.dataset.restored='true';}catch(e){error(e.message);restore.disabled=false;}});row.append(restore);}
   if (!action.ok) row.append(node('p', '', action.executed ? 'Ce script a été exécuté : des changements peuvent déjà avoir été enregistrés sur le PC.' : action.message));
   if (action.ok && /^(?:replace_project_text|write_project_file)$/.test(action.name)) log.open = true;
@@ -536,7 +558,7 @@ function addFileAction(article, action, message) {
     row.append(restore);
   }
   log.querySelector('.action-rows').append(row);
-  log.querySelector('summary').textContent = 'Actions de l’agent · ' + log.querySelectorAll('.action-row').length;
+  log.querySelector('summary').textContent = 'Activité · ' + log.querySelectorAll('.action-row').length + ' action(s)';
 }
 function addToolApproval(article,approval,chat) {
   const web=approval.kind==='web', panel=node('section','tool-approval');panel.dataset.approvalId=approval.id;
@@ -549,12 +571,17 @@ function addToolApproval(article,approval,chat) {
   article.append(panel);
 }
 
+function messageCopyControl(label) {
+  const copy=BionicMessageText.copyControl(()=>copy.closest('.message')?.querySelector('.message-body'),()=>renderedMessageText.get(copy.closest('.message')?.querySelector('.message-body'))||'',{label});
+  return copy;
+}
 function groupMessageExtras(article, message, role) {
-  const auxiliary = [...article.children].filter(child => child.matches('.actions-log,.message-fork,.message-metrics,.context-receipt,.pin-control,.message-effort'));
+  const auxiliary = [...article.children].filter(child => child.matches('.actions-log,.message-metrics,.context-receipt,.pin-control,.message-effort,.message-budget:not(.message-budget-adjusted)'));
   const failed = (message.actions || []).some(action => action.ok === false);
   const grouped = auxiliary.filter(child => {
     if (!failed || !child.matches('.actions-log') || !child.querySelector('.action-rows')) return true;
     child.classList.add('action-warning');
+    child.open = true;
     child.querySelector('summary').textContent = 'Action de l’agent en erreur · ' + (message.actions || []).filter(action => action.ok === false).length;
     return false;
   });
@@ -562,15 +589,27 @@ function groupMessageExtras(article, message, role) {
   const details = node('details', 'message-extras'); details.dataset.disclosureKey = 'message-extras';
   const summary = node('summary'); summary.dataset.workspaceFocus = 'message-extras:' + (message.id || message.localRequestId || message.requestId || '');
   if (message.role === 'user') { summary.append(icon('more'), node('span','sr-only','Actions de ce message')); summary.title = 'Actions de ce message'; }
-  else summary.append(document.createTextNode('Détails et actions'));
+  else {
+    summary.append(node('span','message-extras-label','Détails du tour'));
+    if(message.metrics){
+      const m=message.metrics,format=value=>new Intl.NumberFormat('fr-FR',{maximumFractionDigits:1}).format(value);
+      const duration=Number.isFinite(m.responseSeconds)&&m.responseSeconds>=0?format(m.responseSeconds)+' s':'— s';
+      const tokens=Number.isSafeInteger(m.outputTokens)&&m.outputTokens>=0?format(m.outputTokens)+' tokens':'— tokens';
+      const rate=Number.isFinite(m.tokensPerSecond)&&m.tokensPerSecond>0?(m.rateSource==='observed'?'≈ ':'')+format(m.tokensPerSecond)+' tok/s':'— tok/s';
+      const measures=node('span','message-turn-measures'),time=node('span','message-turn-duration',duration),throughput=node('span','message-turn-throughput',tokens+' · '+rate);
+      time.title='Durée totale de la réponse'+(duration.startsWith('—')?' indisponible':'');
+      throughput.title='Tokens générés et débit'+(m.rateSource==='observed'?' estimé sur le flux reçu':'');
+      measures.append(time,throughput);summary.append(measures);
+    }
+  }
   const content = node('div','message-extras-content');
   for (const child of grouped) { if (!child.dataset.disclosureKey) child.dataset.disclosureKey = child.classList[0]; content.append(child); }
   details.append(summary, content);
   details.addEventListener('keydown', event => { if (event.key === 'Escape' && details.open) { event.preventDefault(); details.open = false; summary.focus({preventScroll:true}); } });
   if (message.role === 'user') details.addEventListener('focusout', event => { if (event.relatedTarget && !details.contains(event.relatedTarget)) details.open = false; });
-  if (message.role === 'user') role.append(details); else article.append(details);
+  if (message.role === 'user') role.querySelector('.message-actions').append(details); else article.append(details);
 }
-function addMessage(message) {
+function addMessage(message, parent = $('messages'), renderBody = true) {
   const article = node('article', 'message ' + message.role);
   if (message.id) { article.dataset.messageId = message.id; article.tabIndex = -1; }
   if (message.requestId || message.localRequestId) article.dataset.requestId = message.requestId || message.localRequestId;
@@ -578,8 +617,13 @@ function addMessage(message) {
   const role = node('div', 'message-role', message.role === 'user' ? 'Toi' : 'Assistant');
   if (message.fromBionic) role.append(node('span', 'origin-tag', 'historique Bionic'));
   else if(message.fromFork)role.append(node('span','origin-tag','copié du fil source'));
-  const content = node('div', 'message-body'); renderText(content, message.text || '');
+  const actions = node('div', 'message-actions'); role.append(actions);
+  const content = node('div', 'message-body'); content.dataset.messageRole = message.role;
+  if (renderBody) renderText(content, message.text || '');
   article.append(role, content);
+  if (message.text && (message.role==='user'||message.role==='assistant')) {
+    const copy=messageCopyControl(message.role==='user'?'Copier mon prompt':'Copier la réponse');copy.dataset.workspaceFocus='message-copy:'+article.dataset.messageKey;actions.append(copy);
+  }
   if (message.attachments?.length) {
     const files = node('div', 'message-attachments');
     for (const file of message.attachments) {
@@ -599,11 +643,11 @@ function addMessage(message) {
   for (const action of message.actions || []) addFileAction(article, action, message);
   for(const approval of message.approvals||[])addToolApproval(article,approval,state.chat);
   if(message.historicalActions?.length){const history=node('details','actions-log');history.append(node('summary','','Actions dans la conversation source · '+message.historicalActions.length));for(const action of message.historicalActions)history.append(node('p','message-footer',(action.message||action.name||'Action')+(action.path?' · '+action.path:'')));article.append(history);}
-  if(message.id&&!(message.role==='assistant'&&(message.complete===false||state.chat?.generation?.status==='running'&&state.chat.generation.replyId===message.id))){const fork=node('button','message-fork','Créer une branche depuis ici');fork.type='button';fork.addEventListener('click',()=>forkChat(message.id));article.append(fork);}
+  if(message.id&&!(message.role==='assistant'&&(message.complete===false||state.chat?.generation?.status==='running'&&state.chat.generation.replyId===message.id))){const fork=node('button','message-copy-icon message-fork');fork.type='button';fork.title='Créer une branche depuis ici';fork.setAttribute('aria-label',fork.title);fork.dataset.workspaceFocus='message-fork:'+article.dataset.messageKey;fork.append(icon('branch'));fork.addEventListener('click',()=>forkChat(message.id));actions.append(fork);}
   const footer = [];
   if (message.reasoning && EFFORT_LABELS[message.reasoning]) article.append(node('p', 'message-footer message-effort', 'Effort : ' + EFFORT_LABELS[message.reasoning].toLocaleLowerCase('fr')));
-  if (message.truncated) article.append(node('p','message-truncated','Réponse coupée au plafond de tokens. Un script ou document peut être incomplet. Ajuste le plafond dans Paramètres avant de poursuivre.'));
-  if (message.outputBudget) { const b=message.outputBudget; article.append(node('p','message-budget','Plafond de cet appel : '+new Intl.NumberFormat('fr-FR').format(b.maxOutputTokens)+' tokens'+(b.adjusted?' · réduit pour tenir dans le contexte estimé':'')+'.')); }
+  if (message.truncated) addBudgetWarning(article, message);
+  if (message.outputBudget && !message.truncated) { const b=message.outputBudget; article.append(node('p','message-budget'+(b.adjusted?' message-budget-adjusted':''),'Plafond de cet appel : '+new Intl.NumberFormat('fr-FR').format(b.maxOutputTokens)+' tokens'+(b.adjusted?' · réduit pour tenir dans le contexte estimé':'')+'.')); }
   if (message.interrupted || message.limited&&!message.truncated) footer.push(message.interrupted ? 'Réponse interrompue.' : 'Limite d’actions atteinte. Les opérations réalisées restent visibles.');
   if (footer.length) article.append(node('p', 'message-footer', footer.join(' · ')));
   if (message.metrics && message.role === 'assistant') {
@@ -613,9 +657,9 @@ function addMessage(message) {
     const summary = [];
     if (rate) summary.push((m.rateSource === 'observed' ? '≈ ' : '') + number(m.tokensPerSecond) + ' tokens/s');
     if (Number.isSafeInteger(m.outputTokens)) summary.push(number(m.outputTokens) + ' tokens générés');
-    if (summary.length) {
+    if (summary.length || Number.isFinite(m.responseSeconds)) {
       const details = node('details', 'message-metrics');
-      details.append(node('summary', '', summary.join(' · ')));
+      details.append(node('summary', '', summary.join(' · ') || 'Mesures du tour'));
       const explanations = [];
       if (rate) explanations.push(m.rateSource === 'observed' ? 'Débit approché sur le flux reçu, hors attente initiale. Il inclut le raisonnement transmis.' : 'Débit de génération communiqué par Bionic.');
       if (Number.isFinite(m.firstFragmentSeconds)) explanations.push('Premier fragment reçu après ' + number(m.firstFragmentSeconds) + ' s.');
@@ -633,19 +677,21 @@ function addMessage(message) {
     if (!running && message.text) { const pin = workspace.pinControl(message, state.chat); if (pin) article.append(pin); }
   }
   groupMessageExtras(article, message, role);
-  $('messages').append(article); return content;
+  parent.append(article); return content;
 }
-function scrollBottom() { $('messages').scrollTop = $('messages').scrollHeight; }
-function renderQueue(chat) {
+function scrollBottom() { $('messages').scrollTop = $('messages').scrollHeight; followingReply = true; updateReplyFollow(); }
+function renderQueue(chat, parent = $('messages')) {
   const queue = [...(chat?.queue || []).filter(item => ['queued', 'interrupted', 'error'].includes(item.status)), ...(draftForView().failed || [])];
   for (const job of currentJobs()) {
     if (job.payload && !chat?.messages?.some(message => message.requestId === job.requestId) && !queue.some(item => item.requestId === job.requestId)) queue.push({ ...job.payload, status: job.status === 'submitting' ? 'submitting' : 'queued' });
   }
   for (const item of queue) {
     const article = node('article', 'message queued-message');
+    article.dataset.messageKey = 'queue:' + item.requestId;
     const interrupted = item.status === 'interrupted' || item.status === 'error', submitting = item.status === 'submitting';
-    article.append(node('div', 'message-role', interrupted ? 'Message non exécuté · à reprendre' : submitting ? 'Envoi au PC…' : 'Message en attente'));
-    const content = node('div', 'message-body'); renderText(content, item.text || ''); article.append(content);
+    const role=node('div', 'message-role', interrupted ? 'Message non exécuté · à reprendre' : submitting ? 'Envoi au PC…' : 'Message en attente');article.append(role);
+    const content = node('div', 'message-body'); content.dataset.messageRole = 'user'; renderText(content, item.text || ''); article.append(content);
+    if(item.text){const copy=messageCopyControl('Copier mon prompt');copy.dataset.workspaceFocus='message-copy:'+article.dataset.messageKey;const actions=node('div','message-actions');actions.append(copy);role.append(actions);}
     if (item.attachments?.length) article.append(node('p', 'message-footer', item.attachments.length + ' fichier' + (item.attachments.length > 1 ? 's joints' : ' joint')));
     const actions = node('div', 'queue-actions');
     if (interrupted) {
@@ -676,14 +722,91 @@ function renderQueue(chat) {
         catch (e) { toast(e.message); remove.disabled = false; }
       }); actions.append(remove);
     }
-    article.append(actions); $('messages').append(article);
+    article.append(actions); parent.append(article);
   }
+}
+function messageDisclosures(article) {
+  const counts = new Map();
+  return [...article.querySelectorAll('details')].map(detail => {
+    const base = detail.dataset.disclosureKey || detail.className || 'details';
+    const index = counts.get(base) || 0; counts.set(base, index + 1);
+    return { detail, key: base + ':' + index };
+  });
+}
+function captureMessageSelection() {
+  const selected = window.getSelection();
+  if (!selected || selected.isCollapsed || !selected.rangeCount) return null;
+  function point(target, offset) {
+    const element = target.nodeType === 1 ? target : target.parentElement;
+    const article = element?.closest('.message[data-message-key]');
+    if (!article || !$('messages').contains(article)) return null;
+    const scope = element.closest('[data-action-id],[data-approval-id],[data-image-job-id],details[data-disclosure-key],.message-body') || article;
+    const kind = scope.dataset.actionId ? 'actionId' : scope.dataset.approvalId ? 'approvalId' : scope.dataset.imageJobId ? 'imageJobId' : scope.dataset.disclosureKey ? 'disclosureKey' : scope.classList.contains('message-body') ? 'body' : 'article';
+    const candidate = element.closest('pre,code,p,li,td,th,summary,h2,h3');
+    const leaf = candidate && scope.contains(candidate) ? candidate : scope;
+    const range = document.createRange(); range.setStart(leaf, 0); range.setEnd(target, offset);
+    return { messageKey: article.dataset.messageKey, kind, id: scope.dataset[kind], tag: leaf.tagName, index: leaf === scope ? -1 : [...scope.querySelectorAll(leaf.tagName)].indexOf(leaf), text: leaf.textContent, offset: range.toString().length };
+  }
+  const anchor = point(selected.anchorNode, selected.anchorOffset), focus = point(selected.focusNode, selected.focusOffset);
+  return anchor && focus ? { anchor, focus, text: selected.toString() } : null;
+}
+function restoreMessageSelection(saved) {
+  if (!saved) return;
+  const selected = window.getSelection();
+  if (!selected || selected.toString() === saved.text && !selected.isCollapsed) return;
+  function point(record) {
+    const article = [...$('messages').querySelectorAll('.message[data-message-key]')].find(item => item.dataset.messageKey === record.messageKey);
+    if (!article) return null;
+    const selectors = { actionId: '[data-action-id]', approvalId: '[data-approval-id]', imageJobId: '[data-image-job-id]', disclosureKey: '[data-disclosure-key]', body: '.message-body' };
+    const scope = record.kind === 'article' ? article : [...article.querySelectorAll(selectors[record.kind])].find(item => !record.id || item.dataset[record.kind] === record.id);
+    if (!scope) return null;
+    const leaf = record.index === -1 ? scope : scope.querySelectorAll(record.tag)[record.index];
+    if (!leaf || !leaf.textContent.startsWith(record.text)) return null;
+    const walker = document.createTreeWalker(leaf, 4); let offset = record.offset, target = walker.nextNode(), last;
+    while (target) { if (offset <= target.length) return [target, offset]; offset -= target.length; last = target; target = walker.nextNode(); }
+    return last ? [last, last.length] : [leaf, 0];
+  }
+  const anchor = point(saved.anchor), focus = point(saved.focus);
+  if (anchor && focus) selected.setBaseAndExtent(...anchor, ...focus);
+}
+function keepChildOrder(parent, children) {
+  let cursor = parent.firstChild;
+  for (const child of children) {
+    if (child === cursor) cursor = cursor.nextSibling;
+    else parent.insertBefore(child, cursor);
+  }
+  while (cursor) { const next = cursor.nextSibling; cursor.remove(); cursor = next; }
+}
+function reconcileMessage(previous, next, text) {
+  const available = new Map();
+  const partKey = part => part.dataset.approvalId || part.dataset.imageJobId || part.className || part.tagName;
+  for (const part of previous.children) {
+    const key = partKey(part); if (!available.has(key)) available.set(key, []); available.get(key).push(part);
+  }
+  const children = [...next.children].map(part => {
+    const old = available.get(partKey(part))?.shift();
+    if (old?.classList.contains('message-body')) { old.dataset.messageRole = part.dataset.messageRole; renderText(old, text); return old; }
+    return old?.isEqualNode(part) ? old : part;
+  });
+  previous.className = next.className;
+  for (const [name, value] of Object.entries(next.dataset)) previous.dataset[name] = value;
+  if (next.hasAttribute('tabindex')) previous.tabIndex = next.tabIndex;
+  keepChildOrder(previous, children);
+  return previous;
 }
 function renderChat() {
   const chat = state.chat, project = state.projects.find(p => p.id === state.projectId);
-  const expanded = new Set();
-  for (const article of $('messages').querySelectorAll('.message[data-message-key]')) article.querySelectorAll('details').forEach((detail, index) => { if (detail.open) expanded.add(article.dataset.messageKey + ':' + (detail.dataset.disclosureKey || index)); });
+  const view = JSON.stringify([state.projectId, state.viewKey]), sameView = readingView === view;
+  const oldScroll = $('messages').scrollTop;
+  const textSelection = sameView ? captureMessageSelection() : null;
+  const follow = !sameView || followingReply && nearReplyBottom() && !readingInteraction($('messages'));
+  readingView = view;
+  const previous = new Map(sameView ? [...$('messages').querySelectorAll(':scope > .message[data-message-key]')].map(article => [article.dataset.messageKey, article]) : []);
+  const disclosureState = new Map();
+  for (const article of previous.values()) for (const {detail, key} of messageDisclosures(article)) disclosureState.set(article.dataset.messageKey + ':' + key, detail.open);
   const focus = document.activeElement?.dataset.workspaceFocus;
+  const focusedDisclosure = document.activeElement?.tagName === 'SUMMARY' ? document.activeElement.closest('details[data-disclosure-key]') : null;
+  const disclosureFocus = focusedDisclosure ? { key: focusedDisclosure.dataset.disclosureKey, messageKey: focusedDisclosure.closest('.message')?.dataset.messageKey } : null;
   const selection = focus && typeof document.activeElement.selectionStart === 'number' ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
   $('agent-files').value = unassignedProject() ? 'none' : state.draftFileProfile ?? fileProfile(chat);
   $('agent-web-approval').checked = state.draftWebApproval ?? chat?.webApproval ?? false;
@@ -699,22 +822,41 @@ function renderChat() {
   if (chat?.model && !(state.status?.models || []).some(m => m.id === chat.model)) banner += ' Le modèle d’origine n’est pas disponible sous le même nom dans l’API : vérifie le modèle sélectionné avant d’envoyer.';
   $('banner').replaceChildren(document.createTextNode(banner));
   if(chat?.origin){$('banner').append(node('span','',' Fichiers du projet partagés. '));const source=node('button','source-link','Voir la conversation source');source.type='button';source.addEventListener('click',()=>visitSource(chat.origin,source));$('banner').append(source);}
-  $('messages').replaceChildren();
+  const nextMessages = document.createDocumentFragment(), displayText = new Map();
   if (chat?.messages?.length) for (const m of chat.messages) {
-    const body = addMessage(m);
-    if (m.role === 'assistant' && !m.text && chat.generation?.status === 'running' && (m.requestId === chat.generation.requestId || m.localRequestId === chat.generation.requestId)) body.textContent = 'Le modèle prépare sa réponse sur le PC…';
+    const body = addMessage(m, nextMessages, false);
+    const text = m.role === 'assistant' && !m.text && chat.generation?.status === 'running' && (m.requestId === chat.generation.requestId || m.localRequestId === chat.generation.requestId) ? 'Le modèle prépare sa réponse sur le PC…' : m.text || '';
+    displayText.set(body.parentElement.dataset.messageKey, text);
   }
-  else { const empty = node('div', 'welcome'); empty.append(node('h2', '', 'Commence une nouvelle idée.'), node('p', '', 'Le modèle local répondra à partir de tes messages et des fichiers que tu choisis de joindre.')); $('messages').append(empty); }
-  renderQueue(chat);
-  for (const article of $('messages').querySelectorAll('.message[data-message-key]')) article.querySelectorAll('details').forEach((detail, index) => { if (expanded.has(article.dataset.messageKey + ':' + (detail.dataset.disclosureKey || index))) detail.open = true; });
-  if (focus) { const input = [...$('messages').querySelectorAll('[data-workspace-focus]')].find(el => el.dataset.workspaceFocus === focus); if (input) { input.focus({ preventScroll: true }); if (selection) input.setSelectionRange(...selection); } }
+  else { const empty = node('div', 'welcome'); empty.append(node('h2', '', 'Commence une nouvelle idée.'), node('p', '', 'Le modèle local répondra à partir de tes messages et des fichiers que tu choisis de joindre.')); nextMessages.append(empty); }
+  renderQueue(chat, nextMessages);
+  const nextArticles = [...nextMessages.children].map(article => {
+    for (const {detail, key} of messageDisclosures(article)) {
+      const identity = article.dataset.messageKey + ':' + key;
+      if (disclosureState.has(identity)) detail.open = disclosureState.get(identity);
+    }
+    const text = displayText.get(article.dataset.messageKey);
+    const old = previous.get(article.dataset.messageKey);
+    if (old) return reconcileMessage(old, article, text ?? renderedMessageText.get(article.querySelector('.message-body')) ?? '');
+    if (text !== undefined) renderText(article.querySelector('.message-body'), text);
+    return article;
+  });
+  keepChildOrder($('messages'), nextArticles);
+  for (const container of pendingMessageText.keys()) if (!container.isConnected) pendingMessageText.delete(container);
+  const semanticSummary = disclosureFocus && [...$('messages').querySelectorAll('details[data-disclosure-key]')].find(detail => detail.dataset.disclosureKey === disclosureFocus.key && detail.closest('.message')?.dataset.messageKey === disclosureFocus.messageKey)?.querySelector('summary');
+  if (semanticSummary) semanticSummary.focus({ preventScroll: true });
+  else if (focus) { const input = [...$('messages').querySelectorAll('[data-workspace-focus]')].find(el => el.dataset.workspaceFocus === focus); if (input) { input.focus({ preventScroll: true }); if (selection) input.setSelectionRange(...selection); } }
+  restoreMessageSelection(textSelection);
   const selectedModel = draftForView().model;
   $('model').value = (state.status?.models || []).some(model => model.id === selectedModel) ? selectedModel : modelForChat();
-  setEffort(); scrollBottom(); renderSessions();
+  setEffort();
+  if (follow) scrollBottom(); else { $('messages').scrollTop = sameView ? oldScroll : 0; followingReply = false; updateReplyFollow(); }
+  renderSessions();
   setSending();
 }
 async function openChat(id) {
   if (state.uploading || conversationMove.busy) return;
+  readingView = null;
   closeConversationOptions();
   saveDraft();
   const seq = ++state.viewSeq, pid = state.projectId;
@@ -745,7 +887,8 @@ function setSending() {
   $('send').title = state.sending ? 'Ajouter à la file' : 'Envoyer le message';
   $('send').classList.toggle('queue-send', state.sending);
   $('send-label').textContent = state.sending ? 'Ajouter à la file' : '';
-  for (const id of ['project', 'new-chat', 'refresh']) $(id).disabled = state.uploading || conversationMove.busy;
+  for (const id of ['project', 'new-chat']) $(id).disabled = state.uploading || conversationMove.busy;
+  for (const id of ['refresh', 'reconnect']) $(id).disabled = connectionRefreshing || state.uploading || conversationMove.busy;
   $('model').disabled = locked;
   for (const id of ['files-open-sidebar', 'attach-file', 'upload-file','upload-attach-file']) $(id).disabled = locked || !state.projectId || unassignedProject();
   $('agent-files').disabled = locked || unassignedProject();
@@ -792,9 +935,7 @@ function adoptJobs(chat, projectId) {
 function showChatUpdate(chat, projectId) {
   cacheChat(chat, projectId);
   if (!state.authenticated || projectId !== state.projectId || state.chat?.id !== chat.id || state.loading) { renderSessions(); return; }
-  const nearBottom = $('messages').scrollHeight - $('messages').scrollTop - $('messages').clientHeight < 160;
-  const oldScroll = $('messages').scrollTop;
-  state.chat = chat; renderChat(); if (!nearBottom) $('messages').scrollTop = oldScroll;
+  state.chat = chat; renderChat();
 }
 async function recoverReplies() {
   if (recoveryBusy || !state.authenticated || conversationMove.busy) return;
@@ -877,8 +1018,9 @@ function redrawJob(job, full = false) {
     if (full || !article) { showChatUpdate(chat, job.projectId); return; }
     const reply = replyForJob(chat, job.requestId), body = article.querySelector('.message-body');
     if (!reply || !body) return;
-    const nearBottom = $('messages').scrollHeight - $('messages').scrollTop - $('messages').clientHeight < 160;
-    renderText(body, reply.text || 'Le modèle prépare sa réponse sur le PC…'); if (nearBottom) scrollBottom();
+    const follow = followingReply && nearReplyBottom() && !readingInteraction($('messages'));
+    renderText(body, reply.text || 'Le modèle prépare sa réponse sur le PC…');
+    if (follow) scrollBottom(); else updateReplyFollow();
   }, 40);
 }
 async function send(event) {
@@ -888,6 +1030,8 @@ async function send(event) {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   const requestId = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
   error(''); const data = companionSettings.decorate({ requestId, projectId: state.projectId, sessionId: state.chat?.id || null, model: $('model').value, reasoning: $('effort').value, fileAccess: currentFileProfile()!=='none', fileProfile:currentFileProfile(), webApproval:$('agent-web-approval').checked, webAccess:$('agent-web').checked, scriptAccess:$('agent-scripts').checked, imageAccess:companionSettings.enabled()&&$('agent-images').checked, text, attachments: fileBrowser.references() });
+  responseModels.set(JSON.stringify([data.projectId, requestId]), data.model);
+  if (responseModels.size > 100) responseModels.delete(responseModels.keys().next().value);
   const originalDraft = draftForView(), oldKey = state.viewKey;
   const viewKey = data.sessionId ? oldKey : chatKey(data.projectId, 'pending:' + requestId);
   const chat = state.chat || { projectId: data.projectId, name: text.slice(0, 70), source: 'web', messages: [], model: data.model };
@@ -946,7 +1090,7 @@ async function send(event) {
           const reply = replyForJob(localChatForJob(job), requestId); if (reply && e.contextReceipt) reply.contextReceipt = e.contextReceipt;
           redrawJob(job, true);
         } else if (e.type === 'error') { if (jobIsVisible(job)) error(e.message); }
-        else if (e.type === 'done') { const reply=replyForJob(localChatForJob(job),requestId);if(reply)Object.assign(reply,{truncated:e.truncated,finishReason:e.finishReason,outputBudget:e.outputBudget,limited:e.limited});if(e.limited&&jobIsVisible(job))toast(e.truncated?'Réponse coupée : vérifie le plafond dans Paramètres.':'Limite d’actions atteinte.');redrawJob(job,true); }
+        else if (e.type === 'done') { const reply=replyForJob(localChatForJob(job),requestId);if(reply)Object.assign(reply,{truncated:e.truncated,finishReason:e.finishReason,outputBudget:e.outputBudget,limited:e.limited});if(e.limited&&!e.truncated&&jobIsVisible(job))toast('Limite d’actions atteinte.');redrawJob(job,true); }
       }
     }
   } catch (e) {
@@ -999,10 +1143,12 @@ async function start() {
   }
 }
 function hidePrivateViews() {
+  pendingMessageText.clear(); responseModels.clear(); readingView = null; followingReply = true;
+  $('reply-follow-bar').hidden = true;
   companionSettings.reset();
+  ++diagnosticsRevision; $('diagnostics-result').replaceChildren(); $('diagnostics-result').hidden = true; $('diagnostics-open').disabled = false;
   updatesPanel.stop();
   try { textDraftStore.clear(); } catch { toast('Impossible d’effacer la copie locale du brouillon. Efface les données de ce site dans le navigateur.'); } $('draft-duration').value='0'; sessionSignature=''; observedGenerations.clear(); announcedEvents.clear();
-  closeInfo();
   closeConversationOptions();
   closeComposerFiles();
   state.authenticated = false; ++state.authEpoch; ++state.viewSeq; ++state.projectSeq; clearTimeout(recoveryTimer); clearTimeout(renderTimer);
@@ -1060,9 +1206,12 @@ $('prompt').addEventListener('input', saveDraft);
 $('search').addEventListener('input', ()=>{renderSessions();clearTimeout(searchAnnouncementTimer);searchAnnouncementTimer=setTimeout(()=>announce($('session-count').textContent+' conversation(s) trouvée(s).','search:'+state.projectId+':'+$('search').value+':'+$('session-count').textContent),300);});
 $('new-chat').addEventListener('click', () => newChat());
 $('back').addEventListener('click', () => { $('app').classList.remove('thread-open'); $('project').focus(); });
-$('refresh').addEventListener('click', async () => { if (state.uploading || conversationMove.busy) return; const epoch = state.authEpoch, revision = conversationMove.revision; saveDraft(); $('refresh').disabled = true; try { error(''); await Promise.all([checkStatus(), loadProjects()]); if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return; if (state.chat?.id) await openChat(state.chat.id); if (epoch === state.authEpoch && state.authenticated) toast('Projets et conversations actualisés.'); } catch (e) { if (epoch === state.authEpoch && state.authenticated) { error(e.message); toast(e.message); } } finally { $('refresh').disabled = state.uploading || conversationMove.busy; } });
+async function refreshConnection() { if (connectionRefreshing || state.uploading || conversationMove.busy) return; connectionRefreshing = true; $('reconnect').disabled = true; $('reconnect').setAttribute('aria-busy','true'); const epoch = state.authEpoch, revision = conversationMove.revision; saveDraft(); $('refresh').disabled = true; try { error(''); await Promise.all([checkStatus(), loadProjects()]); if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return; if (state.chat?.id) await openChat(state.chat.id); if (epoch === state.authEpoch && state.authenticated) toast('Projets et conversations actualisés.'); } catch (e) { if (epoch === state.authEpoch && state.authenticated) { error(e.message); toast(e.message); } } finally { connectionRefreshing = false; $('refresh').disabled = $('reconnect').disabled = state.uploading || conversationMove.busy; $('reconnect').setAttribute('aria-busy','false'); } }
+$('refresh').addEventListener('click', refreshConnection);
+$('reconnect').addEventListener('click', refreshConnection);
 $('logout').addEventListener('click', async () => {
   if (state.uploading || conversationMove.busy) return;
+  if (companionSettings.hasUnsaved()) { toast('Enregistre ou annule les saisies des paramètres avant de te déconnecter.'); return; }
   try { sessionStorage.removeItem(updateRecoveryKey); } catch {}
   hidePrivateViews(); $('code').focus();
   try { await api('/api/logout', { method: 'POST', body: '{}' }); } catch {}
@@ -1076,14 +1225,24 @@ $('conversation-name').addEventListener('input', updateConversationOptions);
 $('rename-conversation-form').addEventListener('submit', renameCurrentConversation);
 $('delete-conversation').addEventListener('click', deleteCurrentConversation);
 $('info-button').addEventListener('click', () => {
-  const show = $('info').hidden; closeConversationOptions();
-  if (!show) return closeInfo(true);
-  $('info').hidden = false; $('info-button').setAttribute('aria-expanded', 'true');
-  $('info-body').scrollTop = 0; $('info-close').focus({ preventScroll: true });
+  closeConversationOptions();
+  companionSettings.openPage({currentTarget:$('conversation-options-toggle')},'help','settings-heading-help');
 });
-$('info-close').addEventListener('click', () => closeInfo(true));
-$('info').addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeInfo(true); } });
 $('composer').addEventListener('submit', send);
+let messageFlushTimer;
+function scheduleMessageTextFlush() {
+  if (!pendingMessageText.size) return;
+  clearTimeout(messageFlushTimer); messageFlushTimer = setTimeout(flushMessageText, 0);
+}
+document.addEventListener('selectionchange', scheduleMessageTextFlush);
+$('messages').addEventListener('focusout', scheduleMessageTextFlush);
+$('messages').addEventListener('scroll', () => { followingReply = nearReplyBottom(); updateReplyFollow(); }, { passive: true });
+$('reply-follow').addEventListener('click', () => {
+  window.getSelection()?.removeAllRanges();
+  $('messages').focus({ preventScroll: true }); flushMessageText(); scrollBottom();
+  const last = $('messages').querySelector('.message.assistant:last-of-type');
+  if (last) last.focus({ preventScroll: true });
+});
 $('prompt').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); $('composer').requestSubmit(); } });
 $('stop').addEventListener('click', async () => {
   const target = { id: state.chat?.id, projectId: state.projectId };
@@ -1098,7 +1257,9 @@ window.addEventListener('online', resumeReply);
 window.addEventListener('pagehide', saveDraft);
 window.addEventListener('storage', event=>{if(textDraftStore.handlesStorageKey(event.key)){try{if(textDraftStore.synchronize()){applyDraftRevocation();rememberDrafts();if(state.authenticated)renderChat();}}catch{draftFailure();}}});
 $('models-open-sidebar').addEventListener('click', openModels);
-$('models-open-thread').addEventListener('click', openModels);
+$('settings-models-loaded').addEventListener('click', openModels);
+$('draft-settings-open').addEventListener('click',event=>companionSettings.openPage(event,'reading','draft-duration'));
+$('diagnostics-shortcut').addEventListener('click',event=>companionSettings.openPage(event,'maintenance','diagnostics-open'));
 $('models-refresh').addEventListener('click', refreshLoadedModels);
 $('models-close').addEventListener('click', () => $('models-dialog').close());
 
@@ -1107,7 +1268,19 @@ async function visitSource(origin,button) { const previous={projectId:state.proj
 $('draft-duration').addEventListener('change',()=>{saveDraft();try{textDraftStore.setDuration($('draft-duration').value,drafts);setText($('draft-status'),textDraftStore.duration?'Messages non envoyés conservés sur cet appareil pour la durée choisie.':'Messages conservés uniquement dans cet onglet.');}catch{draftFailure();}});
 $('draft-download').addEventListener('click',downloadMessageDraft);
 $('draft-clear').addEventListener('click',()=>{try{textDraftStore.clear();for(const [key,draft]of drafts)drafts.set(key,{...draft,text:'',failed:[]});$('prompt').value='';$('draft-duration').value='0';rememberDrafts();renderChat();setText($('draft-status'),'Textes des brouillons effacés.');}catch{draftFailure();}});
-$('diagnostics-open').addEventListener('click',async()=>{const button=$('diagnostics-open'),panel=$('diagnostics-result');button.disabled=true;panel.hidden=false;panel.textContent='Vérification…';try{const result=await api('/api/diagnostics');panel.replaceChildren(node('p','','Diagnostic volontaire, sans message ni modèle exécuté.'),node('pre','',JSON.stringify(result,null,2)));const download=node('button','file-action','Télécharger le diagnostic');download.type='button';download.addEventListener('click',()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:'application/json'}));const a=node('a');a.href=url;a.download='diagnostic-bionic.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});panel.append(download);}catch(e){panel.textContent=e.message;}finally{button.disabled=false;}});
+let diagnosticsRevision=0;
+$('diagnostics-open').addEventListener('click',async()=>{
+  const button=$('diagnostics-open'),panel=$('diagnostics-result'),ticket=++diagnosticsRevision,epoch=state.authEpoch,revision=companionSettings.revision();
+  const current=()=>ticket===diagnosticsRevision&&epoch===state.authEpoch&&state.authenticated&&companionSettings.isCurrent(revision);
+  button.disabled=true;panel.hidden=false;panel.textContent='Vérification…';
+  try{
+    const result=await api('/api/diagnostics');if(!current())return;
+    panel.replaceChildren(node('p','','Diagnostic volontaire, sans message ni modèle exécuté.'),node('pre','',JSON.stringify(result,null,2)));
+    const download=node('button','file-action','Télécharger le diagnostic');download.type='button';
+    download.addEventListener('click',()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:'application/json'}));const a=node('a');a.href=url;a.download='diagnostic-bionic.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});panel.append(download);
+  }catch(e){if(current())panel.textContent=e.message;}
+  finally{if(ticket===diagnosticsRevision){button.disabled=false;if(!current()){panel.replaceChildren();panel.hidden=true;}}}
+});
 
 start().catch(e => { if (!/Connecte-toi/.test(e.message)) $('login-error').textContent = e.message; });
 

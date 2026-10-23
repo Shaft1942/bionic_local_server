@@ -90,6 +90,7 @@ test('connection test reads actual HTTP endpoints, checks both exact models and 
   t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));});
   const url='http://127.0.0.1:'+server.address().port;
   const f=await fixture(t);
+  await f.service.updateSettings({memoryCleanup:true});
   let result=await f.service.checkConnection({url});
   assert.equal(result.ok,true,JSON.stringify(result));
   assert.equal(result.memoryCleanup.available,true);assert.equal(result.memoryCleanup.afterWorkflow,true);
@@ -153,4 +154,92 @@ test('queued jobs use their persisted endpoint after restart while settings are 
   assert(calls.every(url=>url.startsWith('http://127.0.0.1:8188/')));
   const persisted=JSON.parse(await fs.readFile(path.join(f.directory,job.id+'.json'),'utf8'));
   assert.equal(persisted.comfyUrl,'http://127.0.0.1:8188');assert.equal(persisted.outputNodeId,'9');assert.equal(persisted.workflowId,'krea2_turbo');
+});
+
+// All new setup scenarios use an injected transport, never an active instance.
+function setupTransport(info, calls) {
+  return async (url, options={}) => {
+    const route=new URL(url).pathname;calls.push({url,route,options});
+    if(route==='/system_stats')return Response.json({system:{comfyui_version:'synthetic'}});
+    if(route==='/object_info')return Response.json(info);
+    if(route==='/queue')return Response.json({queue_running:[],queue_pending:[]});
+    if(route==='/prompt')return Response.json({prompt_id:'setup-prompt'});
+    if(route.startsWith('/history/'))return Response.json({'setup-prompt':{status:{status_str:'error',messages:[['execution_interrupted',{}]]}}});
+    throw Error('Unexpected route '+route);
+  };
+}
+
+test('fresh settings skip cleanup; missing module and standard SaveImage never block either workflow',async t=>{
+  const info=structuredClone(schema),calls=[];delete info.FreeMemoryAfterWorkflow;info.SaveImage.output=[];
+  const f=await fixture(t,{enabled:true,fetchImpl:setupTransport(info,calls)});
+  assert.equal(f.service.getSettings().memoryCleanup,false);
+  for(const workflowId of ['krea2_turbo','hassaku_illustrious']){
+    const checked=await f.service.checkConnection({workflowId});
+    assert.equal(checked.ok,true);assert.equal(checked.memoryCleanup.available,false);
+    assert(checked.workflows.every(w=>w.compatible));
+    const job=await f.service.submit({prompt:'Synthetic image',workflowId},{...owner,messageId:workflowId});
+    assert.equal(job.memoryCleanup,false);
+    const post=calls.filter(c=>c.route==='/prompt').at(-1);
+    assert.equal(JSON.parse(post.options.body).prompt['99'],undefined);
+    await f.service.refresh(job.id);
+  }
+  await f.restart();assert.equal(f.service.getSettings().memoryCleanup,false);
+  assert(!calls.some(c=>c.route==='/free'||c.route==='/interrupt'));
+});
+
+test('cleanup is pinned with the selection; enabled mode retains the node and explains missing support',async t=>{
+  const info=structuredClone(schema),calls=[];delete info.FreeMemoryAfterWorkflow;
+  const f=await fixture(t,{enabled:true,fetchImpl:setupTransport(info,calls)});
+  const selection=f.service.resolveSelection();assert.equal(selection.memoryCleanup,false);
+  await f.service.updateSettings({memoryCleanup:true});
+  const checked=await f.service.checkConnection();assert.equal(checked.ok,false);
+  assert.match(checked.workflows[0].errors.join(' '),/FreeMemoryAfterWorkflow/);
+  const job=await f.service.submit({prompt:'Pinned without cleanup'},owner,undefined,selection);
+  assert.equal(job.memoryCleanup,false);assert(!JSON.parse(calls.find(c=>c.route==='/prompt').options.body).prompt['99']);
+  await f.service.refresh(job.id);
+  const next=await f.service.submit({prompt:'With cleanup'},{...owner,messageId:'other'});
+  assert.equal(next.memoryCleanup,true);
+  assert.equal(JSON.parse(calls.filter(c=>c.route==='/prompt').at(-1).options.body).prompt['99'].class_type,'FreeMemoryAfterWorkflow');
+  await assert.rejects(f.service.updateSettings({memoryCleanup:false}),{status:409});
+});
+
+test('diagnostic lists missing model files and their folders even if a loader is absent',async t=>{
+  const info=structuredClone(schema),calls=[];delete info.CLIPLoader;
+  info.VAELoader.input.required.vae_name=[[]];
+  const f=await fixture(t,{fetchImpl:setupTransport(info,calls)});
+  const checked=await f.service.checkConnection();assert.equal(checked.reachable,true);assert.equal(checked.ok,false);
+  const models=checked.workflows[0].models;
+  assert(models.some(m=>!m.available&&m.name==='qwen3vl_4b_fp8_scaled.safetensors'&&m.folder==='models/text_encoders'));
+  assert(models.some(m=>!m.available&&m.name==='qwen_image_vae.safetensors'&&m.folder==='models/vae'));
+  assert(calls.every(c=>!c.options.method));
+});
+
+test('v1 and v2 settings preserve previous cleanup, v3 explicitly disabled survives restart',async t=>{
+  const f=await fixture(t);
+  for(const version of [1,2]){
+    await fs.writeFile(f.settingsFile,JSON.stringify({version,enabled:true,url:'http://127.0.0.1:8188',workflowId:'krea2_turbo'}));
+    await f.restart();assert.equal(f.service.getSettings().memoryCleanup,true);
+    await f.service.updateSettings({memoryCleanup:false});
+    assert.equal(JSON.parse(await fs.readFile(f.settingsFile)).version,3);
+    await f.restart();assert.equal(f.service.getSettings().memoryCleanup,false);
+  }
+  for(const memoryCleanup of ['false',1,null])await assert.rejects(f.service.updateSettings({memoryCleanup}),{status:400});
+});
+
+test('server discovery probes only the submitted private address and two local ports; never mutates',async t=>{
+  const calls=[];
+  const f=await fixture(t,{fetchImpl:async(url,options)=>{
+    calls.push({url,options});
+    if(url.startsWith('http://127.0.0.1:8188'))throw Error('Offline');
+    return Response.json({system:{comfyui_version:'synthetic'}});
+  }});
+  const before=f.service.getSettings();
+  const result=await f.service.discoverServers({url:'http://192.168.10.5:9000'});
+  assert.deepEqual(result.servers.map(s=>s.url),['http://192.168.10.5:9000','http://127.0.0.1:8000']);
+  assert.equal(calls.length,3);assert(calls.every(c=>new URL(c.url).pathname==='/system_stats'&&!c.options.method));
+  assert.deepEqual(f.service.getSettings(),before);
+  for(const url of ['http://example.com','http://169.254.169.254','http://127.0.0.1:8000/private'])await assert.rejects(f.service.discoverServers({url}),{status:400});
+  assert.equal(calls.length,3);
+  const none=await fixture(t,{fetchImpl:async()=>Response.json({system:{os:'unrelated service'}})});
+  assert.deepEqual((await none.service.discoverServers()).servers,[]);
 });

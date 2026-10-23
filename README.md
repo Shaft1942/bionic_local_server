@@ -4,7 +4,7 @@ Utilisez les modèles de votre PC, consultez vos projets Bionic et continuez une
 
 Ce projet communautaire est indépendant de Bionic. Bionic et ses modèles ne sont pas inclus. Le compagnon utilise l’API locale de Bionic et un adaptateur de lecture de ses fichiers internes.
 
-Cette branche prépare la **2.1.0** : certificats gérés depuis le navigateur du téléphone, contexte actualisé lors du changement de modèle et module de nettoyage ComfyUI distribué. Le curseur de tokens reste dans les paramètres, jusqu’à 5 millions. Voir la [validation 2.1](docs/v2.1-validation.md) et le [parcours certificats](docs/certificats-utilisation.md). La dernière Release publiée reste la 2.0.0.
+La **2.1.0** avait apporté : certificats gérés depuis le navigateur du téléphone, contexte actualisé lors du changement de modèle et module de nettoyage ComfyUI distribué. Le curseur de tokens reste dans les paramètres, jusqu’à 5 millions. Voir la [validation 2.1](docs/v2.1-validation.md) et le [parcours certificats](docs/certificats-utilisation.md).
 
 La **2.0.0** ajoute les plafonds de réponses par modèle/conversation, avec saisie et slider jusqu’à 5 000 000 tokens, ComfyUI optionnel avec HassakuXL/Krea2 et deux LoRA par modèle, ainsi que les projets repliables.
 Voir le [guide V2](docs/v2-utilisation.md), le [plan et les décisions](docs/v2-plan.md),
@@ -13,7 +13,12 @@ La distribution 2.0.0 conserve l’assistant Windows et les mises à jour propos
 
 ## Quelle version télécharger ?
 
-Ce guide décrit la **version 2.0.0**, avec un assistant d’installation Windows et des mises à jour proposées au démarrage puis toutes les 24 heures. Téléchargez **`bionic-mobile-v2.0.0.zip`** depuis [la Release 2.0.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v2.0.0), avec `SHA256SUMS.txt`. **Node.js 24 ou ultérieur est requis** : l’assistant peut réutiliser une installation existante ou, avec votre accord, télécharger une copie portable officielle. Node.js n’est pas inclus dans le ZIP. Aucun Docker requis. Depuis 1.9.0, une mise à jour compatible peut être proposée dans le compagnon ; depuis 1.8.0, suivez [la procédure manuelle](docs/sauvegarde-mise-a-jour.md). **Code → Download ZIP** fournit l’état de la branche choisie, qui peut différer d’une Release. Voir [les mises à jour proposées](docs/mises-a-jour.md).
+La **stable 2.3.0** reprend le contenu validé de 2.2.1-beta.4 : paramètres par rubrique, Maintenance et Aide séparées, guide revu avec raccourcis vers les réglages, lecture des conversations améliorée et configuration ComfyUI guidée avec nettoyage mémoire facultatif. Les certificats, les réglages de modèles et les protections de mise à jour sont conservés.
+
+Téléchargez **`bionic-mobile-v2.3.0.zip`** depuis [la Release 2.3.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v2.3.0), avec `SHA256SUMS.txt`. **Node.js 24 ou ultérieur est requis** : l’assistant peut réutiliser une installation existante ou, avec votre accord, télécharger une copie portable officielle. Node.js n’est pas inclus dans le ZIP. Aucun Docker requis.
+
+Depuis une installation compatible 1.9.0 ou ultérieure, la 2.3.0 peut être proposée directement par les mises à jour, y compris depuis 2.1.0 et les bêtas 2.2.1. Le canal Stable reste choisi par défaut ; le canal Bêta se choisit dans **Paramètres → Maintenance → Mises à jour** et reçoit aussi cette stable plus récente. Aucun passage par une bêta n’est nécessaire. Depuis 1.8.0, suivez [la procédure manuelle](docs/sauvegarde-mise-a-jour.md). **Code → Download ZIP** fournit l’état de la branche choisie, qui peut différer d’une Release. Voir [les mises à jour proposées](docs/mises-a-jour.md) et les [preuves de validation](docs/v2.2-beta-validation.md).
+
 
 Le [bilan du lot d’audit](docs/choix-audit.md) décrit les choix intégrés et leurs limites. La [vérification](docs/verification.md) distingue les essais synthétiques locaux de la CI et des essais réels. Pour mettre à jour une installation existante, suivez [la procédure de sauvegarde](docs/sauvegarde-mise-a-jour.md).
 
@@ -39,7 +44,7 @@ Le [bilan du lot d’audit](docs/choix-audit.md) décrit les choix intégrés et
 
 ## Démarrer sous Windows
 
-1. Téléchargez **bionic-mobile-v2.0.0.zip** depuis [la Release 2.0.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v2.0.0), puis extrayez entièrement l’archive.
+1. Téléchargez le ZIP de [la stable 2.1.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v2.1.0) ou d'une [bêta publiée](https://github.com/Shaft1942/bionic_local_server/releases), selon le canal souhaité, puis extrayez entièrement l’archive.
 2. Double-cliquez sur **Installer.cmd**. Choisissez le dossier du compagnon et un Node.js compatible, ou cochez le téléchargement portable proposé.
 3. Dans **Bionic → API des modèles locaux**, activez le serveur. Reportez son adresse dans l’assistant ; le suffixe `/v1` est accepté et retiré automatiquement. Le bouton **Tester l’API** lit la liste des modèles sans génération ni déchargement.
 4. Vérifiez le récapitulatif puis cliquez sur **Installer**. Le raccourci et le démarrage sont proposés. L’accès au téléphone via le pare-feu est facultatif et demande l’accord Windows sur un réseau privé.
@@ -63,7 +68,7 @@ L’application n’envoie pas automatiquement toute votre bibliothèque au mod�
 
 Un chat web illisible est préservé et signalé par un **inventaire partiel** ; les autres restent accessibles. Aucune réparation automatique n’est tentée. Le [guide de dépannage](docs/depannage.md) explique la récupération manuelle. Sous Windows, **Diagnostic.cmd** produit un diagnostic borné et **Deconnecter-appareils.cmd** invalide globalement les sessions sans arrêter les travaux ; un appareil connaissant le code peut se reconnecter.
 
-Le premier démarrage utilise **HTTP** et un code d’accès pour un **réseau local de confiance**. Dans **Paramètres → Sécurité des connexions**, depuis le téléphone ou le PC, préparez HTTPS, téléchargez l’autorité puis vérifiez la connexion avant activation. Depuis HTTPS, créez et téléchargez directement le certificat privé de chaque appareil, avec son mot de passe d’import, puis activez si souhaité le certificat client obligatoire (mTLS). L’import dans le système demande votre confirmation. Le port de vérification est configuré une fois dans l’assistant Windows ; **Certificats.cmd** reste un outil de récupération locale. Consultez le [parcours certificats](docs/certificats-utilisation.md).
+Le premier démarrage utilise **HTTP** et un code d’accès pour un **réseau local de confiance**. Dans **Paramètres → Connexion et appareils → Sécurité des connexions**, depuis le téléphone ou le PC, préparez HTTPS, téléchargez l’autorité puis vérifiez la connexion avant activation. Depuis HTTPS, créez et téléchargez directement le certificat privé de chaque appareil, avec son mot de passe d’import, puis activez si souhaité le certificat client obligatoire (mTLS). L’import dans le système demande votre confirmation. Le port de vérification est configuré une fois dans l’assistant Windows ; **Certificats.cmd** reste un outil de récupération locale. Consultez le [parcours certificats](docs/certificats-utilisation.md).
 
 N’exposez pas directement le compagnon sur Internet et n’ouvrez pas de redirection de port sur votre routeur. Lisez [Sécurité](SECURITY.md) avant de partager un accès.
 
