@@ -7,3 +7,7 @@
 *.py text eol=lf
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
+public/llama-ui/assets/*.js text eol=lf -diff -whitespace
+public/llama-ui/assets/*.css text eol=lf -diff -whitespace
+public/llama-ui/THIRD_PARTY_NOTICES.txt text eol=lf -whitespace
+ui/THIRD_PARTY_NOTICES.txt text eol=lf -whitespace

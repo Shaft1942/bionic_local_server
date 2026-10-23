@@ -1,6 +1,6 @@
 {
   "name": "bionic-mobile-local",
-  "version": "2.5.0",
+  "version": "2.6.0-beta.1",
   "private": true,
   "type": "module",
   "description": "Compagnon local pour consulter les projets et chats Bionic et continuer par API",
@@ -14,6 +14,9 @@
   },
   "scripts": {
     "start": "node server.mjs",
+    "build:ui": "node scripts/build-llama-ui.mjs",
+    "start:prototype": "node scripts/llama-ui-prototype.mjs",
+    "test:browser:llama": "node scripts/browser-llama-ui.mjs",
     "check": "node scripts/check.mjs",
     "test": "node --test test/*.test.mjs",
     "check:export": "node scripts/check-export.mjs",

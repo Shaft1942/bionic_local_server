@@ -12,6 +12,8 @@
 !.env.example
 /dist/
 /node_modules/
+/ui/node_modules/
+/ui/.vite/
 /.venv/
 __pycache__/
 *.pyc

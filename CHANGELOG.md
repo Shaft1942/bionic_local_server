@@ -2,6 +2,13 @@
 
 Les entrées décrivent les évolutions du produit. Les comptes rendus de travail, mesures d’un poste, plans et prompts internes ne font pas partie de cette documentation. Les versions effectivement disponibles sont dans les [Releases](https://github.com/Shaft1942/bionic_local_server/releases).
 
+## 2.6.0-beta.1 — candidate locale
+
+- Prototype d'interface dérivée de llama-ui : projets, conversations, fichiers et atelier images sur les API existantes du compagnon, avec thème clair/sombre.
+- Reprise du suivi après déconnexion avec identifiant de demande conservé et consultation du serveur sans renvoi automatique.
+- Connecteur llama.cpp facultatif et démonstration synthétique séparée des installations personnelles. L'interface antérieure reste accessible.
+- Le port de l'interface française/anglaise et des fonctions avancées n'est pas encore complet ; voir [les parcours et limites du prototype](docs/llama-ui-prototype.md).
+
 ## 2.5.0 — 2026-10-23
 
 - Interface **français/anglais**, choix mémorisé par navigateur et indépendant de la langue des conversations, prompts et fichiers. README et guide d’usage anglais ajoutés ; documentation réorganisée, synthétisée et débarrassée des traces internes.

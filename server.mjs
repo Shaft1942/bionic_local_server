@@ -60,6 +60,8 @@ export async function createCompanion(options = {}) {
 const fs = options.fs || defaultFS;
 const fetch = options.fetchImpl || globalThis.fetch;
 const ROOT = path.resolve(options.root || path.dirname(fileURLToPath(import.meta.url)));
+// Explicit injection lets an isolated fixture serve reviewed application assets.
+const PUBLIC = path.resolve(options.publicDirectory || path.join(ROOT, 'public'));
 const scanCycles = new AsyncLocalStorage();
 const measurements = { directoryScans: 0, chatDiskReads: 0, deserializations: 0 };
 let revision = 0;
@@ -953,6 +955,22 @@ async function generateChat(res, chat, item, request) {
 
 const STATIC = { '/': 'index.html', '/i18n-bootstrap.js':'i18n-bootstrap.js', "/i18n.js":"i18n.js", "/locales/fr/ui.js":"locales/fr/ui.js", "/locales/fr/app.js":"locales/fr/app.js", "/locales/fr/settings.js":"locales/fr/settings.js", "/locales/fr/components.js":"locales/fr/components.js", "/locales/en/ui.js":"locales/en/ui.js", "/locales/en/app.js":"locales/en/app.js", "/locales/en/settings.js":"locales/en/settings.js", "/locales/en/components.js":"locales/en/components.js", '/app.js': 'app.js', '/message-text.js':'message-text.js', '/settings.js':'settings.js', '/help.js':'help.js', '/certificates.js':'certificates.js', '/project-tree.js':'project-tree.js', '/project-tree.css':'project-tree.css', '/comfy-images.js':'comfy-images.js', '/updates.js': 'updates.js', '/message-drafts.js': 'message-drafts.js', '/files.js': 'files.js', '/workspace.js': 'workspace.js', '/style.css': 'style.css', '/manifest.webmanifest': 'manifest.webmanifest', '/icon.svg': 'icon.svg' };
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml' };
+const LLAMA_TYPES = { ...TYPES, '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2' };
+async function llamaAsset(relative) {
+  let clean;
+  try { clean = decodeURIComponent(relative); } catch { throw fail(404, 'Page introuvable.'); }
+  if (!clean || clean.length > 1500 || /[\\\x00-\x1f:]/.test(clean) || clean.split('/').some(part => !part || part === '.' || part === '..' || part.startsWith('.'))) throw fail(404, 'Page introuvable.');
+  const type = LLAMA_TYPES[path.extname(clean).toLowerCase()];
+  if (!type) throw fail(404, 'Page introuvable.');
+  const base = path.join(PUBLIC, 'llama-ui');
+  let file = base;
+  try {
+    if ((await fs.lstat(base)).isSymbolicLink()) throw fail(404, 'Page introuvable.');
+    for (const part of clean.split('/')) { file = path.join(file, part); if ((await fs.lstat(file)).isSymbolicLink()) throw fail(404, 'Page introuvable.'); }
+    if (!(await fs.stat(file)).isFile()) throw fail(404, 'Page introuvable.');
+    return { content: await fs.readFile(file), type };
+  } catch (error) { if (error.code === 'ENOENT' || error.code === 'ENOTDIR') throw fail(404, 'Page introuvable.'); throw error; }
+}
 Object.assign(STATIC, { '/local-services.js': 'local-services.js', '/locales/fr/local-services.js': 'locales/fr/local-services.js', '/locales/en/local-services.js': 'locales/en/local-services.js' });
 function handle(req, res) { return lifecycle.track(withScanCycle(() => handleRequest(req, res))); }
 async function handleRequest(req, res) {
@@ -992,7 +1010,7 @@ async function handleRequest(req, res) {
       if (updatePreparing || updateMaintenance) throw fail(409, 'Attends la fin de la mise à jour.');
       json(res, 200, await certificateTransport.action(d)); return;
     }
-    if (req.method === 'GET' && url.pathname === '/api/ping') { json(res, 200, { app: 'bionic-mobile-local', version: APP_VERSION, instanceId: config.instanceId }); return; }
+    if (req.method === 'GET' && url.pathname === '/api/ping') { json(res, 200, { app: 'bionic-mobile-local', version: APP_VERSION, instanceId: config.instanceId, ...(options.prototypeInfo ? { prototypeInfo: options.prototypeInfo } : {}) }); return; }
     if (req.method === 'POST' && url.pathname === '/api/login') {
       const ip = req.socket.remoteAddress;
       let f = failures.get(ip);
@@ -1348,11 +1366,16 @@ async function handleRequest(req, res) {
       }
       throw fail(404, 'Action inconnue.');
     }
-    if ((req.method === 'GET' || req.method === 'HEAD') && STATIC[url.pathname]) {
+    if ((req.method === 'GET' || req.method === 'HEAD') && (url.pathname === '/prototype' || url.pathname === '/prototype/' || url.pathname.startsWith('/llama-ui/') || (url.pathname === '/' && settings.uiMode === 'llama'))) {
+      const relative = url.pathname.startsWith('/llama-ui/') ? url.pathname.slice('/llama-ui/'.length) : 'index.html';
+      const asset = await llamaAsset(relative);
+      res.writeHead(200, { 'Content-Type': asset.type }); res.end(req.method === 'HEAD' ? undefined : asset.content); return;
+    }
+    if ((req.method === 'GET' || req.method === 'HEAD') && (STATIC[url.pathname] || ['/legacy', '/legacy/'].includes(url.pathname))) {
       // Native POST navigation needs a non-null Origin for certificate proof.
       // Send only the origin, never a conversation path or a token-bearing URL.
       if (url.pathname === '/') res.setHeader('Referrer-Policy', 'strict-origin');
-      const file = path.join(ROOT, 'public', STATIC[url.pathname]);
+      const file = path.join(PUBLIC, STATIC[url.pathname] || 'index.html');
       const content = await fs.readFile(file);
       res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' }); res.end(req.method === 'HEAD' ? undefined : content); return;
     }
