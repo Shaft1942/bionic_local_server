@@ -165,10 +165,11 @@ test('a cancelled text waiter retains its resource until the shared model load e
     textCalls++;throw Error('A cancelled waiter must not send a text prediction');
   };
   const modelService=createModelService({baseUrl:'http://127.0.0.1:1235',fetchImpl}),f=await appFixture(t,{fetchImpl,modelService}),requestId=randomUUID();
+  await f.request('/api/comfy/settings',{method:'POST',body:{modelPolicy:'alternate'}});
   const text=f.request('/api/chat',{method:'POST',body:{projectId:'p1',model:'synthetic',requestId,text:'Synthetic cold prompt',fileProfile:'none'}});await until(()=>loadStarted);
   assert.equal((await f.request('/api/cancel',{method:'POST',body:{projectId:'p1',requestId}})).statusCode,200);
   const image=f.request('/api/comfy/generate',{method:'POST',body:{projectId:'p1',requestId:randomUUID(),prompt:'Synthetic image while loading'}});
-  await until(()=>f.app.coordinator.status().waiting.image===1);assert.equal(f.api.posts,0);assert.equal(f.app.coordinator.status().active.text,1);
+  await until(()=>f.app.gpuScheduler.snapshot().queuedImages===1);assert.equal(f.api.posts,0);assert.equal(f.app.coordinator.status().active.text,1);
   releaseLoad();await text;assert.equal((await image).statusCode,200);assert.equal(f.api.posts,1);assert.equal(textCalls,0);
 });
 

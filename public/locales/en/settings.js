@@ -255,3 +255,17 @@ BionicI18n.register('en', {
   "settings.language.saved": "Language saved on this device.",
   "settings.language.unpersisted": "Language applied to this page, but the browser could not save it."
 });
+
+BionicI18n.register("en", {
+  "settings.beta25.imageCount": {"one":"{count} image","other":"{count} images"},
+  "settings.beta25.disabledCount": "0 images (disabled)",
+  "settings.beta25.modeSeries": "{count} different prompts, then {count} successive renders in the shared queue.",
+  "settings.beta25.modeSingle": "One image in the shared queue for conversations.",
+  "settings.beta25.unload": "The text model will be unloaded before images; text responses will wait for the batch to finish.",
+  "settings.beta25.alternate": "The text model stays loaded; responses wait for the current image and run between images.",
+  "settings.beta25.keep": "The text model stays loaded; chatting during a render may slow text and images.",
+  "settings.beta25.noImages": "No images allowed for this message. Enable images to choose from 1 to 5 renders.",
+  "settings.beta25.selection": "Model: {model} · LoRA: {count}. {mode} {scope} {policy}",
+  "settings.beta25.messageScope": "Choice for this message.",
+  "settings.beta25.globalScope": "Global settings."
+});

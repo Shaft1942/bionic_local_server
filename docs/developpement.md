@@ -38,6 +38,7 @@ Copiez `config.example.json` en `config.local.json`, choisissez un port de test 
 | `lib/context-receipt.mjs` | Reçu borné du contexte sélectionné et des extraits effectivement lus |
 | `lib/workspace-features.mjs` | Activité des réponses web et copies figées de livrables, isolées par projet |
 | `lib/inference-gate.mjs` | Admission FIFO optionnelle de chaque inférence ; les accords humains ne gardent pas de créneau |
+| `lib/gpu-scheduler.mjs` | Coordination des inférences et lots image entre conversations ; conservation ou déchargement des modèles texte |
 | `lib/request-body.mjs` | Réception bornée en taille et durée, distincte du streaming après acceptation |
 | `lib/diagnostics.mjs` | Cinq contrôles à la demande et rapport construit par liste blanche |
 | `public/message-drafts.js` | Conservation volontaire des textes non envoyés, durée et retrait local |
@@ -55,6 +56,10 @@ Les trois permissions sont capturées à l’acceptation du message et conservé
 Le reçu de contexte note les sorties externes reçues avec `transmitted: false`. Seule une réponse HTTP réussie de l’API du modèle confirme leur retransmission. Les textes et journaux copiés par un fork restent des données historiques ; ses validations, identifiants de demande, files et droits de restauration ne sont pas transférés. Les fichiers vivants du projet restent partagés entre les conversations.
 
 ## Vérifications
+
+### Intégration 2.5 bêta
+
+`npm run test:browser:image-actions` couvre annulation locale, relance idempotente, aperçu, galerie et sélection ZIP, ainsi que le changement FR/EN sans perte de sélection. `npm run test:browser:image-counts` exerce les quantités 1 à 5, les politiques et brouillons par conversation/projet à 1280/390/320 px. Les scripts utilisent les mêmes options Playwright que les parcours existants, avec interception de toutes les requêtes. Voir [le périmètre 2.5](beta-2.5.md).
 
 ### Évolution 2.4 bêta
 

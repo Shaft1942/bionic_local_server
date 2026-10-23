@@ -128,6 +128,7 @@ async function chooseChat(page, id = chatId) {
   if (!(await page.locator('.session[data-session-id="' + id + '"]').isVisible())) await page.locator('#back').click();
   await page.locator('.session[data-session-id="' + id + '"]').click();
   await message(page, id === chatId ? replyId : 'i18n-other').waitFor();
+  await page.waitForFunction(id=>state.chat?.id===id&&!state.loading,id);
 }
 async function openReading(page) {
   if (!(await page.locator('#settings-view').isVisible())) {

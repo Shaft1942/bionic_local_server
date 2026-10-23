@@ -75,6 +75,7 @@ function renderCompanionHelp({ container, node, navigate }) {
   images.append(paragraph(BionicI18n.t('components.help.memoryBenefit')));
   images.append(paragraph(BionicI18n.t('components.help.memoryInstall')));
   images.append(paragraph(BionicI18n.t('components.help.memoryTiming')));
+  for(const key of ['series','policy','actions'])images.append(paragraph(BionicI18n.t('components.beta25.help.'+key)));
   shortcut(images, BionicI18n.t('components.help.comfySettings'), 'images', 'comfy-discover');
   shortcut(images, BionicI18n.t('components.help.memorySettings'), 'images', 'comfy-memory-cleanup');
 

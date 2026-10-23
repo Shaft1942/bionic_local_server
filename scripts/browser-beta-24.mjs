@@ -13,7 +13,7 @@ const results = [];
 try {
   for (const width of [1280, 320]) {
     const context = await browser.newContext({ locale: 'fr-FR', viewport: { width, height: 900 } }), page = await context.newPage(), requests = [], errors = [];
-    page.setDefaultTimeout(5000); page.on('pageerror', failure => errors.push(failure.message));
+    page.setDefaultTimeout(5000); page.on('pageerror', failure => (errors.push(failure.message),console.error('Browser error:',failure.stack)));
     let chat, rejectImage = false, loseImageReply = false;
     const projects = [{ id: projectId, name: 'Projet synthétique bêta', sessionsCount: 0 }];
     await context.route('**/*', async route => {
@@ -124,7 +124,7 @@ try {
     assert.equal(requests.filter(request => request.path === '/api/chat').length, 0);
     const imagePrompt = await page.locator('.generated-image-prompt p').textContent();
     await page.evaluate(() => BionicI18n.setLanguage('en'));
-    assert.equal(await page.locator('.generated-image-status').textContent(), await page.evaluate(() => BionicI18n.t('components.images.queued')));
+    assert.equal(await page.locator('.generated-image-status').textContent(), await page.evaluate(() => BionicI18n.t('components.beta25.3408c60177')));
     assert.equal(await page.locator('.generated-image-prompt p').textContent(), imagePrompt, 'image prompt is never translated');
     await page.evaluate(() => BionicI18n.setLanguage('fr'));
     await page.locator('#prompt').fill('Prompt refusé conservé.'); rejectImage = true;

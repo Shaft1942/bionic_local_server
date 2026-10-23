@@ -94,7 +94,7 @@ $('models-open-sidebar').prepend(icon('models'));
 $('conversation-options-toggle').append(icon('more'));
 const newChatLabel = document.createTextNode(appT('app.newChat'));
 $('new-chat').append(icon('plus'), newChatLabel);
-const state = { projects: [], sessions: [], projectId: null, chat: null, sending: false, loading: false, uploading: false, status: null, viewSeq: 0, projectSeq: 0, authenticated: false, authEpoch: 0, viewKey: null, draftReasoning: {}, draftFileProfile: null, draftFileAccess: null, draftWebAccess:null, draftWebApproval:null, draftScriptAccess:null, draftImageAccess:null, draftImageWorkflowId:null, sessionsPartial:false, sessionWarnings:[] };
+const state = { projects: [], sessions: [], projectId: null, chat: null, sending: false, loading: false, uploading: false, status: null, viewSeq: 0, projectSeq: 0, authenticated: false, authEpoch: 0, viewKey: null, draftReasoning: {}, draftFileProfile: null, draftFileAccess: null, draftWebAccess:null, draftWebApproval:null, draftScriptAccess:null, draftImageAccess:null, draftImageWorkflowId:null, draftImageCount:null, draftImageModelPolicy:null, sessionsPartial:false, sessionWarnings:[] };
 const companionSettings = createCompanionSettings({api,getState:()=>state,node,onChange:()=>setSending(),onPageChange:page=>page==='maintenance'?updatesPanel.refresh():undefined,onNavigate:target=>{
   $('app').classList.add('thread-open');
   if(target==='tools'||target==='image') { composerFiles.open=true; const control=$(target==='image'?'agent-images':'agent-files'); (control.disabled?composerFilesToggle:control).focus({preventScroll:true}); composerFiles.scrollIntoView({block:'nearest'}); }
@@ -104,7 +104,7 @@ const textDraftStore = createMessageDraftStore({ storage: { getItem: key => loca
 const chats = new Map(), drafts = readDrafts(), jobs = readJobs();
 const projectTree = createProjectTree({
   container: $('sessions'), node, icon,
-  getView: () => ({ authenticated: state.authenticated, authEpoch: state.authEpoch, revision: conversationMove.revision, projectId: state.projectId, currentId: state.chat?.id, viewKey: state.viewKey, search: $('search').value, disabled: state.uploading || conversationMove.busy, pending: [...jobs.values()].filter(job => !job.id).map(job => ({ projectId: job.projectId, id: 'pending:' + job.requestId, name: job.chat?.name || appT('app.sendingPc'), source: 'web', generation: { status: 'running' }, pending: job })), jobs: [...jobs.values()].map(job => [job.requestId, job.projectId, job.id, job.status]) }),
+  getView: () => ({ authenticated: state.authenticated, authEpoch: state.authEpoch, revision: conversationMove.revision, projectId: state.projectId, currentId: state.chat?.id, viewKey: state.viewKey, search: $('search').value, disabled: state.uploading || conversationMove.busy, pending: [...jobs.values()].filter(job => !job.id).map(job => ({ projectId: job.projectId, id: 'pending:' + job.requestId, name: job.chat?.name || appT('app.sendingPc'), source: 'web', generation: { status: 'running' }, pending: job })), jobs: [...jobs.values()].map(job => [job.requestId, job.projectId, job.id, job.status, job.phase]) }),
   fetchSessions: projectId => api('/api/sessions?projectId=' + encodeURIComponent(projectId)),
   renderSession: renderSessionRow,
   onSelectProject: projectId => selectProject(projectId).catch(e => error(e.message)),
@@ -148,7 +148,7 @@ function readJobs() {
 function rememberJobs() {
   try {
     localStorage.removeItem('bm_pending_reply');
-    const saved = [...jobs.values()].map(({ requestId, projectId, id, createdAt, status, viewKey }) => ({ requestId, projectId, id, createdAt, status, viewKey }));
+    const saved = [...jobs.values()].map(({ requestId, projectId, id, createdAt, status, viewKey, phase }) => ({ requestId, projectId, id, createdAt, status, viewKey, ...(phase==='waiting-model'?{phase}:{} ) }));
     if (saved.length) localStorage.setItem('bm_pending_replies', JSON.stringify(saved)); else localStorage.removeItem('bm_pending_replies');
   } catch {}
 }
@@ -162,12 +162,13 @@ function rememberDrafts() {
   try { if(textDraftStore.save(drafts)?.revoked){applyDraftRevocation();sessionStorage.setItem('bm_drafts',JSON.stringify([...drafts.entries()].slice(-100)));} } catch { draftFailure(); }
 }
 function chatKey(projectId, id) { return projectId + '|' + (id || 'new'); }
+function normalizedImageCount(value) { const amount=Number(value); return Number.isSafeInteger(amount)&&amount>=1&&amount<=5?amount:1; }
 function currentJobs() { return [...jobs.values()].filter(job => job.projectId === state.projectId && (job.id ? job.id === state.chat?.id : job.viewKey === state.viewKey)); }
 function anyGeneration() { return jobs.size > 0 || state.sessions.some(chat => chat.generation?.status === 'running' || chat.queue?.some(item => item.status === 'queued')); }
 function draftForView() { return drafts.get(state.viewKey) || {}; }
 function saveDraft() {
   if (!state.viewKey) return;
-  drafts.set(state.viewKey, { ...draftForView(), text: $('prompt').value, model: $('model').value, reasoning: { ...state.draftReasoning }, fileProfile:currentFileProfile(), fileAccess:currentFileProfile()==='write', webAccess:$('agent-web').checked, webApproval:$('agent-web-approval').checked, scriptAccess:$('agent-scripts').checked, imageAccess:$('agent-images').checked, imageWorkflowId:$('image-workflow').value, attachments: fileBrowser.snapshot(), uploadStatus: $('upload-status').hidden ? '' : $('upload-status').textContent });
+  drafts.set(state.viewKey, { ...draftForView(), text: $('prompt').value, model: $('model').value, reasoning: { ...state.draftReasoning }, fileProfile:currentFileProfile(), fileAccess:currentFileProfile()==='write', webAccess:$('agent-web').checked, webApproval:$('agent-web-approval').checked, scriptAccess:$('agent-scripts').checked, imageAccess:$('agent-images').checked, imageWorkflowId:$('image-workflow').value, imageCount:normalizedImageCount($('image-count').value), imageModelPolicy:$('image-model-policy').value, attachments: fileBrowser.snapshot(), uploadStatus: $('upload-status').hidden ? '' : $('upload-status').textContent });
   rememberDrafts();
 }
 function restoreDraft(key) {
@@ -176,19 +177,25 @@ function restoreDraft(key) {
   const draft = draftForView();
   state.draftReasoning = { ...draft.reasoning }; state.draftFileAccess = draft.fileAccess ?? null;
   state.draftFileProfile = ['none','read','write'].includes(draft.fileProfile) ? draft.fileProfile : typeof draft.fileAccess === 'boolean' ? fileProfile(draft) : null;
-  state.draftWebAccess=draft.webAccess??null;state.draftWebApproval=draft.webApproval??null;state.draftScriptAccess=draft.scriptAccess??null;state.draftImageAccess=draft.imageAccess??null;state.draftImageWorkflowId=draft.imageWorkflowId??null;
+  state.draftWebAccess=draft.webAccess??null;state.draftWebApproval=draft.webApproval??null;state.draftScriptAccess=draft.scriptAccess??null;state.draftImageAccess=draft.imageAccess??null;state.draftImageWorkflowId=draft.imageWorkflowId??null;state.draftImageCount=draft.imageCount??null;state.draftImageModelPolicy=draft.imageModelPolicy??null;
   $('prompt').value = draft.text || ''; fileBrowser.restore(draft.attachments || []);
   $('upload-status').textContent = draft.uploadStatus || ''; $('upload-status').hidden = !draft.uploadStatus;
   $('model').value = (state.status?.models || []).some(model => model.id === draft.model) ? draft.model : modelForChat();
 }
 function rememberView() { try { sessionStorage.setItem('bm_view', JSON.stringify({ projectId: state.projectId, key: state.viewKey })); } catch {} }
 function rememberChat() { if (state.chat?.id) { try { localStorage.setItem('bm_chat_' + state.projectId, state.chat.id); } catch {} } }
-const imageGenerationView = createImageGenerationView({api,node,getState:()=>state,redraw:()=>renderChat()});
+const imageGenerationView = createImageGenerationView({api,node,getState:()=>state,redraw:()=>renderChat(),onRetry:async(result,owner)=>{
+  const epoch=state.authEpoch,key=chatKey(owner.projectId,result.chatId);
+  let target=chats.get(key)||(state.projectId===owner.projectId&&state.chat?.id===result.chatId?state.chat:null);
+  if(!target||!result.message)target=await api('/api/conversation?'+new URLSearchParams({projectId:owner.projectId,id:result.chatId}));
+  else{target.messages||=[];const index=target.messages.findIndex(message=>message.id===result.messageId);if(index<0)target.messages.push(result.message);else target.messages[index]=result.message;}
+  if(epoch===state.authEpoch&&state.authenticated)showChatUpdate(target,owner.projectId);
+}});
 const EFFORT_LABEL_KEYS = { off: 'app.effortOff', on: 'app.effortOn', low: 'app.effortLow', medium: 'app.effortMedium', high: 'app.effortHigh', xhigh: 'app.effortXhigh' };
 function effortLabel(value) { return EFFORT_LABEL_KEYS[value] ? appT(EFFORT_LABEL_KEYS[value]) : value; }
 const modelPanel = { models: [], loading: false, unloading: null, generationActive: false };
 const fileBrowser = createProjectFileBrowser({ api, node, icon, toast, getProject: () => state.projects.find(project => project.id === state.projectId), isBusy: () => state.loading || state.uploading || conversationMove.busy, onChange: saveDraft, onAttach: () => { $('app').classList.add('thread-open'); renderChat(); $('prompt').focus(); } });
-const workspace = createWorkspace({ api, node, icon, toast, getState: () => state, openTarget: async (projectId, chatId, messageId) => {
+const workspace = createWorkspace({ api, node, icon, toast, getState: () => state, imageGallery:(images,projectId)=>imageGenerationView.gallery(images,null,null,{projectId,projectOnly:true,readonly:true}), openTarget: async (projectId, chatId, messageId) => {
   if (state.uploading) throw new Error(appT('app.waitImport'));
   if (conversationMove.busy) throw new Error(appT('app.waitConversationChange'));
   if (!state.projects.some(project => project.id === projectId)) throw new Error(appT('app.replyProjectUnavailable'));
@@ -499,7 +506,7 @@ function renderSessionRow(s, projectId) {
     const active = [...jobs.values()].filter(job => job.projectId === projectId && job.id === s.id);
     const queued = Math.max(s.queueCount || s.queue?.filter(item => item.status === 'queued').length || 0, active.filter(job => job.status === 'queued').length);
     const running = s.generation?.status === 'running' || active.some(job => job.status !== 'queued');
-    const waitingResource = ['waiting-model','waiting-resource','waiting-image-resource'].includes(s.generation?.phase);
+    const waitingResource = ['waiting-model','waiting-resource','waiting-image-resource'].includes(s.generation?.phase)||active.some(job=>job.phase==='waiting-model');
     const label = s.generation?.awaitingApproval ? appT('app.sessionApproval', { queued: queued ? ' · ' + appT('app.queuedCount', { count: queued }) : '' }) : running ? appT(s.generation?.phase === 'waiting-image' ? 'app.beta24.sessionWaitingImage' : waitingResource ? 'app.beta24.sessionWaiting' : 'app.sessionRunning', { queued: queued ? ' · ' + appT('app.queuedCount', { count: queued }) : '' }) : queued ? appT('app.queuedCount', { count: queued }) : s.source === 'web' ? (s.origin?.kind==='fork' ? appT('app.branch') : s.origin ? appT('app.webContinuation') : appT('app.webChat')) : 'Bionic';
     button.classList.toggle('session-active', running || queued > 0);
     const meta = node('span', 'session-meta'); meta.append(node('span', s.source === 'web' ? 'web-label' : '', label), node('span', '', shortDate(s.updatedAt)));
@@ -650,14 +657,17 @@ function groupMessageExtras(article, message, role) {
   else {
     summary.append(node('span','message-extras-label',appT('app.turnDetails')));
     if(message.metrics){
-      const m=message.metrics,format=value=>appNumber(value, { maximumFractionDigits: 1 });
-      const duration=Number.isFinite(m.responseSeconds)&&m.responseSeconds>=0?appT('app.durationSeconds', { seconds: format(m.responseSeconds) }):appT('app.durationUnavailable');
-      const tokens=Number.isSafeInteger(m.outputTokens)&&m.outputTokens>=0?appT('app.tokensValue', { tokens: format(m.outputTokens) }):appT('app.tokensUnavailable');
-      const rate=Number.isFinite(m.tokensPerSecond)&&m.tokensPerSecond>0?appT('app.shortThroughput', { approximate: m.rateSource === 'observed' ? '≈ ' : '', rate: format(m.tokensPerSecond) }):appT('app.throughputUnavailable');
+      const m=message.metrics,format=value=>appNumber(value,{maximumFractionDigits:1});
+      const hasTotal=Number.isFinite(m.totalSeconds)&&m.totalSeconds>=0,total=hasTotal?m.totalSeconds:m.responseSeconds;
+      const duration=Number.isFinite(total)&&total>=0?format(total)+' s':'— s';
+      const tokens=Number.isSafeInteger(m.outputTokens)&&m.outputTokens>=0?format(m.outputTokens)+' tokens':'— tokens';
+      const rate=Number.isFinite(m.tokensPerSecond)&&m.tokensPerSecond>0?(m.rateSource==='observed'?'≈ ':'')+format(m.tokensPerSecond)+' tok/s':'— tok/s';
       const measures=node('span','message-turn-measures'),time=node('span','message-turn-duration',duration),throughput=node('span','message-turn-throughput',tokens+' · '+rate);
-      time.title=appT('app.responseDurationTitle', { unavailable: duration.startsWith('—') ? appT('app.unavailableSuffix') : '' });
+      time.title=appT(hasTotal?'app.beta25.totalTitle':'app.beta25.turnTitle')+(duration.startsWith('—')?appT('app.unavailableSuffix'):'');
       throughput.title=appT('app.throughputTitle', { estimated: m.rateSource === 'observed' ? appT('app.estimatedSuffix') : '' });
-      measures.append(time,throughput);summary.append(measures);
+      measures.append(time);
+      if(Number.isFinite(m.queueSeconds)&&m.queueSeconds>0){const wait=node('span','message-turn-wait',appT('app.beta25.waitMetric',{seconds:format(m.queueSeconds)}));wait.title=appT('app.beta25.waitTitle');measures.append(wait);}
+      measures.append(throughput);summary.append(measures);
     }
   }
   const content = node('div','message-extras-content');
@@ -700,7 +710,7 @@ function addMessage(message, parent = $('messages'), renderBody = true) {
     for(const copy of intent.backupCandidates||[]) { const a=node('a','file-action',appT('app.downloadVerifiedBackup'));a.href='/api/files/backup/download?'+new URLSearchParams({projectId:state.projectId,backupId:copy.id});a.download='';warning.append(a); }
     article.append(warning);
   }
-  for(const job of message.imageGenerations||[])article.append(imageGenerationView.card(job,state.chat,message));
+  if(message.imageGenerations?.length)article.append(imageGenerationView.gallery(message.imageGenerations,state.chat,message));
   for (const action of message.actions || []) addFileAction(article, action, message);
   for(const approval of message.approvals||[])addToolApproval(article,approval,state.chat);
   if(message.historicalActions?.length){const history=node('details','actions-log');history.append(node('summary','',appT('app.historicalActionCount', { count: appNumber(message.historicalActions.length) })));for(const action of message.historicalActions)history.append(node('p','message-footer',(action.message||action.name||appT('app.action'))+(action.path?' · '+action.path:'')));article.append(history);}
@@ -718,13 +728,15 @@ function addMessage(message, parent = $('messages'), renderBody = true) {
     const summary = [];
     if (rate) summary.push(appT('app.throughput', { approximate: m.rateSource === 'observed' ? '≈ ' : '', rate: number(m.tokensPerSecond) }));
     if (Number.isSafeInteger(m.outputTokens)) summary.push(appT('app.generatedTokens', { count: number(m.outputTokens) }));
-    if (summary.length || Number.isFinite(m.responseSeconds)) {
+    if (summary.length || Number.isFinite(m.totalSeconds) || Number.isFinite(m.queueSeconds) || Number.isFinite(m.responseSeconds)) {
       const details = node('details', 'message-metrics');
       details.append(node('summary', '', summary.join(' · ') || appT('app.turnMetrics')));
       const explanations = [];
       if (rate) explanations.push(m.rateSource === 'observed' ? appT('app.observedRateHelp') : appT('app.bionicRateHelp'));
       if (Number.isFinite(m.firstFragmentSeconds)) explanations.push(appT('app.firstFragment', { seconds: number(m.firstFragmentSeconds) }));
-      if (Number.isFinite(m.responseSeconds)) explanations.push(appT('app.totalDuration', { seconds: number(m.responseSeconds) }));
+      if (Number.isFinite(m.totalSeconds)&&m.totalSeconds>=0) explanations.push(appT('app.beta25.totalDetail',{seconds:number(m.totalSeconds)}));
+      if (Number.isFinite(m.queueSeconds)&&m.queueSeconds>0) explanations.push(appT('app.beta25.waitDetail',{seconds:number(m.queueSeconds)}));
+      if (Number.isFinite(m.responseSeconds)&&m.responseSeconds>=0) explanations.push(appT('app.beta25.turnDetail',{seconds:number(m.responseSeconds)}));
       if (Number.isSafeInteger(m.inputTokens)) explanations.push(appT('app.inputTokens', { label: appT(m.generationPhases > 1 ? 'app.inputTokensLabel' : 'app.contextTokensLabel'), count: number(m.inputTokens) }));
       if (m.generationPhases > 1) explanations.push(appT('app.generationPhases', { count: m.generationPhases }));
       if (m.reasoningTokens > 0) explanations.push(appT('app.reasoningTokens', { count: number(m.reasoningTokens) }));
@@ -744,13 +756,13 @@ function scrollBottom() { $('messages').scrollTop = $('messages').scrollHeight; 
 function renderQueue(chat, parent = $('messages')) {
   const queue = [...(chat?.queue || []).filter(item => ['queued', 'interrupted', 'error'].includes(item.status)), ...(draftForView().failed || [])];
   for (const job of currentJobs()) {
-    if (job.payload && !chat?.messages?.some(message => message.requestId === job.requestId) && !queue.some(item => item.requestId === job.requestId)) queue.push({ ...job.payload, status: job.status === 'submitting' ? 'submitting' : 'queued' });
+    if (job.payload && !chat?.messages?.some(message => message.requestId === job.requestId) && !queue.some(item => item.requestId === job.requestId)) queue.push({ ...job.payload, phase:job.phase, status: job.status === 'submitting' ? 'submitting' : 'queued' });
   }
   for (const item of queue) {
     const article = node('article', 'message queued-message');
     article.dataset.messageKey = 'queue:' + item.requestId;
     const interrupted = item.status === 'interrupted' || item.status === 'error', submitting = item.status === 'submitting';
-    const role=node('div', 'message-role', interrupted ? appT('app.queueInterrupted') : submitting ? appT('app.sendingPc') : appT('app.queueWaiting'));article.append(role);
+    const role=node('div', 'message-role', interrupted ? appT('app.queueInterrupted') : submitting ? appT('app.sendingPc') : appT(item.phase==='waiting-model'?'app.beta25.waitingGpu':'app.queueWaiting'));article.append(role);
     const content = node('div', 'message-body'); content.dataset.messageRole = 'user'; renderText(content, item.text || ''); article.append(content);
     if(item.text){const copy=messageCopyControl(appT('app.copyPrompt'));copy.dataset.workspaceFocus='message-copy:'+article.dataset.messageKey;const actions=node('div','message-actions');actions.append(copy);role.append(actions);}
     if (item.attachments?.length) article.append(node('p', 'message-footer', appT('app.attachedFiles', { count: item.attachments.length })));
@@ -765,6 +777,8 @@ function renderQueue(chat, parent = $('messages')) {
         state.draftWebAccess = item.webAccess === true; state.draftScriptAccess = sameProject && !unassignedProject() && item.scriptAccess === true;
         $('agent-web').checked = state.draftWebAccess; $('agent-scripts').checked = state.draftScriptAccess;
         state.draftImageAccess = item.imageAccess === true;
+        state.draftImageCount = normalizedImageCount(item.imageCount);
+        state.draftImageModelPolicy = item.imageModelPolicy??'';
         state.draftImageWorkflowId = item.imageSelection?.workflowId ?? item.imageWorkflowId ?? null;
         $('agent-images').checked = state.draftImageAccess;
         companionSettings.imagePermission();
@@ -963,8 +977,10 @@ function setSending() {
   $('agent-images').disabled = locked || !companionSettings.enabled(); $('agent-web').disabled = locked; $('agent-scripts').disabled = locked || unassignedProject();
   companionSettings.imagePermission();
   $('image-workflow').disabled = locked || !companionSettings.enabled();
+  $('image-count').disabled = locked || !companionSettings.enabled() || !$('agent-images').checked;
+  $('image-model-policy').disabled = locked || !companionSettings.enabled() || !$('agent-images').checked;
   $('agent-web-approval').disabled = locked || !$('agent-web').checked;
-  $('files-permission-state').textContent = ({none:appT('app.filesDisabled'),read:appT('app.filesRead'),write:appT('app.filesWrite')}[currentFileProfile()]) + ($('agent-web').checked ? appT('app.webToolsSuffix') : '') + ($('agent-scripts').checked ? appT('app.scriptToolsSuffix') : '') + (companionSettings.enabled()&&$('agent-images').checked ? appT('app.imageToolsSuffix') : '');
+  $('files-permission-state').textContent = ({none:appT('app.filesDisabled'),read:appT('app.filesRead'),write:appT('app.filesWrite')}[currentFileProfile()]) + ($('agent-web').checked ? appT('app.webToolsSuffix') : '') + ($('agent-scripts').checked ? appT('app.scriptToolsSuffix') : '') + (companionSettings.enabled()&&$('agent-images').checked ? appT('app.beta25.imageSuffix',{count:normalizedImageCount($('image-count').value)}) : '');
   $('logout').disabled = state.uploading || conversationMove.busy;
   document.querySelectorAll('.restore-action').forEach(button => button.disabled = locked || state.sending || button.dataset.restored === 'true');
   $('effort').disabled = locked || !(state.status?.models || []).find(model => model.id === $('model').value)?.reasoning?.allowedOptions.length;
@@ -974,7 +990,7 @@ function setSending() {
   const activityText = state.chat?.generation?.awaitingApproval ? appT('app.approvalActivity') : unresolved ? appT('app.sendingActivity') : (running ? appT('app.runningActivity') : '') + (queued ? appT('app.queuedActivity', { count: queued }) : '') + appT('app.keepWritingSuffix');
   setText($('composer-activity'), state.chat?.generation?.phase === 'waiting-image' ? appT('app.beta24.waitingImageHelp') : ['waiting-model','waiting-resource','waiting-image-resource'].includes(state.chat?.generation?.phase) ? appT('app.beta24.waitingResourceHelp') : activityText);
   $('composer-note').textContent = state.sending ? appT('app.queueComposerHelp') : unassignedProject() ? appT('app.unassignedComposerHelp') : currentFileProfile()==='write' ? appT('app.writeComposerHelp') : currentFileProfile()==='read' ? appT('app.readComposerHelp') : appT('app.noneComposerHelp');
-  if(companionSettings.enabled()&&$('agent-images').checked) $('composer-note').textContent += appT('app.imageComposerHelp');
+  if(companionSettings.enabled()&&$('agent-images').checked) $('composer-note').textContent += appT('app.beta25.imageComposerHelp',{count:normalizedImageCount($('image-count').value)});
   if($('agent-scripts').checked) $('composer-note').textContent += appT('app.scriptComposerHelp');
   if($('agent-web').checked) $('composer-note').textContent += appT('app.webComposerHelp');
   updateConversationOptions();
@@ -1117,7 +1133,10 @@ function cacheChat(chat, projectId) {
 }
 function adoptJobs(chat, projectId) {
   const requestId = chat.generation?.requestId || (chat.generation?.status === 'running' ? chat.messages?.findLast(message => message.requestId)?.requestId : null);
-  if (requestId && chat.generation?.status === 'running' && !jobs.has(requestId)) jobs.set(requestId, { requestId, projectId, id: chat.id, createdAt: chat.generation.startedAt || Date.now(), status: 'running' });
+  if (requestId && chat.generation?.status === 'running') {
+    if(!jobs.has(requestId))jobs.set(requestId, { requestId, projectId, id: chat.id, createdAt: chat.generation.startedAt || Date.now(), status: 'running',phase:chat.generation.phase });
+    else if(chat.generation.phase)jobs.get(requestId).phase=chat.generation.phase;
+  }
   for (const item of chat.queue || []) if (item.status === 'queued' && !jobs.has(item.requestId)) jobs.set(item.requestId, { requestId: item.requestId, projectId, id: chat.id, createdAt: item.queuedAt || Date.now(), status: 'queued' });
   rememberJobs();
 }
@@ -1140,7 +1159,7 @@ async function recoverReplies() {
         const receipt = await api('/api/chat-request?' + new URLSearchParams({ projectId: job.projectId, requestId: job.requestId }));
         if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return;
         if (receipt.id) bindJob(job, receipt.id);
-        job.status = receipt.status || job.status;
+        job.status = receipt.status || job.status;if(receipt.phase)job.phase=receipt.phase;
         if (job.id) snapshots.set(chatKey(job.projectId, job.id), { projectId: job.projectId, id: job.id });
         if (!['queued', 'running', 'starting', 'preparing', 'submitting', 'reconnecting'].includes(job.status)) {
           jobs.delete(job.requestId);
@@ -1300,18 +1319,18 @@ async function send(event) {
         if (job.epoch !== state.authEpoch || !state.authenticated) return;
         if (e.contextReceipt) { const reply = replyForJob(localChatForJob(job), requestId); if (reply) reply.contextReceipt = e.contextReceipt; }
         if (e.type === 'start' || e.type === 'queued') {
-          bindJob(job, e.id, e.name); job.status = e.type === 'queued' ? 'queued' : 'running';
+          bindJob(job, e.id, e.name); job.status = e.type === 'queued' ? 'queued' : 'running';job.phase=e.phase||(e.type==='start'?'model':undefined);
           const current = localChatForJob(job);
           current.id = e.id; current.name = e.name || current.name; current.source = 'web'; current.model = data.model;
           current.reasoningByModel = { ...current.reasoningByModel, [data.model]: e.reasoning || data.reasoning }; current.fileAccess = e.fileAccess ?? data.fileAccess; current.fileProfile = e.fileProfile ?? data.fileProfile; current.webApproval=e.webApproval??data.webApproval;
-          current.imageWorkflowId=e.imageWorkflowId??data.imageWorkflowId;current.imageAccess=e.imageAccess??data.imageAccess;current.webAccess=e.webAccess??data.webAccess;current.scriptAccess=e.scriptAccess??data.scriptAccess;
+          current.imageCount=e.imageCount??data.imageCount;current.imageModelPolicy=Object.hasOwn(e,'imageModelPolicy')?e.imageModelPolicy:data.imageModelPolicy??null;current.imageWorkflowId=e.imageWorkflowId??data.imageWorkflowId;current.imageAccess=e.imageAccess??data.imageAccess;current.webAccess=e.webAccess??data.webAccess;current.scriptAccess=e.scriptAccess??data.scriptAccess;
           if (e.type === 'start') {
             current.messages ||= [];
             if (!current.messages.some(message => message.requestId === requestId)) current.messages.push({ role: 'user', id: e.contextReceipt?.current?.messageId, text, requestId });
             const existingReply = replyForJob(current, requestId);
             if (existingReply) { existingReply.id ||= e.replyId; existingReply.contextReceipt = e.contextReceipt || existingReply.contextReceipt; }
             else current.messages.push({ role: 'assistant', id: e.replyId, text: '', localRequestId: requestId, contextReceipt: e.contextReceipt });
-            current.generation = { status: 'running', requestId, replyId: e.replyId };
+            current.generation = { status: 'running', requestId, replyId: e.replyId,phase:e.phase||'model' };
           }
           cacheChat(current, job.projectId); redrawJob(job, true); rememberJobs(); setSending();
         } else if (e.type === 'delta') {
@@ -1323,7 +1342,7 @@ async function send(event) {
           const current=localChatForJob(job),reply=replyForJob(current,requestId);if(reply){reply.approvals ||= [];const index=reply.approvals.findIndex(item=>item.id===e.approval.id);if(index<0)reply.approvals.push(e.approval);else reply.approvals[index]=e.approval;if(current.generation)current.generation.awaitingApproval=e.approval.status==='pending';}redrawJob(job,true);
         } else if (e.type === 'action') {
           const reply = replyForJob(localChatForJob(job), requestId);
-          if (reply) { reply.actions ||= []; if (!reply.actions.some(action => action.id === e.action.id)) reply.actions.push(e.action); if(e.action.imageGeneration){reply.imageGenerations||=[];if(!reply.imageGenerations.some(image=>image.id===e.action.imageGeneration.id))reply.imageGenerations.push(e.action.imageGeneration);} if (e.contextReceipt) reply.contextReceipt = e.contextReceipt; }
+          if (reply) { reply.actions ||= []; if (!reply.actions.some(action => action.id === e.action.id)) reply.actions.push(e.action); for(const image of e.action.imageGenerations||(e.action.imageGeneration?[e.action.imageGeneration]:[])){reply.imageGenerations||=[];const existing=reply.imageGenerations.find(job=>job.id===image.id);if(existing)Object.assign(existing,image);else reply.imageGenerations.push(image);} if (e.contextReceipt) reply.contextReceipt = e.contextReceipt; }
           redrawJob(job, true);
         } else if (e.type === 'context') {
           const reply = replyForJob(localChatForJob(job), requestId); if (reply && e.contextReceipt) reply.contextReceipt = e.contextReceipt;
@@ -1337,7 +1356,7 @@ async function send(event) {
           if (jobIsVisible(job)) announce(noticeKey ? appT(noticeKey) : e.message, 'capability:' + requestId);
           redrawJob(job, true);
         } else if (e.type === 'error') { if (jobIsVisible(job)) error(e.message); }
-        else if (e.type === 'done') { const reply=replyForJob(localChatForJob(job),requestId);if(reply)Object.assign(reply,{truncated:e.truncated,finishReason:e.finishReason,outputBudget:e.outputBudget,limited:e.limited});if(e.limited&&!e.truncated&&jobIsVisible(job))toast(appT('app.actionLimit'));redrawJob(job,true); }
+        else if (e.type === 'done') { const reply=replyForJob(localChatForJob(job),requestId);if(reply)Object.assign(reply,{truncated:e.truncated,finishReason:e.finishReason,outputBudget:e.outputBudget,limited:e.limited,metrics:e.metrics??reply.metrics});job.phase=undefined;if(e.limited&&!e.truncated&&jobIsVisible(job))toast(appT('app.actionLimit'));redrawJob(job,true); }
       }
     }
   } catch (e) {
@@ -1405,10 +1424,10 @@ function hidePrivateViews() {
   projectTree.reset();
   for (const job of jobs.values()) job.controller?.abort();
   $('models-dialog').close(); $('files-view').hidden = true; $('app').hidden = true; $('login').hidden = false;
-  workspace.reset();
+  workspace.reset();imageGenerationView.reset();
   $('messages').replaceChildren(); $('sessions').replaceChildren(); $('prompt').value = ''; $('attachments').replaceChildren(); $('upload-status').textContent = '';
   $('file-editor').value = ''; $('file-image').removeAttribute('src'); $('file-list').replaceChildren();
-  state.chat = null; state.viewKey = null; state.sessions = []; chats.clear(); drafts.clear(); rememberDrafts();
+  state.chat = null; state.viewKey = null; state.draftImageCount=null;state.draftImageModelPolicy=null;state.sessions = []; chats.clear(); drafts.clear(); rememberDrafts();
   state.projects = []; $('project').replaceChildren();
   try { sessionStorage.removeItem('bm_view'); } catch {}
 }
@@ -1423,6 +1442,8 @@ $('project').addEventListener('change', async () => {
   try { await selectProject($('project').value, { clearSearch: true }); } catch (e) { error(e.message); }
 });
 $('agent-files').addEventListener('change', () => { state.draftFileProfile = currentFileProfile(); saveDraft(); setSending(); });
+for(const type of ['input','change'])$('image-count').addEventListener(type,()=>{state.draftImageCount=normalizedImageCount($('image-count').value);saveDraft();setSending();});
+$('image-model-policy').addEventListener('change',()=>{state.draftImageModelPolicy=$('image-model-policy').value;saveDraft();setSending();});
 $('image-workflow').addEventListener('change',()=>{state.draftImageWorkflowId=$('image-workflow').value;saveDraft();companionSettings.imagePermission();});
 for(const [id,key] of [['agent-web','draftWebAccess'],['agent-web-approval','draftWebApproval'],['agent-scripts','draftScriptAccess'],['agent-images','draftImageAccess']])$(id).addEventListener('change',()=>{state[key]=$(id).checked;saveDraft();setSending();});
 $('attach-file').addEventListener('click', () => closeComposerFiles());

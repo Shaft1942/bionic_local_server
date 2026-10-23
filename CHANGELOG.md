@@ -1,5 +1,28 @@
 # Journal des versions
 
+## 2.5.0-beta.1 — 2026-10-23 — préparation locale
+
+- Réunit la 2.4.0-beta.3 et la 2.4.1-beta.2 : interactions, certificats, projets locaux, stockage fiable, interface FR/EN et version dans les paramètres ; séries 1 à 5, file commune, politiques mémoire, annulation, relance, galerie et ZIP.
+- Coordination des lots et protections de ressources intégrées sans attente circulaire ; réservations conservées pendant le nettoyage après erreur et récupération sans resoumission.
+- Nouveaux contrôles images traduits ; sélection de galerie conservée au changement de langue. Voir [le périmètre 2.5](docs/beta-2.5.md).
+
+## 2.4.1-beta.2 — version de travail, non publiée
+
+- Annulation individuelle des images encore dans la file locale, sans interrompre les rendus déjà transmis à ComfyUI.
+- Relance explicite d’une image terminée, échouée ou annulée, avec la même graine ou une nouvelle ; recette conservée et reçu idempotent dans un nouveau message.
+- Galerie des séries et export ZIP des images disponibles. Dans Livrables, la catégorie Génération rassemble les images de toutes les conversations du projet, y compris les copies conservées après suppression du chat source.
+
+## 2.4.1-beta.1 — version de travail, non publiée
+
+- Images par demande : curseur accessible de 1 à 5, séries de longueur exacte, cartes i/N et validation complète avant admission.
+- Outils : choix rapide Conserver, Décharger ou Répondre entre les images, propre à la demande et au brouillon ; retour explicite aux paramètres globaux sans modifier les lots déjà acceptés.
+
+- Nouvelle option « Répondre entre les images » : Qwen reste chargé et les réponses texte attendues passent entre deux rendus, sans chevauchement de calcul ni interruption du sampler. Les choix simultané et déchargement restent disponibles.
+- Mesures de réponse : durée depuis l’envoi, attente avant admission et durée ComfyUI distincte sur chaque carte. Accusé immédiat et Stop disponibles pendant l’attente du GPU.
+- Génération en série : préparation des prompts en un appel, cartes séparées et file FIFO commune aux conversations (douze images maximum), sans calculs image simultanés. Le nettoyage ComfyUI facultatif reste appliqué après chaque image.
+- Choix mémoire : conserver les modèles texte pour continuer à discuter, ou les décharger avant le lot et différer les nouvelles inférences jusqu'à sa fin. Reprise explicite après une soumission incertaine, sans rejeu automatique ; suivi des jobs distants et protection GPU rétablis après redémarrage.
+- Images ComfyUI : confirmation de lancement produite par le compagnon sans seconde inférence de conclusion. Les lots mêlant image et autres outils attendent la fin du rendu avant leur synthèse texte ; les soumissions incertaines ne sont pas relancées.
+
 ## 2.4.0-beta.3 — 2026-10-23
 
 - La version installée est visible dès l’ouverture des paramètres, dans l’en-tête près du titre, avec une typographie secondaire discrète. Sur mobile, elle reste visible dans chaque rubrique.

@@ -255,3 +255,17 @@ BionicI18n.register('fr', {
   "settings.language.saved": "Langue mémorisée sur cet appareil.",
   "settings.language.unpersisted": "Langue appliquée pour cette page, mais le navigateur n’a pas pu la mémoriser."
 });
+
+BionicI18n.register("fr", {
+  "settings.beta25.imageCount": {"one":"{count} image","other":"{count} images"},
+  "settings.beta25.disabledCount": "0 image (désactivé)",
+  "settings.beta25.modeSeries": "{count} prompts différents, puis {count} rendus successifs dans la file commune.",
+  "settings.beta25.modeSingle": "Une image, dans la file commune aux conversations.",
+  "settings.beta25.unload": "Le modèle texte sera déchargé avant les images ; les réponses texte attendront la fin du lot.",
+  "settings.beta25.alternate": "Le modèle texte reste chargé ; les réponses attendent la fin de l’image en cours et passent entre deux images.",
+  "settings.beta25.keep": "Le modèle texte reste chargé ; discuter pendant un rendu peut ralentir texte et images.",
+  "settings.beta25.noImages": "0 image autorisée pour ce message. Active les images pour choisir de 1 à 5 rendus.",
+  "settings.beta25.selection": "Modèle : {model} · LoRA : {count}. {mode} {scope} {policy}",
+  "settings.beta25.messageScope": "Choix pour ce message.",
+  "settings.beta25.globalScope": "Paramètres globaux."
+});

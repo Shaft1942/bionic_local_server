@@ -1,7 +1,7 @@
 'use strict';
-function createWorkspace({ api, node, icon, toast, getState, openTarget }) {
+function createWorkspace({ api, node, icon, toast, getState, openTarget, imageGallery }) {
   const $ = id => document.getElementById(id);
-  const data = { mode: 'activity', projectId: '', events: [], deliverables: [], detail: null, sequence: 0, epoch: 0, active: false, polling: false, readKey: '', since: Date.now(), read: new Map(), pinTitles: new Map(), pins: new Map(), opener: null };
+  const data = { mode: 'activity', projectId: '', events: [], deliverables: [], detail: null, sequence: 0, epoch: 0, active: false, polling: false, readKey: '', since: Date.now(), read: new Map(), pinTitles: new Map(), pins: new Map(), opener: null,category:'copies',images:[],imageTotal:0,nextCursor:null,loadingImages:false };
   const visible = () => !$('workspace-view').hidden;
   const date = value => { const parsed = new Date(value); return Number.isFinite(parsed.getTime()) ? BionicI18n.date(parsed, { dateStyle: 'medium', timeStyle: 'short' }) : BionicI18n.t('components.workspace.dateUnavailable'); };
   const eventId = item => item.id || item.eventId;
@@ -36,6 +36,8 @@ function createWorkspace({ api, node, icon, toast, getState, openTarget }) {
     $('workspace-description').textContent = mode === 'activity' ? BionicI18n.t('components.workspace.activityDescription') : BionicI18n.t('components.workspace.deliverablesDescription');
     $('workspace-activity').setAttribute('aria-pressed', String(mode === 'activity'));
     $('workspace-deliverables').setAttribute('aria-pressed', String(mode === 'deliverables'));
+    $('workspace-deliverable-categories').hidden=mode!=='deliverables';
+    $('workspace-copies').setAttribute('aria-pressed',String(data.category==='copies'));$('workspace-generations').setAttribute('aria-pressed',String(data.category==='generations'));
     projectOptions(); loadPanel();
   }
   function open(mode, opener) {
@@ -104,6 +106,20 @@ function createWorkspace({ api, node, icon, toast, getState, openTarget }) {
       article.append(actions); list.append(article);
     }
   }
+  function renderGenerations(){
+    const list=$('workspace-list');list.replaceChildren();
+    if(!data.images.length)list.append(empty(BionicI18n.t("components.beta25.ccedc92b90"),'Les images réussies de toutes les conversations du projet apparaîtront automatiquement ici.'));
+    else if(imageGallery)list.append(imageGallery(data.images,data.projectId));
+    if(data.nextCursor){const more=button('Charger la suite',()=>loadMoreGenerations());more.id='workspace-images-more';more.disabled=data.loadingImages;list.append(more);}
+  }
+  async function loadMoreGenerations(){
+    if(data.loadingImages||!data.nextCursor)return;
+    const sequence=++data.sequence,epoch=data.epoch,projectId=data.projectId,cursor=data.nextCursor;
+    data.loadingImages=true;const button=$('workspace-images-more');if(button)button.disabled=true;fail('');
+    try{const result=await api('/api/comfy/generations?'+new URLSearchParams({projectId,cursor}));if(sequence!==data.sequence||epoch!==data.epoch||data.category!=='generations')return;const known=new Set(data.images.map(image=>image.id));data.images.push(...(result.images||[]).filter(image=>!known.has(image.id)));data.nextCursor=result.nextCursor||null;data.imageTotal=result.total??data.imageTotal;renderGenerations();$('workspace-status').textContent=BionicI18n.t('components.beta25.projectCount',{count:data.images.length,total:data.imageTotal});}
+    catch(error){if(sequence===data.sequence&&epoch===data.epoch)fail(error.message);}
+    finally{if(sequence===data.sequence){data.loadingImages=false;const more=$('workspace-images-more');if(more)more.disabled=false;}}
+  }
   async function loadPanel() {
     const sequence = ++data.sequence, epoch = data.epoch, mode = data.mode, projectId = data.projectId;
     fail(''); $('workspace-status').textContent = mode === 'activity' ? BionicI18n.t('components.workspace.loadingActivity') : BionicI18n.t('components.workspace.loadingDeliverables');
@@ -116,6 +132,13 @@ function createWorkspace({ api, node, icon, toast, getState, openTarget }) {
         $('workspace-status').textContent = result.truncated ? BionicI18n.t('components.workspace.recentLimit') : BionicI18n.t('components.workspace.doesNotMarkRead');
       } else {
         if (!projectId) { $('workspace-list').append(empty(BionicI18n.t('components.workspace.noProject'), BionicI18n.t('components.workspace.createProject'))); $('workspace-status').textContent = ''; return; }
+        if(data.category==='generations'){
+          const result=await api('/api/comfy/generations?'+new URLSearchParams({projectId}));if(sequence!==data.sequence||epoch!==data.epoch)return;
+          data.images=result.images||[];data.imageTotal=result.total??data.images.length;data.nextCursor=result.nextCursor||null;data.loadingImages=false;renderGenerations();
+          $('workspace-description').textContent=BionicI18n.t("components.beta25.e85bdb2adc");
+          $('workspace-status').textContent=BionicI18n.t('components.beta25.projectCount',{count:data.images.length,total:data.imageTotal});return;
+        }
+        $('workspace-description').textContent=BionicI18n.t("components.beta25.fb4cdc516c");
         const result = await api('/api/deliverables?' + new URLSearchParams({ projectId })); if (sequence !== data.sequence || epoch !== data.epoch) return;
         data.deliverables = result.deliverables || []; renderDeliverables();
         $('workspace-status').textContent = BionicI18n.t('components.workspace.deliverableCount', { count: data.deliverables.length });
@@ -250,7 +273,7 @@ function createWorkspace({ api, node, icon, toast, getState, openTarget }) {
       persistRead(); updateBadge(); await refreshActivity();
     } catch {}
   }
-  function reset() { ++data.epoch; ++data.sequence; data.active = false; data.events = []; data.deliverables = []; data.detail = null; data.read = new Map(); data.readKey = ''; data.pinTitles.clear(); data.pins.clear(); $('workspace-view').hidden = true; $('workspace-list').replaceChildren(); $('workspace-detail').replaceChildren(); $('workspace-project').replaceChildren(); $('workspace-status').textContent = ''; fail(''); updateBadge(); }
+  function reset() { ++data.epoch; ++data.sequence; data.active = false; data.events = []; data.deliverables = []; data.images=[];data.imageTotal=0;data.nextCursor=null;data.loadingImages=false;data.category='copies';data.detail = null; data.read = new Map(); data.readKey = ''; data.pinTitles.clear(); data.pins.clear(); $('workspace-view').hidden = true; $('workspace-list').replaceChildren(); $('workspace-detail').replaceChildren(); $('workspace-project').replaceChildren(); $('workspace-status').textContent = ''; fail(''); updateBadge(); }
   $('workspace-close').append(icon('back')); $('workspace-refresh').append(icon('refresh')); $('activity-open-thread').append(icon('activity'));
   $('activity-open-sidebar').addEventListener('click', event => open('activity', event.currentTarget));
   $('activity-open-thread').addEventListener('click', event => open('activity', event.currentTarget));
@@ -258,6 +281,8 @@ function createWorkspace({ api, node, icon, toast, getState, openTarget }) {
   $('workspace-close').addEventListener('click', close);
   $('workspace-activity').addEventListener('click', () => setMode('activity'));
   $('workspace-deliverables').addEventListener('click', () => setMode('deliverables'));
+  $('workspace-copies').addEventListener('click',()=>{data.category='copies';setMode('deliverables');});
+  $('workspace-generations').addEventListener('click',()=>{data.category='generations';setMode('deliverables');});
   $('workspace-project').addEventListener('change', () => { data.projectId = $('workspace-project').value; data.detail = null; $('workspace-detail').hidden = true; loadPanel(); });
   $('workspace-refresh').addEventListener('click', () => { data.detail = null; $('workspace-detail').hidden = true; loadPanel(); });
   BionicI18n.onChange(() => {
@@ -268,6 +293,7 @@ function createWorkspace({ api, node, icon, toast, getState, openTarget }) {
     projectOptions();
     if (data.mode === 'activity') renderActivity();
     else {
+      if(data.category==='generations'){renderGenerations();$('workspace-description').textContent=BionicI18n.t('components.beta25.e85bdb2adc');$('workspace-status').textContent=BionicI18n.t('components.beta25.projectCount',{count:data.images.length,total:data.imageTotal});return;}
       renderDeliverables();
       $('workspace-status').textContent = BionicI18n.t('components.workspace.deliverableCount', { count: data.deliverables.length });
       if (data.detail) {

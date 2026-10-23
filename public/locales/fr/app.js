@@ -319,3 +319,16 @@ globalThis.BionicI18n.register("fr", {
   "app.beta24.waitingImageHelp": "L’image est en cours de rendu sur le PC. La conversation reprendra ensuite.",
   "app.beta24.toolsTrialNotice": "La capacité outils de ce modèle est inconnue. Les outils activés sont essayés pour cette demande."
 });
+
+BionicI18n.register("fr", {
+  "app.beta25.waitingGpu": "Message en attente du GPU",
+  "app.beta25.imageSuffix": {"one":" · {count} image","other":" · {count} images"},
+  "app.beta25.imageComposerHelp": " {count} image(s) seront préparées, puis rendues dans la file commune.",
+  "app.beta25.waitMetric": "dont {seconds} s d’attente",
+  "app.beta25.totalTitle": "Durée totale depuis l’envoi",
+  "app.beta25.turnTitle": "Durée du tour, hors attente et chargement initiaux",
+  "app.beta25.waitTitle": "Attente avant admission, hors chargement du modèle",
+  "app.beta25.totalDetail": "Durée totale depuis l’envoi : {seconds} s.",
+  "app.beta25.waitDetail": "Attente avant admission : {seconds} s, hors chargement du modèle.",
+  "app.beta25.turnDetail": "Traitement du tour : {seconds} s, hors attente et chargement initiaux."
+});
