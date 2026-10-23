@@ -2,6 +2,8 @@
 
 # Bionic Mobile — compagnon local
 
+**Candidate locale 2.5.1-beta.2** : bouton **+** pour ouvrir un chat dans chaque projet, annonces et suivi de rendu vérifiés à partir des reçus ComfyUI. Elle reprend aussi la reprise du contrôle des serveurs et leur configuration assistée de la bêta.1. Internet est activé pour les nouveaux choix ; les images le sont quand ComfyUI est disponible. Les désactivations explicites restent conservées. Voir [les changements de cette bêta](docs/beta-2.5.1.md). Cette mention ne constitue pas une publication.
+
 **Version 2.5.0** · Discutez avec les modèles de votre PC et retrouvez vos projets depuis le navigateur de votre téléphone, sur votre réseau local.
 
 Le compagnon utilise l’API locale de Bionic et peut générer des images avec ComfyUI. Ce projet communautaire est indépendant de Bionic ; ni Bionic, ni ComfyUI, ni leurs modèles ne sont inclus.
@@ -46,13 +48,13 @@ Dans **Paramètres → Images et ComfyUI**, renseignez le serveur, vérifiez les
 
 **Générer ce prompt directement** produit une seule image avec votre texte exact, sans préparation par le modèle de conversation. Le nettoyage ComfyUI facultatif intervient après chaque rendu ; il est distinct du déchargement des modèles texte. Voir [Images](docs/comfyui.md).
 
-Le lanceur se prépare avec **Configurer-serveurs.cmd** sur le PC. Il pilote l’API Bionic sélectionnée et les instances ComfyUI Python qu’il contrôle ; il ne prend pas en charge une instance externe simplement parce qu’elle répond. Arrêter Bionic coupe son API sans fermer son application Desktop. Voir [Serveurs sur le PC](docs/local-services.md).
+Préparez le lanceur dans **Paramètres → Serveurs sur le PC** : détection, choix du dossier et validation des chemins. **Configurer-serveurs.cmd** reste une alternative sur le PC. Le lanceur pilote l’API Bionic sélectionnée et les instances ComfyUI Python qu’il contrôle ; il ne prend pas en charge une instance externe simplement parce qu’elle répond. Arrêter le serveur Bionic coupe son API sans fermer son application Desktop. Voir [Serveurs sur le PC](docs/local-services.md).
 
 ## Permissions et accès
 
 Dans **Outils fichiers**, **Modification** est le choix initial d’un nouveau chat ordinaire : les écritures autorisées sont immédiates, sans confirmation par fichier. Choisissez **Lecture** ou **Aucun** si vous n’en avez pas besoin. Les sauvegardes de remplacement et la corbeille ne remplacent pas une sauvegarde indépendante.
 
-Le web et les scripts sont désactivés par défaut. Vous pouvez demander un accord pour chaque recherche et URL. **Chaque script exige l’approbation de son code exact, puis s’exécute avec les droits du compte PC : ce n’est pas un bac à sable.** Les profils de fichiers ne limitent pas les droits d’un script approuvé.
+Le web est activé pour les nouveaux choix, sans écraser une désactivation explicite. Les images le sont lorsque ComfyUI est détecté et disponible. Les scripts restent désactivés par défaut. Vous pouvez demander un accord pour chaque recherche et URL. **Chaque script exige l’approbation de son code exact, puis s’exécute avec les droits du compte PC : ce n’est pas un bac à sable.** Les profils de fichiers ne limitent pas les droits d’un script approuvé.
 
 Le compagnon est destiné à un **réseau local de confiance**. HTTP ne chiffre pas le code, les messages et les fichiers. Dans **Paramètres → Sécurité et accès**, préparez HTTPS, puis éventuellement un certificat par appareil avec mTLS. Ne contournez pas les alertes de certificat et n’exposez pas directement ce port sur Internet.
 

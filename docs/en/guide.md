@@ -67,7 +67,7 @@ The message **Tools → File tools** control offers **None**, **Read** and **Wri
 
 Supported changes keep previous versions; file removal uses recoverable project trash. Restoration checks for conflicts. These safeguards do not replace independent backups and do not undo changes made by arbitrary scripts. Check action results and the actual file rather than relying only on the model’s description.
 
-Public web access and scripts are disabled by default. Enable only what the next request needs. Optional per-request web approval shows the exact search or URL before transmission; declined or expired requests are not sent by those tools. Searches and visited pages disclose their query or URL to the relevant services.
+Public web access is enabled for new conversation choices; explicit disabled settings remain unchanged. Scripts remain disabled by default. Images are enabled for new choices when the configured ComfyUI API is detected and available; this does not start a generation. Optional per-request web approval shows the exact search or URL before transmission; declined or expired requests are not sent by those tools. Searches and visited pages disclose their query or URL to the relevant services.
 
 Scripts may use Python, Node.js or PowerShell. Each proposal displays its exact code and working directory and waits for **Run this script** or **Reject**. **An approved script runs with the PC account’s permissions, can act outside the project and can access the network: it is not a sandbox.** File and web tool permissions do not restrict it. Stopping a script or encountering an error does not undo previous changes. An approval expires after ten minutes or when abandoned by a server restart.
 
@@ -100,7 +100,7 @@ An uncertain submission is never automatically repeated. Check ComfyUI and its o
 
 ## Servers on the PC
 
-On the companion PC, run **Configurer-serveurs.cmd** to create an explicit local launcher profile. Setup checks paths but does not download or start engines. In **Settings → Servers on the PC**, choose **Reload configuration** and inspect the status before starting an engine.
+On the companion PC, open **Settings → Servers on the PC** and configure the engine. Detect an installation or choose its folder, review the proposed paths, confirm dedicated use and save. Advanced paths remain available for unusual installations. Setup validates and reloads the profile without downloading or starting an engine. **Configurer-serveurs.cmd** remains a local alternative. Phones can control prepared engines, but cannot select executables or save paths.
 
 - **Bionic:** the profile selects the official `lms.exe`, Bionic’s existing control file and optionally `Bionic.exe` for a cold start. Stop shuts down the selected HTTP API; it does not close the Desktop app. Status checks do not deliberately load a model.
 - **ComfyUI:** select its Python interpreter, `main.py` and working folder. The companion manages the Python instance it starts. An existing Comfy Desktop or externally started instance is not adopted or closed automatically.

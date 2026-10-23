@@ -68,7 +68,7 @@ for(const busy of ['running','pending'])test('foreign '+busy+' job blocks failur
 
 test('history for another prompt never frees memory or reports our job finished',async t=>{
   const f=await fixture(t,{unrelated:true}),job=await f.service.refresh(f.job.id);
-  assert.equal(job.status,'queued');assert.equal(job.memoryCleanupRecovery,undefined);
+  assert.equal(job.status,'unknown');assert.equal(job.memoryCleanupRecovery,undefined);assert.equal(f.service.getSettings().queuePaused,true);
   assert.equal(f.calls.some(call=>call.route==='/free'),false);
 });
 

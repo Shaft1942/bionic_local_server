@@ -41,6 +41,20 @@ test('prototype serves optional bundle, legacy page and only bounded static asse
   assert.equal((await fetch(f.current.baseUrl + '/api/projects')).status, 401);
 });
 
+test('prototype disables installation discovery, native picker and launcher configuration even for authenticated localhost', async t => {
+  const f = await fixture(t);
+  const services = await (await f.request('/api/local-services')).json();
+  const headers = { origin: f.current.baseUrl, 'x-local-service-csrf': services.csrfNonce };
+  const setup = await (await f.request('/api/local-service-setup', undefined, { headers })).json();
+  assert.equal(setup.canConfigure, false); assert.equal(setup.reasonCode, 'prototype-setup-disabled'); assert.deepEqual(setup.services, []);
+  for (const operation of ['discover', 'pick', 'save']) {
+    const response = await f.request('/api/local-service-setup/' + operation, { serviceId: 'bionic' }, { headers });
+    assert.equal(response.status, 403); assert.equal((await response.json()).code, 'prototype-setup-disabled');
+  }
+  await assert.rejects(fs.stat(path.join(f.root, 'config.launchers.local.json')), { code: 'ENOENT' });
+  assert.equal(f.current.stats.externalCalls, 0); assert.equal(f.current.stats.modelCalls, 0); assert.equal(f.current.stats.promptPosts, 0);
+});
+
 test('disconnect during a real HTTP stream recovers request and final chat with a single model invocation', async t => {
   const f = await fixture(t, { modelDelayMs: 900 }), input = chatInput('Vérifie la reprise après déconnexion.');
   const controller = new AbortController(), response = await f.request('/api/chat', input, { signal: controller.signal });

@@ -39,7 +39,7 @@ try {
       else if (url.pathname === '/api/activity') value = { events: [], warnings: [] };
       else if (url.pathname === '/api/updates') value = { currentVersion: '2.4.0-beta.1', enabled: false, candidate: null, installation: { status: 'idle' } };
       else if (url.pathname === '/api/model-preferences') value = { automatic: true, maxOutputTokens: 8192, source: 'auto' };
-      else if (url.pathname === '/api/comfy/settings') value = { enabled: true, workflowId: 'krea2_turbo', activeJobs: 0, loraProfiles: {}, workflows: [{ id: 'krea2_turbo', label: 'Krea 2 Turbo' }] };
+      else if (url.pathname === '/api/comfy/settings') value = { enabled: true, available:true, workflowId: 'krea2_turbo', activeJobs: 0, loraProfiles: {}, workflows: [{ id: 'krea2_turbo', label: 'Krea 2 Turbo' }] };
       else if (url.pathname === '/api/conversation') value = chat;
       else if (url.pathname === '/api/chat-request') value = { id: chatId, status: 'completed', projectId: chat?.projectId || projectId };
       else if (url.pathname === '/api/comfy/generation') value = chat.messages[1].imageGenerations[0];
@@ -56,6 +56,14 @@ try {
     });
     await page.goto(origin); await page.locator('#app').waitFor({ state: 'visible' });
     await page.locator('#new-chat').waitFor({ state: 'visible' });
+    await page.waitForFunction(()=>document.getElementById('agent-images').checked===true);
+    assert.equal(await page.locator('#agent-web').isChecked(),true,'new conversations enable Internet by default');
+    assert.equal(await page.locator('#agent-images').isChecked(),true,'new conversations enable images only when available');
+    assert.equal(requests.some(request=>['/api/chat','/api/comfy/generate'].includes(request.path)),false,'defaults never generate');
+    await page.evaluate(()=>{document.getElementById('agent-web').checked=false;document.getElementById('agent-web').dispatchEvent(new Event('change'));document.getElementById('agent-images').checked=false;document.getElementById('agent-images').dispatchEvent(new Event('change'));});
+    await page.locator('#refresh').click();await page.waitForFunction(()=>document.getElementById('refresh').getAttribute('aria-busy')==='false');
+    assert.equal(await page.locator('#agent-web').isChecked(),false,'an explicit Internet draft opt-out survives refresh');
+    assert.equal(await page.locator('#agent-images').isChecked(),false,'an explicit image draft opt-out survives refresh');
     assert.equal(await page.locator('#reconnect').count(), 0);
     await page.locator('#refresh').click();
     await page.waitForFunction(() => document.querySelector('#refresh').getAttribute('aria-busy') === 'false');

@@ -23,7 +23,7 @@ Pour l’initialisation, copiez **config.example.json** en **config.local.json**
   "shutdownTimeoutMs": 15000,
   "requestTimeoutMs": 180000,
   "comfyUrl": "http://127.0.0.1:8188",
-  "comfyEnabled": false,
+  "comfyEnabled": true,
   "comfyWorkflowId": "krea2_turbo"
 }
 ```
@@ -40,7 +40,7 @@ Pour l’initialisation, copiez **config.example.json** en **config.local.json**
 | `resourcePolicy` | Coordination de base `exclusive` (défaut) ou `independent`. Le choix mémoire du lot d’images pilote aussi ses phases texte/images ; voir [ComfyUI](comfyui.md#modèle-texte-pendant-les-images) |
 | `shutdownTimeoutMs` | Délai d’arrêt du compagnon, 100–120000 ms ; défaut 15000 |
 | `requestTimeoutMs` | Réception d’un corps HTTP, 30000–1800000 ms ; défaut 180000. Ne coupe pas une génération déjà acceptée |
-| `comfyEnabled`, `comfyUrl`, `comfyWorkflowId` | Valeurs initiales ComfyUI ; désactivé, `http://127.0.0.1:8188`, `krea2_turbo`. Autre profil : `hassaku_illustrious` |
+| `comfyEnabled`, `comfyUrl`, `comfyWorkflowId` | Valeurs initiales ComfyUI : détection permise, `http://127.0.0.1:8188`, `krea2_turbo`. Les images sont cochées par défaut seulement si l’API est disponible. Un `false` explicite reste prioritaire. Autre profil : `hassaku_illustrious` |
 
 Le téléphone appelle le compagnon, qui contacte Bionic sur le PC. CORS et l’exposition réseau de l’API Bionic ne sont pas nécessaires. Les préférences ComfyUI enregistrées dans l’interface sont ensuite prioritaires dans `data/comfy-settings.json` : [Images ComfyUI](comfyui.md).
 
@@ -106,7 +106,7 @@ L’application conserve son port après confirmation. `certificateProofPort` se
 
 ## Moteur de recherche des agents
 
-Le web est désactivé dans un nouveau chat. Une fois autorisé, le moteur est choisi dans cet ordre :
+Le web est activé pour les nouveaux choix de conversation, sans écraser une désactivation explicite. Lorsqu’il est autorisé pour le message, le moteur est choisi dans cet ordre :
 
 1. `BIONIC_SEARCH_URL` : SearXNG à cet endpoint.
 2. Sinon `BIONIC_BRAVE_SEARCH_KEY` : Brave Search.

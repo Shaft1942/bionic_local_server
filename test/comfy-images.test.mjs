@@ -56,3 +56,21 @@ test('server rejection and execution failure never produce success images',async
   const f=await fixture(t,'refused');const refused=await f.service.submit({prompt:'A teapot'},owner);assert.equal(refused.status,'failed');assert.match(refused.error,/Missing model/);
   const failed=await fixture(t,'failed');const job=await failed.service.submit({prompt:'A teapot'},owner);assert.equal((await failed.service.refresh(job.id)).status,'failed');await assert.rejects(failed.service.image(job.id),{status:404});
 });
+
+for(const mode of ['missing','race'])test('queue disappearance '+mode+' cannot preserve false running',async t=>{
+  const directory=await fs.mkdtemp(path.join(os.tmpdir(),'comfy-observation-test-'));
+  let phase='pending',posts=0,reads=0;
+  const bytes=Buffer.alloc(24);Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);bytes.write('IHDR',12);bytes.writeUInt32BE(1024,16);bytes.writeUInt32BE(1024,20);
+  const service=await createComfyImages({directory,settingsFile:path.join(directory,'settings.json'),enabled:true,pollMs:100000,fetchImpl:async(url)=>{
+    if(url.endsWith('/prompt')){posts++;return Response.json({prompt_id:'observed'});}
+    if(url.includes('/history/')){reads++;return Response.json(phase==='missing'&&mode==='race'&&reads>1?{observed:{status:{completed:true},outputs:{'9':{images:[{filename:'test.png',subfolder:'',type:'output'}]}}}}:{});}
+    if(url.endsWith('/queue'))return Response.json({queue_running:phase==='running'?[[0,'observed']]:[],queue_pending:phase==='pending'?[[0,'observed']]:[]});
+    if(url.includes('/view?'))return new Response(bytes);
+    throw Error('Unexpected route');
+  }});
+  t.after(async()=>{await service.close();assert(path.basename(directory).startsWith('comfy-observation-test-'));await fs.rm(directory,{recursive:true,force:true});});
+  const job=await service.submit({prompt:'A blue teapot',format:'square'},owner);
+  assert.equal((await service.refresh(job.id)).status,'queued');phase='running';assert.equal((await service.refresh(job.id)).status,'running');
+  phase='missing';reads=0;assert.equal((await service.refresh(job.id)).status,mode==='race'?'succeeded':'unknown');assert.equal(posts,1);
+  if(mode==='missing')assert.equal(service.getSettings().queuePaused,true);
+});

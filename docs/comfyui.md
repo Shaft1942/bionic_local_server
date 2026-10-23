@@ -16,6 +16,12 @@ L’adresse initiale est `http://127.0.0.1:8188`. Les URL HTTP de boucle locale 
 
 Les profils de production se trouvent dans `workflows/` : Krea 2 Turbo utilise 8 étapes et CFG 1 ; Hassaku XL Illustrious v34 utilise 25 étapes et CFG 6. Ce sont des recettes fixes, pas un éditeur de workflow. Les formats proposés sont carré 1024 × 1024, portrait 832 × 1216 et paysage 1216 × 832.
 
+## Annonce et état du rendu
+
+Une annonce du modèle (« Running », « je lance l'image ») ne constitue pas un reçu ComfyUI. Pour une commande explicite telle que « Génère l'image », si le modèle répond sans outil, le compagnon lui demande une seule fois un appel image structuré, avec le nombre d'images choisi. Aucun workflow n'est soumis à partir du texte libre de cette annonce. Si le modèle ignore encore l'appel, le tour se termine avec une erreur et aucune génération n'est annoncée.
+
+Le texte des tours avec images est vérifié avant affichage ; les annonces accompagnant un appel image sont remplacées par le reçu du service. Un refus de soumission est affiché directement. Les cartes suivent les jobs appartenant à cette conversation : attente locale, envoi, file ComfyUI, exécution, image disponible ou échec. Si le suivi devient inaccessible, la carte affiche un état incertain et poursuit ses consultations, sans nouvel envoi. Un job absent de la file et de son historique après une seconde vérification passe en état inconnu ; la file locale est suspendue pour éviter les doublons.
+
 ## Demander une ou plusieurs images
 
 Dans **Outils**, activez **Générer des images avec ComfyUI**, choisissez le **Modèle d’image** puis **Images par demande**, de **1 à 5**. Envoyez votre demande à un modèle de conversation capable d’appeler des outils. Pour 2 à 5 images, le modèle doit préparer exactement ce nombre de prompts et de graines distinctes ; le compagnon valide le lot avant de l’admettre.

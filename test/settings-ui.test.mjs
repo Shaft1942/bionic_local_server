@@ -10,7 +10,7 @@ const defaultComfy={enabled:false,url:'http://127.0.0.1:8188',workflowId:'krea2_
 
 /** A small DOM boundary keeps scope and asynchronous transport tests independent of a browser. */
 function fixture(intercept=()=>undefined) {
-  const elements=new Map(),writes=[],navigations=[],globalEvents={},serviceCalls=[];
+  const elements=new Map(),writes=[],navigations=[],globalEvents={},serviceCalls=[];let serviceOptions;
   const document={activeElement:null,getElementById:element,querySelectorAll:selector=>['[data-settings-page]','#settings-nav [data-settings-page]'].includes(selector)?[...elements.values()].filter(value=>value.dataset.settingsPage):[]};
   function element(id) {
     if(!elements.has(id)) {
@@ -38,13 +38,13 @@ function fixture(intercept=()=>undefined) {
     if(route==='/api/capabilities')return {items:[{name:'Capacité actuelle',description:'Description actuelle.'}]};
     throw Error('Unexpected API route '+route);
   };
-  const context=vm.createContext({document,Intl,URL,URLSearchParams,structuredClone,addEventListener:(name,callback)=>globalEvents[name]=callback,createLocalServices:()=>({setVisible:visible=>serviceCalls.push({visible}),openService:id=>serviceCalls.push({id}),reset:()=>serviceCalls.push({reset:true})})});
+  const context=vm.createContext({document,Intl,URL,URLSearchParams,structuredClone,addEventListener:(name,callback)=>globalEvents[name]=callback,createLocalServices:options=>{serviceOptions=options;return {setVisible:visible=>serviceCalls.push({visible}),openService:id=>serviceCalls.push({id}),reset:()=>serviceCalls.push({reset:true})};}});
   vm.runInContext(source,context);
   let nodes=0;const settings=context.createCompanionSettings({api,getState:()=>state,node:(tag,className,textContent)=>Object.assign(element('node-'+nodes++),{tag,className,textContent}),onChange(){},onNavigate:target=>navigations.push(target)});
   const fire=(id,type='click')=>element(id).listeners[type]({currentTarget:element(id),preventDefault(){}});
   const open=()=>fire('settings-open-sidebar');
   async function saveOutput(value,all=false){element('output-mode').value=value===null?'auto':'manual';element('output-tokens').value=value??8192;element('output-all-sessions').value=all?'model':'session';return fire('output-settings-form','submit');}
-  return {state,document,element,settings,writes,navigations,globalEvents,serviceCalls,fire,open,saveOutput};
+  return {state,document,element,settings,writes,navigations,globalEvents,serviceCalls,fire,open,saveOutput,observeComfy:available=>serviceOptions.onComfyAvailability(available)};
 }
 
 test('server navigation and authentication reset preserve image request options until reset',async()=>{
@@ -63,6 +63,18 @@ test('server navigation and authentication reset preserve image request options 
   f.settings.reset();
   assert.ok(f.serviceCalls.some(call=>call.reset===true));
   assert.equal(f.serviceCalls.at(-1).visible,false);
+});
+
+test('new image defaults require an enabled and observed available ComfyUI, without rewriting saved or drafted permissions',async()=>{
+  let data={...defaultComfy,enabled:true,available:true};const f=fixture(route=>route==='/api/comfy/settings'?data:undefined);await f.settings.refresh();assert.equal(f.settings.imageDefaultEnabled(),true);f.state.chat={imageAccess:false};f.state.draftImageAccess=false;await f.settings.refresh();assert.equal(f.state.chat.imageAccess,false);assert.equal(f.state.draftImageAccess,false);assert.equal(f.writes.length,0);data={...data,available:false};await f.settings.refresh();assert.equal(f.settings.imageDefaultEnabled(),false);data={...data,enabled:false,available:true};await f.settings.refresh();assert.equal(f.settings.imageDefaultEnabled(),false);
+});
+
+test('a server card becoming ready updates new image choices without overwriting opt-outs or saving settings',async()=>{
+  let enabled=true;const f=fixture(route=>route==='/api/comfy/settings'?{...defaultComfy,enabled,available:false}:undefined);await f.settings.refresh();assert.equal(f.settings.imageDefaultEnabled(),false);f.observeComfy(true);assert.equal(f.settings.imageDefaultEnabled(),true);f.state.chat={imageAccess:false};f.state.draftImageAccess=false;f.observeComfy(false);f.observeComfy(true);assert.equal(f.state.chat.imageAccess,false);assert.equal(f.state.draftImageAccess,false);assert.equal(f.writes.length,0);enabled=false;await f.settings.refresh();f.observeComfy(true);assert.equal(f.settings.imageDefaultEnabled(),false);
+});
+
+test('readiness observed before the first settings reply is applied once and is cleared on logout',async()=>{
+  const f=fixture(route=>route==='/api/comfy/settings'?{...defaultComfy,enabled:true,available:false}:undefined);f.observeComfy(true);await f.settings.refresh();assert.equal(f.settings.imageDefaultEnabled(),true);f.settings.reset();await f.settings.refresh();assert.equal(f.settings.imageDefaultEnabled(),false);
 });
 
 test('LoRA form keeps two choices and strengths independently when switching image models',async()=>{

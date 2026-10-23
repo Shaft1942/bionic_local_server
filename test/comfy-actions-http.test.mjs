@@ -32,7 +32,13 @@ async function fixture(t) {
   const jobs = await service.submitSeries({ images: [{ prompt: 'A red bicycle', seed: 111 }, { prompt: 'A blue sailboat', seed: 112 }] }, owner);
   chat.messages[0].imageGenerations = jobs; await app.persistChat(chat);
   const input = job => ({ ...owner, jobId: job.id });
-  const finish = async job => { completed.add(service.get(job.id).promptId); await service.refresh(job.id); assert.equal(service.get(job.id).status, 'succeeded'); };
+  const finish = async job => {
+    completed.add(service.get(job.id).promptId);
+    // A deduplicated refresh can still be the poll started before completion.
+    const deadline = Date.now() + 3000;
+    do { await service.refresh(job.id); if (service.get(job.id).status === 'succeeded') break; await new Promise(resolve => setImmediate(resolve)); } while (Date.now() < deadline);
+    assert.equal(service.get(job.id).status, 'succeeded');
+  };
   return { app, service, request, jobs, owner, input, posts, finish, chat };
 }
 

@@ -6,7 +6,7 @@
 
 ## Préparer une installation
 
-Sur le PC, lancez **Configurer-serveurs.cmd**. L’assistant valide les chemins puis enregistre `config.launchers.local.json`. Il ne télécharge, ne démarre et n’arrête aucun moteur. Dans les paramètres, utilisez ensuite **Relire la configuration**. Le fichier d’exemple reste désactivé.
+Sur le PC, ouvrez la configuration du moteur dans **Paramètres → Serveurs sur le PC**. Utilisez **Détecter** ou **Choisir le dossier**, vérifiez les chemins proposés, confirmez l’usage dédié et enregistrez. Les réglages avancés permettent de corriger les chemins des installations particulières. Le profil est validé et relu automatiquement ; aucun moteur n’est téléchargé, démarré ou arrêté par l’enregistrement. Le script **Configurer-serveurs.cmd** reste une alternative locale. Le fichier d’exemple reste désactivé.
 
 Les API pilotées doivent être en boucle locale et correspondre aux connexions déjà utilisées par le compagnon : `apiUrl` pour Bionic et l’URL enregistrée de ComfyUI. Le profil de lancement ne les modifie pas. ComfyUI sur un autre PC reste utilisable pour générer, mais ne peut pas être piloté par ce lanceur.
 
@@ -28,7 +28,7 @@ L’arrêt est coopératif et limité au processus contrôlé. Des descendants e
 
 **API prête**, **processus lancé** et **modèle chargé** sont trois informations distinctes. Fermer les paramètres n’annule pas une opération acceptée. Après une coupure de connexion, le navigateur retrouve son état sans renvoyer automatiquement la commande. Un timeout n’autorise pas un second lancement.
 
-Une opération sans arrêt confirmé reste **indéterminée**. Après redémarrage du compagnon, un reçu enregistré ne suffit pas à reprendre le contrôle : une identité vérifiable et un contrôleur authentifié restent nécessaires. Si l’état reste ambigu, vérifiez l’installation sur le PC. Ne supprimez pas un journal pour provoquer un rejeu ; aucun bouton de fermeture forcée n’est fourni.
+Une opération dont l’effet reste réellement incertain demeure **indéterminée**. Un refus prouvé avant tout lancement est en revanche terminé sans bloquer les nouvelles demandes. Après redémarrage du compagnon, le contrôle Bionic reprend uniquement si le profil, l’API et l’identité complète du même contrôleur sont vérifiés ; les simples numéro de port ou PID ne suffisent pas. Le contrôleur ComfyUI reste authentifié. Si l’état reste ambigu, suivez le diagnostic de la carte sur le PC. Ne supprimez pas un journal pour provoquer un rejeu ; aucun bouton de fermeture forcée n’est fourni.
 
 Les générations texte/images, attentes, accords humains, chargements de modèles et mises à jour participent aux contrôles d’activité. Une opération susceptible de perdre un travail est refusée pendant ces états. Les consultations restent disponibles.
 

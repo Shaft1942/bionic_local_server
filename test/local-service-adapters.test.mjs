@@ -42,6 +42,13 @@ test('Comfy readiness on a third party listener persists the owned receipt as un
   await assert.rejects(adapters.start({ id: 'comfyui', fingerprint: 'comfy', port: 8188, url: 'http://fixture.invalid', exclusiveControl: true }), error => error.code === 'identity_unconfirmed' && error.receipt === owned);
 });
 
+test('Comfy adapter preserves certified prelaunch failure and keeps generic launch uncertainty', async () => {
+  for (const effectAttempted of [false, true, undefined]) {
+    const adapters = createLocalServiceAdapters({ processBackend: { launch: async () => { throw Object.assign(new Error('fixture launch'), { effectAttempted }); } } });
+    await assert.rejects(adapters.start({ id: 'comfyui' }), error => error.effectAttempted === (effectAttempted !== false));
+  }
+});
+
 test('Comfy readiness binds the authenticated helper PID when a venv redirects its image', async () => {
   const owned = { pid: 9001, profileFingerprint: 'comfy', id: 'comfyui' };
   const adapters = createLocalServiceAdapters({ processBackend: { launch: async () => owned }, fetchImpl: async url => json(url.endsWith('/queue') ? { queue_running: [], queue_pending: [] } : { system: {} }), inspectController: async () => ({ pid: 9001, createdAt: 'owned-start', executable: 'C:/fixture/base/python.exe' }) });
@@ -97,7 +104,42 @@ test('cold Bionic bootstraps only exact desktop recipe then enables API, forward
 test('closed Bionic without a desktop recipe refuses instead of implicit CLI discovery', async () => {
   let launches = 0;
   const adapters = createLocalServiceAdapters({ platform: 'win32', spawnImpl: () => { launches++; }, execFileImpl: async () => ({ stdout: '{"running":false}' }) });
-  await assert.rejects(adapters.start(profile), { code: 'desktop_start_required' }); assert.equal(launches, 0);
+  await assert.rejects(adapters.start(profile), { code: 'desktop_start_required', effectAttempted: false }); assert.equal(launches, 0);
+});
+
+test('Bionic persisted and legacy-expired receipts restore only after complete continuity checks', async () => {
+  for (const ownershipExpired of [undefined, true]) {
+    const adapters = createLocalServiceAdapters({ platform: 'win32', fetchImpl: async () => json({ models: [] }), execFileImpl: async () => ({ stdout: '{"running":true,"port":1235}' }) });
+    assert.equal((await adapters.observe(profile, { ...receipt, ownershipExpired })).process.state, 'running');
+  }
+  for (const changed of [
+    { ...identity, pid: 4322 }, { ...identity, createdAt: 'new-instance' }, { ...identity, executable: 'C:/foreign/Bionic.exe' },
+    { ...identity, configIdentity: { mtimeMs: 9, ino: 2 } }, null,
+  ]) {
+    let stops = 0;
+    const adapters = createLocalServiceAdapters({ platform: 'win32', inspectController: async () => changed, fetchImpl: async () => json({ models: [] }), execFileImpl: async (file, args) => { if (args[1] === 'stop') stops++; return { stdout: '{"running":true,"port":1235}' }; } });
+    assert.equal((await adapters.observe(profile, receipt)).process.state, 'unknown');
+    await assert.rejects(adapters.stop(profile, receipt), { code: 'identity_unconfirmed', effectAttempted: false }); assert.equal(stops, 0);
+  }
+});
+
+test('Bionic continuity rejects profile, port, exclusivity, incomplete receipt and inaccessible inspector', async () => {
+  const adapters = createLocalServiceAdapters({ platform: 'win32', fetchImpl: async () => json({ models: [] }), execFileImpl: async () => ({ stdout: '{"running":true,"port":1235}' }) });
+  for (const invalid of [ { ...receipt, profileFingerprint: 'other-path-or-CLI' }, { ...receipt, apiPort: 1236 }, { ...receipt, controllerIdentity: undefined } ]) {
+    assert.equal((await adapters.observe(profile, invalid)).process.state, 'unknown');
+  }
+  assert.equal((await adapters.observe({ ...profile, exclusiveControl: false }, receipt)).process.state, 'unknown');
+  const inaccessible = createLocalServiceAdapters({ platform: 'win32', inspectController: async () => { throw new Error('access denied'); }, fetchImpl: async () => json({ models: [] }), execFileImpl: async () => ({ stdout: '{"running":true,"port":1235}' }) });
+  assert.equal((await inaccessible.observe(profile, receipt)).process.state, 'unknown');
+});
+
+test('Bionic failures after Desktop spawn or CLI mutation remain explicitly uncertain', async () => {
+  const afterCli = createLocalServiceAdapters({ platform: 'win32', execFileImpl: async (file, args) => { if (args[1] === 'start') throw new Error('transport lost'); return { stdout: '{"running":false,"port":1235}' }; } });
+  await assert.rejects(afterCli.start(profile), { code: 'controller_unavailable', effectAttempted: true });
+  const afterSpawn = createLocalServiceAdapters({ platform: 'win32', spawnImpl: () => { throw new Error('spawn outcome uncertain'); }, execFileImpl: async () => ({ stdout: '{"running":false}' }) });
+  await assert.rejects(afterSpawn.start({ ...profile, appPath: 'C:/fixture/Bionic.exe' }), { effectAttempted: true });
+  const afterStop = createLocalServiceAdapters({ platform: 'win32', execFileImpl: async (file, args) => { if (args[1] === 'stop') throw new Error('transport lost'); return { stdout: '{"running":true,"port":1235}' }; } });
+  await assert.rejects(afterStop.stop(profile, receipt), { code: 'controller_unavailable', effectAttempted: true });
 });
 
 test('cold auto-started API requires listener ownership of the exact spawned desktop', async () => {

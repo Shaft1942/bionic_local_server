@@ -7,6 +7,7 @@ import { scryptSync } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { EventEmitter } from 'node:events';
 import { createCompanion } from '../server.mjs';
+import { createModelTransport } from '../lib/model-transport.mjs';
 
 class Reply extends EventEmitter {
   constructor() { super(); this.parts = []; this.headers = {}; this.statusCode = 200; }
@@ -17,6 +18,16 @@ class Reply extends EventEmitter {
   text() { return this.parts.join(''); }
   json() { return JSON.parse(this.text()); }
 }
+
+test('llama transport preserves an explicit image tool choice with provider identity and its own headers', async () => {
+  const choice = { type: 'function', function: { name: 'generate_comfy_image' } }, calls = [];
+  const transport = createModelTransport({ baseUrl: 'http://127.0.0.1:1236', provider: 'llamacpp', headers: () => ({ Authorization: 'Bearer LLAMA_SYNTHETIC_TOKEN' }), fetchImpl: async (url, options) => { calls.push({ url, options }); return new Response('data: [DONE]\n\n'); } });
+  await transport.request({ model: 'fixture-alias', messages: [{ role: 'user', content: 'Crée une image synthétique.' }], tools: [{ type: 'function', function: { name: 'generate_comfy_image', parameters: { type: 'object' } } }], toolChoice: choice, maxTokens: 128 });
+  assert.equal(transport.identity.provider, 'llamacpp'); assert.equal(calls.length, 1); assert.equal(calls[0].url, 'http://127.0.0.1:1236/v1/chat/completions');
+  assert.equal(calls[0].options.headers.Authorization, 'Bearer LLAMA_SYNTHETIC_TOKEN'); assert.equal(calls[0].options.redirect, 'error');
+  const sent = JSON.parse(calls[0].options.body); assert.deepEqual(sent.tool_choice, choice); assert.equal(sent.parallel_tool_calls, false);
+  await assert.rejects(transport.request({ model: 'fixture-alias', messages: [], reasoning: { reasoning_effort: 'high' } }), { status: 400 }); assert.equal(calls.length, 1);
+});
 
 test('companion routes use llama for tools and text without Bionic/Comfy calls or Bionic token', async t => {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'llamacpp-http-')));

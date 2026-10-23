@@ -2,6 +2,8 @@
 
 # Bionic Mobile — local companion
 
+**Local candidate 2.5.1-beta.2** adds a **+** next to each project's conversation count and checks image launch announcements against ComfyUI receipts. It includes the server recovery and guided setup introduced in beta.1, as well as the existing 1–5 image batches, memory policies, gallery and image actions. Internet is enabled for new choices; images become enabled when configured ComfyUI is available. Explicit opt-outs remain respected. This candidate has not been published.
+
 **Version 2.5.0** · Chat with the models on your PC and access your projects from your phone’s browser over your local network.
 
 The companion uses Bionic’s local API and can generate images through ComfyUI. This community project is independent of Bionic; Bionic, ComfyUI and their models are not included.
@@ -46,13 +48,13 @@ In **Settings → Images and ComfyUI**, enter the server address, check required
 
 **Generate this prompt directly** creates a single image from your exact text without preparation by the chat model. Optional ComfyUI cleanup runs after each render; it is separate from unloading text models. See the [English image guide](docs/en/guide.md#images-and-memory).
 
-Set up launching with **Configurer-serveurs.cmd** on the PC. The launcher manages the selected Bionic API and Python ComfyUI instances it controls; a reachable external instance is not automatically adopted. Stopping Bionic stops its API without closing the Desktop app. See [Servers on the PC](docs/en/guide.md#servers-on-the-pc).
+Set up launching in **Settings → Servers on the PC**: detect an installation or choose its folder, review the proposed paths, and save. **Configurer-serveurs.cmd** remains a local alternative. The launcher manages the selected Bionic API and Python ComfyUI instances it controls; a reachable external instance is not automatically adopted. Stopping the Bionic server stops its API without closing the Desktop app. See [Servers on the PC](docs/en/guide.md#servers-on-the-pc).
 
 ## Permissions and access
 
 Under **File tools**, **Write** is the initial choice for a new regular chat: allowed writes happen immediately without approval for each file. Choose **Read** or **None** when editing is unnecessary. Previous versions and project trash do not replace independent backups.
 
-Web access and scripts are disabled by default. You can require approval for each search and URL. **Every script requires approval of its exact code, then runs with the PC account’s permissions: it is not a sandbox.** File permission profiles do not restrict an approved script.
+Web access is enabled for new choices without replacing an explicit disabled setting. Images are enabled when ComfyUI is detected and available. Scripts remain disabled by default. You can require approval for each search and URL. **Every script requires approval of its exact code, then runs with the PC account’s permissions: it is not a sandbox.** File permission profiles do not restrict an approved script.
 
 The companion is intended for a **trusted local network**. HTTP does not encrypt the access code, messages or files. In **Settings → Security and access**, prepare HTTPS and optionally a certificate for each device using mTLS. Do not bypass certificate warnings or expose this port directly to the Internet.
 

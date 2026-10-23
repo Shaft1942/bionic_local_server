@@ -52,7 +52,7 @@ function createImageGenerationView({api,node,getState,redraw,onRetry,newRequestI
   function card(job,chat,message,options={}){
     const figure=node('figure','generated-image');figure.dataset.imageJobId=job.id;
     const position=job.status==='queued'&&Number.isSafeInteger(job.queuePosition)&&job.queuePosition>0?BionicI18n.t('components.beta25.position',{position:job.queuePosition}):'';
-    const status=node('p','generated-image-status',seriesLabel(job)+(labels()[job.status]||BionicI18n.t("components.images.tracking"))+position);status.setAttribute('role','status');figure.append(status);
+    const status=node('p','generated-image-status',seriesLabel(job)+(labels()[(job.trackingUnavailable || (job.error && ['queued','running'].includes(job.status))) ? 'unknown' : job.status]||BionicI18n.t("components.images.tracking"))+position);status.setAttribute('role','status');figure.append(status);
     if(job.status==='succeeded'&&job.image){
       const image=node('img','generated-image-result');image.src=url(job,chat,message,false,options);image.alt=(job.prompt||BionicI18n.t("components.images.succeeded")).slice(0,200);image.width=job.width;image.height=job.height;image.loading='lazy';
       image.addEventListener('error',()=>{status.textContent='L’image est indisponible. Reconnecte-toi puis actualise cet espace.';});figure.append(image);
@@ -98,7 +98,7 @@ function createImageGenerationView({api,node,getState,redraw,onRetry,newRequestI
     const chat=state.chat,epoch=state.authEpoch;
     const pending=(chat.messages||[]).flatMap(message=>(message.imageGenerations||[]).filter(job=>['waiting-resource','submitting','queued','running'].includes(job.status)).map(job=>({message,job})));
     if(!pending.length)return;polling=true;let changed=false;
-    try{for(const {message,job}of pending){try{const latest=await api('/api/comfy/generation?'+new URLSearchParams({jobId:job.id,projectId:chat.projectId,chatId:chat.id,messageId:message.id}));if(epoch!==getState().authEpoch||!getState().authenticated)return;if(JSON.stringify(latest)!==JSON.stringify(job)){Object.assign(job,latest);changed=true;}}catch{}}if(changed&&getState().chat===chat)redraw();}finally{polling=false;}
+    try{for(const {message,job}of pending){try{const latest=await api('/api/comfy/generation?'+new URLSearchParams({jobId:job.id,projectId:chat.projectId,chatId:chat.id,messageId:message.id}));if(epoch!==getState().authEpoch||!getState().authenticated)return;if(JSON.stringify(latest)!==JSON.stringify(job)){Object.assign(job,latest);delete job.trackingUnavailable;changed=true;}}catch{if(!job.trackingUnavailable){job.trackingUnavailable=true;changed=true;}}}if(changed&&getState().chat===chat)redraw();}finally{polling=false;}
   }
   setInterval(poll,2000);document.addEventListener('visibilitychange',poll);window.addEventListener('online',poll);
   return {card,gallery,poll,reset(){attempts.clear();selections.clear();closePreview();}};

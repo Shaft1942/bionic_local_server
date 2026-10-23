@@ -98,3 +98,11 @@ test('series ZIP contains only available images and gallery selection rejects a 
   const selectedZip=descendants(gallery).find(node=>node.tag==='a'&&node.text.includes('ZIP'));assert.equal(new URL(selectedZip.href,'http://test').searchParams.getAll('jobId').length,20);
   assert.equal(descendants(gallery).some(node=>node.text==='Relancer · même seed'),false);
 });
+
+test('tracking failure displays uncertainty and recovers on next poll',async()=>{
+  let offline=true;const f=fixture(()=>{if(offline)throw Error('Offline');});
+  const message={id:'test-message',imageGenerations:[{...job,status:'running'}]};f.state.chat.messages.push(message);
+  await f.view.poll();assert.equal(message.imageGenerations[0].trackingUnavailable,true);
+  assert.doesNotMatch(f.view.card(message.imageGenerations[0],f.state.chat,message).children[0].text,/génère ton image/);
+  offline=false;await f.view.poll();assert.equal(message.imageGenerations[0].status,'succeeded');assert.equal(message.imageGenerations[0].trackingUnavailable,undefined);
+});

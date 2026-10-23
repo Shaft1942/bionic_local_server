@@ -40,7 +40,7 @@ test('chat tool call, saved image pointer and authenticated image routes integra
   const image=await request('/api/comfy/image?'+params,{headers:{cookie}});assert.equal(image.headers.get('content-type'),'image/png');assert.equal(await image.text(),'synthetic-bytes');
 });
 
-async function imageTurnFixture(t,{status='queued',mixed=false,validationError=false,holdSubmission=false,tool='generate_comfy_image',preface=''}={}) {
+async function imageTurnFixture(t,{status='queued',mixed=false,validationError=false,holdSubmission=false,tool='generate_comfy_image',preface='',missingTool=false,ignoreRepair=false,streamChunks,userText='Génère une théière bleue.'}={}) {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'comfy-turn-test-'));
   const state={rounds:0,submissions:0,job:null,followupStatuses:[]};
   const model={id:'synthetic',name:'Synthetic model',type:'llm',tools:true,contextLength:16000,reasoning:{allowedOptions:[]}};
@@ -54,13 +54,25 @@ async function imageTurnFixture(t,{status='queued',mixed=false,validationError=f
     },
     get(){return {...state.job,owner:undefined};},owner(){return state.job.owner;},async close(){},
   };
-  const fetchImpl=async url=>{
+  const fetchImpl=async (url,options)=>{
     assert(String(url).endsWith('/v1/chat/completions'));
+    const body=JSON.parse(options.body);
     const round=state.rounds++;
+    if(streamChunks){
+      let index=0;
+      return new Response(new ReadableStream({
+        start(controller){state.failStream=()=>controller.error(new Error('Synthetic transport loss'));options.signal.addEventListener('abort',()=>controller.error(Object.assign(new Error('Abort'),{name:'AbortError'})),{once:true});},
+        pull(controller){
+          if(index===streamChunks.length){state.streamWaiting=true;return;}
+          controller.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{delta:{content:streamChunks[index++]}}]})+'\n\n'));
+        },
+      },{highWaterMark:0}));
+    }
+    if(missingTool && round && !ignoreRepair){assert.equal(body.tool_choice.function.name,'generate_comfy_image');assert(body.tools.every(tool=>tool.function.name.startsWith('generate_')));}
     if(round)state.followupStatuses.push(state.job?.status??'no-job');
     const calls=[{index:0,id:'call-image',type:'function',function:{name:tool,arguments:'{"prompt":"A blue ceramic teapot","seed":42}'}}];
     if(mixed)calls.push({index:1,id:'call-search',type:'function',function:{name:'search_web',arguments:'{"query":"synthetic query"}'}});
-    const choices=round===0?[{delta:{content:preface,tool_calls:calls},finish_reason:'tool_calls'}]:[{delta:{content:'Synthèse finale synthétique.'},finish_reason:'stop'}];
+    const choices=missingTool&&(round===0||ignoreRepair)?[{delta:{content:preface||'Statut : Running…'},finish_reason:'stop'}]:round===(missingTool?1:0)?[{delta:{content:preface,tool_calls:calls},finish_reason:'tool_calls'}]:[{delta:{content:'Synthèse finale synthétique.'},finish_reason:'stop'}];
     return new Response('data: '+JSON.stringify({choices})+'\n\ndata: [DONE]\n\n');
   };
   const app=await createCompanion({root,nativeStore:{listProjects:async()=>[{id:'p1',name:'Synthetic',sessionsCount:0}],listSessions:async()=>[]},comfyService,modelService:{list:async()=>[model]},fetchImpl,webService:{search:async query=>({query,results:[]})},settings:{port:8769,apiUrl:'http://127.0.0.1:1235',bionicRoot:root,registryPath:path.join(root,'registry.json'),extraRoots:[],python:'python',resourcePolicy:'independent'}});
@@ -71,7 +83,7 @@ async function imageTurnFixture(t,{status='queued',mixed=false,validationError=f
   const login=await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
   const cookie=login.headers.get('set-cookie').split(';')[0],requestId=randomUUID();
   const request=(route,body)=>fetch(base+route,{method:'POST',headers:{cookie,'Content-Type':'application/json'},body:JSON.stringify(body)});
-  return {state,requestId,request,app,async send(){const response=await request('/api/chat',{projectId:'p1',model:model.id,requestId,text:'Génère une théière bleue.',imageAccess:true,fileProfile:'none',webAccess:mixed});return (await response.text()).trim().split('\n').map(JSON.parse);}};
+  return {state,requestId,request,app,async conversation(id){return(await fetch(base+'/api/conversation?'+new URLSearchParams({projectId:'p1',id}),{headers:{cookie}})).json();},async send(){const response=await request('/api/chat',{projectId:'p1',model:model.id,requestId,text:userText,imageAccess:true,fileProfile:'none',webAccess:mixed});return (await response.text()).trim().split('\n').map(JSON.parse);}};
 }
 
 for(const [status,pattern]of [['waiting-resource',/attend une ressource/],['queued',/apparaîtra automatiquement/],['running',/apparaîtra automatiquement/],['submitting',/en cours d’envoi/],['succeeded',/disponible/],['failed',/a échoué/],['unknown',/incertain/],['stopped',/arrêtée avant sa soumission/]]) {
@@ -79,15 +91,56 @@ for(const [status,pattern]of [['waiting-resource',/attend une ressource/],['queu
     const f=await imageTurnFixture(t,{status,preface:'Je prépare ton image.'});
     const events=await f.send(),text=events.filter(event=>event.type==='delta').map(event=>event.text).join('');
     assert(events.some(event=>event.type==='done'));assert(!events.some(event=>event.type==='error'));
-    assert.equal(f.state.rounds,1);assert.equal(f.state.submissions,1);assert.match(text,pattern);assert(text.startsWith('Je prépare ton image.\n\n'));
+    assert.equal(f.state.rounds,1);assert.equal(f.state.submissions,1);assert.match(text,pattern);assert(!text.includes('Je prépare ton image.'));
     if(status==='queued'||status==='running'||status==='submitting')assert(!text.includes('est disponible'));
   });
 }
 
-test('image validation refusal without a job keeps the model error explanation',async t=>{
+test('image validation refusal stays authoritative without another inference',async t=>{
   const f=await imageTurnFixture(t,{validationError:true});const events=await f.send();
-  assert(events.some(event=>event.type==='done'));assert.equal(f.state.rounds,2);assert.equal(f.state.submissions,1);assert.deepEqual(f.state.followupStatuses,['no-job']);
-  assert.match(events.filter(event=>event.type==='delta').map(event=>event.text).join(''),/Synthèse finale/);
+  assert(events.some(e=>e.type==='error'&&/Synthetic validation refusal/.test(e.message)));
+  assert(!events.some(e=>e.type==='done'));assert.equal(f.state.rounds,1);assert.equal(f.state.submissions,1);
+});
+for(const userText of ['Génère l’image.','Génère une image de théière bleue.','Generate an image of a blue teapot.','Peux-tu générer une image de théière ?'])test('missing image tool repaired: '+userText,async t=>{
+  const f=await imageTurnFixture(t,{missingTool:true,userText});const events=await f.send();
+  assert(events.some(e=>e.type==='done'));assert.equal(f.state.submissions,1);assert.equal(f.state.rounds,2);
+  assert(!events.filter(e=>e.type==='delta').some(e=>e.text.includes('Running')));
+});
+test('ignored forced tool fails without fake Running or submission',async t=>{
+  const f=await imageTurnFixture(t,{missingTool:true,ignoreRepair:true,userText:'Génère l’image.'});const events=await f.send();
+  assert.equal(f.state.rounds,2);assert.equal(f.state.submissions,0);assert(events.some(e=>e.type==='error'&&/Aucune génération/.test(e.message)));
+  assert(!events.some(e=>e.type==='delta'||e.type==='done'));
+});
+for(const userText of ['Ne génère pas d’image.','Comment générer une image ?','Écris un prompt : « Génère une image ».'])test('passive request has no repair: '+userText,async t=>{
+  const f=await imageTurnFixture(t,{missingTool:true,ignoreRepair:true,userText,preface:'Voici une explication.'});const events=await f.send();
+  assert.equal(f.state.rounds,1);assert.equal(f.state.submissions,0);assert(events.some(e=>e.type==='done'));
+});
+test('model launch claim cannot authorize repair on its own',async t=>{
+  const f=await imageTurnFixture(t,{missingTool:true,userText:'Bonjour.'});const events=await f.send();
+  assert.equal(f.state.rounds,1);assert.equal(f.state.submissions,0);assert(events.some(e=>e.type==='error'));assert(!events.some(e=>e.type==='delta'));
+});
+
+for(const preface of ['I started by checking the project files.','I have started reviewing the documentation.','I launched a search for the project documentation.',"I'm generating a summary of the documentation.",'I am rendering Markdown as HTML.'])test('image permission accepts ordinary English prose: '+preface,async t=>{
+  const f=await imageTurnFixture(t,{missingTool:true,ignoreRepair:true,userText:'Explain the project.',preface});const events=await f.send();
+  assert(events.some(e=>e.type==='done'));assert(!events.some(e=>e.type==='error'));
+  assert.equal(events.filter(e=>e.type==='delta').map(e=>e.text).join(''),preface);assert.equal(f.state.submissions,0);
+});
+
+for(const preface of ['I started the image generation.','I have started generating an image.','I launched a render.',"I'm generating an image.",'I am rendering your picture.'])test('English image launch claim still needs a receipt: '+preface,async t=>{
+  const f=await imageTurnFixture(t,{missingTool:true,ignoreRepair:true,userText:'Hello.',preface});const events=await f.send();
+  assert(events.some(e=>e.type==='error'));assert(!events.some(e=>e.type==='delta'||e.type==='done'));assert.equal(f.state.submissions,0);
+});
+
+for(const termination of ['stop','transport-error'])for(const claim of [false,true])test('interrupted image-enabled text '+termination+' '+(claim?'suppresses launch claim':'preserves received prose'),async t=>{
+  const chunks=claim?['Statut : Run','ning…']:['I started by checking ','the project files'];
+  const f=await imageTurnFixture(t,{streamChunks:chunks,userText:'Explain the project.'}),pending=f.send();
+  await until(()=>f.state.streamWaiting);
+  if(termination==='stop')assert.equal((await f.request('/api/cancel',{projectId:'p1',requestId:f.requestId})).status,200);
+  else f.state.failStream();
+  const events=await pending,start=events.find(e=>e.type==='start'),error=events.find(e=>e.type==='error');
+  assert(error);assert.equal(error.outcome,termination==='stop'?'stopped':'error');assert(!events.some(e=>e.type==='done'));
+  const expected=claim?'':chunks.join('');assert.equal(events.filter(e=>e.type==='delta').map(e=>e.text).join(''),expected);
+  const chat=await f.conversation(start.id);assert.equal(chat.messages.at(-1).text,expected);assert.equal(chat.messages.at(-1).outcome,error.outcome);assert.equal(f.state.submissions,0);
 });
 
 async function until(condition){const deadline=Date.now()+3000;while(!condition()){assert(Date.now()<deadline,'fixture did not reach expected state');await wait(10);}}
@@ -121,4 +174,9 @@ test('Stop during image submission preserves its job without reporting a complet
   await until(()=>f.state.releaseSubmission);
   await f.request('/api/cancel',{projectId:'p1',requestId:f.requestId});f.state.releaseSubmission();
   const events=await pending;assert(events.some(event=>event.type==='error'));assert(!events.some(event=>event.type==='done'));assert.equal(f.state.rounds,1);assert.equal(f.state.job.status,'queued');
+});
+
+test('mixed image refusal cannot be hidden by a model summary',async t=>{
+  const f=await imageTurnFixture(t,{mixed:true,validationError:true});const events=await f.send();
+  assert(events.some(e=>e.type==='error'&&/Synthetic validation refusal/.test(e.message)));assert.equal(f.state.rounds,1);assert.equal(f.state.submissions,1);
 });
