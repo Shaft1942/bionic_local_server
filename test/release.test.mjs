@@ -16,7 +16,7 @@ test('release list excludes local data even after a private installation has bee
  await fs.mkdir(path.join(root,'data'));await fs.writeFile(path.join(root,'data/config.json'),'LOCAL_ONLY_CANARY');
  const manifest=async names=>fs.writeFile(path.join(root,'release-manifest.json'),JSON.stringify({files:names}));
  await manifest(files);const clean=await collectReleaseFiles(root);assert.equal(clean.length,10);assert(!clean.some(file=>file.bytes.includes('LOCAL_ONLY_CANARY')));
- for(const forbidden of ['data/config.json','config.local.json','ACCES-PRIVE.txt','server.log','authority.crt','client.cer','certificate.der','device.p12','server.key','../outside.txt','C:/outside.txt']){await manifest([...files,forbidden]);await assert.rejects(collectReleaseFiles(root),/interdit/);}
+ for(const forbidden of ['data/config.json','config.local.json','ACCES-PRIVE.txt','server.log','authority.crt','client.cer','certificate.der','device.p12','server.key','../outside.txt','C:/outside.txt','agents/prompts/session.md','.agents/skills/local.md','work/probe.json','reference/checkout/source.txt','docs/history/session.md','docs/metaprompts-implementation.md','docs/v2-metaprompts.md']){await manifest([...files,forbidden]);await assert.rejects(collectReleaseFiles(root),/interdit/);}
 });
 test('token and private-key patterns stop export without revealing the matching value',()=>{
  for(const secret of ['ghp_'+'x'.repeat(35),'sk-proj-'+'y'.repeat(30),'-----BEGIN '+'PRIVATE KEY-----',JSON.stringify({adminToken:'a'.repeat(64)}),['C:','Users','test-person','notes.txt'].join(String.fromCharCode(92))])assert.throws(()=>inspectContent('synthetic.txt',secret),error=>error.message.includes('synthetic.txt')&&!error.message.includes(secret));

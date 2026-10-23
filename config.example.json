@@ -6,6 +6,8 @@
   "python": "",
   "extraRoots": [],
   "maxConcurrentInferences": 0,
+  "resourcePolicy": "exclusive",
+  "shutdownTimeoutMs": 15000,
   "requestTimeoutMs": 180000,
   "comfyUrl": "http://127.0.0.1:8188",
   "comfyEnabled": false,

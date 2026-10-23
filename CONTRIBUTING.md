@@ -1,26 +1,25 @@
-# Contribuer
+# Contribuer / Contributing
 
-Merci de proposer des améliorations reproductibles et adaptées à un usage personnel sur réseau local.
+Le compagnon vise un usage personnel sur réseau local. Proposez des changements reproductibles avec des données fictives et une description de leurs limites.
 
-Avant une modification, lisez [Développement](docs/developpement.md), [Sécurité](SECURITY.md) et les [limites fonctionnelles](README.md). Pour une évolution importante, une issue courte permet d’expliquer le problème et le résultat souhaité avant de modifier largement l’application.
+1. Travaillez dans un fork ou une branche et une installation de test séparée.
+2. Lisez [Développement](docs/developpement.md) et [Sécurité](SECURITY.md).
+3. Ajoutez une vérification utile pour les changements d’accès, d’écriture, de réseau ou de reprise ; évitez les tests qui recopient le texte d’un guide.
+4. Exécutez les contrôles pertinents, actualisez les guides et le [journal des versions](CHANGELOG.md).
+5. Décrivez dans la pull request le problème, le résultat, les commandes réellement exécutées et les points non vérifiés.
 
-## Une contribution attendue
+L’interface et l’accueil du dépôt sont disponibles en français et en anglais. Toute modification d’un libellé conserve la parité des catalogues et leurs paramètres. Pour ajouter une langue, suivez le [guide d’internationalisation](docs/internationalisation.md). Les conversations, fichiers et prompts ne doivent pas être traduits par le choix de langue de l’interface.
 
-1. Travaillez dans votre fork ou une branche dédiée, avec une installation de test séparée.
-2. Reproduisez le problème avec des projets, messages et fichiers fictifs.
-3. Ajoutez une vérification utile pour une correction qui touche les écritures, l’accès réseau, la reprise ou la lecture des bases Bionic.
-4. Exécutez les contrôles décrits dans [Développement](docs/developpement.md).
-5. Actualisez les guides et le journal des versions si le comportement change.
-6. Ouvrez une pull request avec le problème, la solution, les vérifications réalisées et les limites non vérifiées.
+N’ajoutez jamais de données d’installation, historiques, profils de lancement, chemins personnels, accès, journaux bruts ou captures privées. Les méta-prompts, traces d’agents et preuves de poste n’appartiennent pas à ce dépôt produit. Les exemples neutres, tests et scripts de développement reproductibles restent des sources publiques utiles.
 
-Le français est la langue des guides et de l’interface actuelle. Préservez une formulation accessible, les états d’erreur utiles et le fonctionnement sur téléphone. L’application utilise le JavaScript natif du navigateur et les modules Node.js ; évitez d’ajouter une dépendance ou une étape de compilation sans nécessité expliquée.
+Les historiques natifs Bionic restent en lecture seule. Une évolution du schéma Bionic ou une adaptation à un autre système précise ce qui a été réellement testé. Aucun moteur, modèle ou composant propriétaire Bionic n’est inclus.
 
-## Données et compatibilité
+## English
 
-N’ajoutez jamais de conversations, registres, chemins personnels, jetons, captures réelles ou sauvegardes de projets. Les fixtures doivent être fabriquées pour les tests. N’utilisez pas l’écriture dans la base native Bionic comme raccourci pour synchroniser les réponses.
+Use a separate branch and test installation, reproduce issues with synthetic data, and run the checks in [Development](docs/developpement.md). Describe the problem, resulting behavior, actual validation and remaining limits in your pull request. See the [English guide](docs/en/guide.md) for product usage.
 
-Si vous adaptez une nouvelle version de Bionic ou un autre système, précisez ce qui a été réellement validé. Ne remplacez pas la mention de compatibilité existante par une promesse plus large sur la seule base d’une compilation ou d’une capture.
+Keep French and English catalogue keys and parameters aligned. UI language must not translate user files, messages, prompts or model responses. See [Internationalization](docs/internationalisation.md) before adding a language.
 
-## Licence
+Never commit installation data, launcher profiles, native histories, credentials, personal paths, raw logs or private screenshots. Internal agent prompts and workstation reports stay outside this product repository. Native Bionic histories are read-only.
 
-En proposant une contribution, vous acceptez qu’elle soit distribuée sous la [licence MIT](LICENSE) du projet. Ne copiez pas d’éléments propriétaires de Bionic ou de contenus personnels dans cette distribution.
+Contributions use the project’s [MIT license](LICENSE), which does not cover Bionic, models or users’ documents.

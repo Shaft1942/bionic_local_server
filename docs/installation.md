@@ -1,72 +1,59 @@
 # Installation
 
-[Retour au README](../README.md)
+[Documentation](README.md) · [Configuration](configuration.md) · [Dépannage](depannage.md)
 
-## Sur le PC qui exécute Bionic
+Le PC héberge Bionic, les modèles et le compagnon. Le téléphone utilise son navigateur ; il ne télécharge aucun modèle. Utilisez un réseau local de confiance, sans redirection du port du compagnon vers Internet.
 
-Depuis la version **1.10.0**, double-cliquez sur **Installer.cmd** après extraction complète de l’archive. L’assistant graphique Windows fonctionne même sans Node.js installé. Il guide le choix du dossier, la préparation de Node.js, les ports et l’API Bionic, puis propose le démarrage, un raccourci et l’autorisation réseau facultative. Consultez [le parcours et ses limites](assistant-installation.md).
+## Assistant Windows
+
+Téléchargez le paquet `bionic-mobile-v….zip` et `SHA256SUMS.txt` de la même version depuis les [Releases](https://github.com/Shaft1942/bionic_local_server/releases). Choisissez une stable pour l’usage courant, puis extrayez entièrement l’archive dans un dossier accessible en écriture. Les archives **Source code** contiennent les sources du dépôt et diffèrent du paquet de distribution.
+
+Double-cliquez sur **Installer.cmd**. L’assistant prépare le dossier, Node.js, les ports et la connexion Bionic ; il propose ensuite le démarrage, un raccourci et l’accès au téléphone. Il fonctionne même sans Node.js préinstallé. Voir [Assistant d’installation](assistant-installation.md).
 
 ## Installation manuelle
 
-Le PC héberge Bionic, ses modèles et ce compagnon. Le téléphone n’installe aucun modèle : il utilise son navigateur.
+1. Installez **Node.js 24 ou ultérieur** depuis [nodejs.org](https://nodejs.org/en/download). L’archive du compagnon ne l’inclut pas. Aucun Docker ni compte Codex n’est nécessaire.
+2. Extrayez l’archive dans un dossier utilisateur, hors de `Program Files`.
+3. Dans **Bionic → API des modèles locaux**, activez le serveur et relevez son adresse. CORS et l’exposition de cette API au réseau ne sont pas nécessaires.
+4. Copiez `config.example.json` en `config.local.json`. Renseignez `apiUrl` avec l’adresse HTTP en boucle locale de Bionic, **sans `/v1` final**, par exemple `http://127.0.0.1:1235`. Utilisez le port réellement affiché par Bionic.
+5. Si la détection automatique ne convient pas, renseignez `bionicRoot` : c’est le dossier de données Bionic, pas celui de `Bionic.exe`. Voir [Configuration](configuration.md).
+6. Lancez **Demarrer.cmd**, puis ouvrez l’adresse du PC indiquée dans **ACCES-PRIVE.txt** et saisissez le code de cette installation.
 
-1. Vérifiez qu’une conversation fonctionne directement dans Bionic.
-2. Installez [Node.js](https://nodejs.org/en/download), version **24 minimum**. Sous Windows x64, choisissez **Windows Installer (.msi)** ; Docker n'est pas nécessaire. Laissez l'installateur ajouter Node.js au `PATH`, puis rouvrez les fenêtres de terminal déjà ouvertes. L'archive du compagnon n'inclut pas Node.js.
-3. Téléchargez **`bionic-mobile-v1.10.0.zip`** et `SHA256SUMS.txt` depuis la [Release 1.10.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.10.0). **Source code** et **Code → Download ZIP** fournissent les sources, qui peuvent différer du paquet construit par le workflow. La première installation depuis 1.8.0 reste manuelle ; depuis 1.9.0, les suivantes peuvent être proposées par le compagnon. Voir [Mises à jour](mises-a-jour.md).
-4. Extrayez tous les fichiers dans un dossier utilisateur accessible en écriture. Ne lancez pas l’application depuis l’intérieur de l’archive ou depuis `Program Files`.
-5. Dans les paramètres de **Bionic → API des modèles locaux**, activez le serveur. Relevez l’URL affichée. Il n’est pas nécessaire d’activer CORS ni d’exposer cette API au réseau : le compagnon l’appelle depuis le PC.
-6. Copiez `config.example.json` en `config.local.json`. Si Bionic affiche par exemple `http://localhost:1234/v1`, utilisez `"apiUrl": "http://127.0.0.1:1234"`. Il faut l’adresse du serveur, **sans `/v1` final**. Le réglage doit correspondre à votre propre port Bionic.
-
-Le dossier Bionic est détecté par défaut dans `.lmstudio/apps/bionic` de votre compte utilisateur. Si vous utilisez un autre emplacement, renseignez `bionicRoot` comme expliqué dans [Configuration](configuration.md). Il s’agit du dossier de **données**, pas du dossier contenant `Bionic.exe`.
+Il n’y a pas de dépendance npm à installer pour le serveur. Sur les autres systèmes, lancez `npm start` depuis le dossier extrait ; les scripts Windows et le parcours complet macOS/Linux ne sont pas équivalents.
 
 ## Lancer et arrêter sous Windows
 
-- **Demarrer.cmd** : démarrer le serveur en arrière-plan ou retrouver un serveur déjà actif.
-- **Relancer.cmd** : arrêter puis redémarrer, notamment après une modification de configuration ou une mise à jour.
-- **Arreter.cmd** : arrêter le serveur du compagnon.
-- **Deconnecter-appareils.cmd** : révoquer globalement les sessions du serveur actif sans arrêter ses travaux ; un appareil connaissant le code peut se reconnecter.
-- **Diagnostic.cmd** : produire les cinq contrôles bornés de compatibilité, sans message ni génération, dans `diagnostic-bionic.json`.
+| Fichier | Action |
+| --- | --- |
+| `Demarrer.cmd` | Démarrer le compagnon en arrière-plan ou retrouver cette instance déjà active |
+| `Relancer.cmd` | Arrêter et redémarrer cette instance après un changement de configuration |
+| `Arreter.cmd` | Arrêter le compagnon |
+| `Deconnecter-appareils.cmd` | Fermer ses sessions ; le code reste valable |
+| `Diagnostic.cmd` | Contrôler la compatibilité sans envoyer de message ni générer |
+| `Configurer-serveurs.cmd` | Préparer les profils de lancement Bionic/ComfyUI sur le PC |
 
-Les lanceurs utilisent en priorité `BIONIC_MOBILE_NODE` s’il est défini. Sinon, ils recherchent la copie portable dans `runtime/node/node.exe`, le chemin conservé par l’assistant, puis un Node.js installé sur le PC. Ils ne requièrent pas Codex. Le runtime portable reste privé à l’installation et nécessite sa propre maintenance.
-
-Au premier démarrage, ouvrez **ACCES-PRIVE.txt** dans le dossier de l’application. Il contient le code personnel et les adresses disponibles. Ouvrez d’abord l’adresse du PC, habituellement [http://127.0.0.1:8769](http://127.0.0.1:8769), puis saisissez le code. Chaque installation crée son propre code : aucun code fourni par GitHub n’est nécessaire.
+Les lanceurs recherchent Node.js dans l’ordre prévu par l’installation : `BIONIC_MOBILE_NODE`, copie portable, chemin enregistré par l’assistant, puis installation système. Le runtime portable demande sa propre maintenance. Le lancement facultatif de Bionic et ComfyUI se configure séparément : [Serveurs sur le PC](local-services.md).
 
 ## Ouvrir depuis le téléphone
 
-1. Laissez le PC, Bionic et le compagnon allumés.
-2. Connectez le téléphone au même réseau local. Évitez le Wi-Fi invité, qui peut isoler les appareils.
-3. Ouvrez **l’adresse du téléphone inscrite dans ACCES-PRIVE.txt**. `localhost` sur le téléphone désigne le téléphone, pas le PC.
-4. Si le PC répond mais pas le téléphone, vérifiez que le réseau Windows est **privé**, puis lancez **Autoriser-reseau.cmd**. La demande Windows sert à créer une règle de pare-feu limitée au réseau privé et au sous-réseau local.
-5. Saisissez le code d’accès. Vous pouvez ajouter un favori dans le navigateur.
+1. Laissez le PC et le compagnon actifs ; Bionic ou ComfyUI doivent aussi être disponibles pour les fonctions qui les utilisent.
+2. Connectez le téléphone au même réseau local, hors Wi-Fi invité isolé.
+3. Ouvrez l’adresse LAN de **ACCES-PRIVE.txt**, avec son protocole et son port exacts. `localhost` sur le téléphone désigne le téléphone. Une nouvelle installation commence en HTTP ; une installation sécurisée conserve HTTPS.
+4. Si nécessaire, classez votre réseau domestique Windows en **privé**, puis utilisez **Autoriser-reseau.cmd**. Ne désactivez pas tout le pare-feu. Pour retirer cette autorisation, utilisez **Retirer-autorisation-reseau.cmd**.
+5. Connectez-vous avec le code de l’installation, puis préparez HTTPS depuis **Paramètres → Sécurité et accès**.
 
-Ne redirigez pas ce port vers Internet. L’accès fonctionne sur le réseau local de confiance ; il ne constitue pas un service public multi-utilisateur. Un redémarrage du serveur ferme les sessions de connexion : le même code permet de se reconnecter.
+Le [guide des certificats](certificats-utilisation.md) décrit l’import de l’autorité publique, la comparaison d’empreinte et la preuve HTTPS. Ne confirmez jamais après avoir franchi une alerte de certificat. Une fois l’adresse HTTPS habituelle ouverte sans alerte, le navigateur peut proposer l’installation sur l’écran d’accueil. Cette icône ne remplace pas le serveur du PC.
 
-Pour supprimer l’autorisation réseau, exécutez `Retirer-autorisation-reseau.ps1` depuis PowerShell avec les droits demandés. Le serveur peut aussi être utilisé uniquement sur le PC sans ajouter de règle de pare-feu.
+## Langue et premier usage
+
+Dans **Paramètres → Langue et brouillons → Langue de l’interface**, choisissez **Français** ou **English**. Le choix concerne ce navigateur ; il ne traduit ni les conversations, ni les fichiers, ni les prompts d’image et ne règle pas la langue du modèle. Vous pouvez demander une réponse dans la langue souhaitée dans votre message. Voir [Utilisation](utilisation.md#langue-de-linterface-et-des-réponses) et le [guide anglais](en/guide.md).
 
 ## Python facultatif pour les documents
 
-Les textes et les images pris en charge fonctionnent sans Python. L’extraction de texte de **DOCX et XLSX** demande **Python 3.10+** ; le module **pypdf** est également nécessaire pour les **PDF**.
-
-Installez Python depuis [python.org](https://www.python.org/downloads/), puis indiquez son exécutable dans `config.local.json` si la détection automatique ne le trouve pas. Sous Windows, le programme recherché par défaut est `python` ; sur les autres systèmes, `python3`.
-
-Pour ajouter la prise en charge PDF avec ce même Python, dans le dossier du compagnon :
+Les textes et images pris en charge fonctionnent sans Python. L’extraction DOCX/XLSX demande **Python 3.10+** ; les PDF demandent aussi `pypdf`. Installez Python séparément, puis, avec le même interpréteur :
 
 ```powershell
 python -m pip install -r requirements.txt
 ```
 
-Sur un système utilisant `python3`, remplacez `python` par `python3`. Si vous utilisez un environnement virtuel, renseignez son exécutable Python complet dans la configuration. Une installation sans Python reste utilisable : les documents sont conservés et téléchargeables, mais leur texte ne peut pas être joint automatiquement.
-
-Les PDF scannés sans texte ne sont pas reconnus par OCR. Les documents chiffrés ou invalides peuvent également rester sans texte exploitable.
-
-## Autres systèmes
-
-Dans un terminal ouvert dans le dossier extrait :
-
-```sh
-npm start
-```
-
-Il n’y a pas de dépendances npm à installer pour le serveur. Les lanceurs et l’autorisation de pare-feu fournis ciblent Windows. Sur macOS et Linux, le pare-feu, les chemins Bionic et les permissions doivent être adaptés ; ce parcours complet n’a pas été validé.
-
-En cas de difficulté, consultez [Dépannage](depannage.md).
+Renseignez `python` dans la configuration si nécessaire ; ailleurs, le programme par défaut est `python3`. Sans extraction, les documents peuvent rester conservés et téléchargeables. Le compagnon ne fait pas d’OCR des PDF scannés et n’édite pas ces formats dans leur forme d’origine.

@@ -17,8 +17,8 @@ async function fixture(t,{predict=async()=>done(),limit=0,webService}={}){
 }
 test('global inference limit queues separate chats; cancellation never reaches the model',async t=>{
  const holds=new Map();const f=await fixture(t,{limit:1,predict:async body=>({ok:true,body:new ReadableStream({start(c){holds.set(body.messages.at(-1).content,c);c.enqueue(Buffer.from('data: '+JSON.stringify({choices:[{delta:{content:'Début.'}}]})+'\n\n'));}})})});
- const first=f.send('first');await until(()=>holds.has('first'));const cancelledId=randomUUID(),second=f.send('second',{requestId:cancelledId}),third=f.send('third');await until(()=>f.app.inferenceGate.snapshot().waiting===2);assert.equal(f.app.inferenceGate.snapshot().active,1);
- await f.request('/api/cancel',{projectId:'p1',requestId:cancelledId});await second;assert.equal(holds.has('second'),false);assert.equal(f.app.inferenceGate.snapshot().waiting,1);
+ const first=f.send('first');await until(()=>holds.has('first'));const cancelledId=randomUUID(),second=f.send('second',{requestId:cancelledId}),third=f.send('third');await until(()=>f.app.coordinator.status().waiting.text===2);assert.equal(f.app.inferenceGate.snapshot().active,1);
+ await f.request('/api/cancel',{projectId:'p1',requestId:cancelledId});await second;assert.equal(holds.has('second'),false);assert.equal(f.app.coordinator.status().waiting.text,1);
  assert.equal((await f.request('/api/admin/revoke-sessions',{token:f.app.config.adminToken})).statusCode,200);assert.equal((await f.request('/api/projects')).statusCode,401);
  const finish=key=>{holds.get(key).enqueue(Buffer.from('data: '+JSON.stringify({choices:[{finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n'));holds.get(key).close();};finish('first');await first;await until(()=>holds.has('third'));assert.equal(f.app.inferenceGate.snapshot().active,1);finish('third');await third;assert.equal(f.app.inferenceGate.snapshot().active,0);
 });

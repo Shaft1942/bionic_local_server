@@ -70,13 +70,13 @@ test('configuration update and submission cannot interleave across the settings 
   assert.equal(calls.length,1);assert(calls[0].startsWith(settings.url));
   await assert.rejects(f.service.updateSettings({enabled:false}),{status:409});
 });
-test('simultaneous submissions reserve all four slots before asynchronous persistence',async t=>{
+test('simultaneous submissions reserve twelve local slots before asynchronous persistence',async t=>{
   let posts=0;
   const f=await fixture(t,{enabled:true,fetchImpl:async()=>{posts++;return Response.json({prompt_id:'pending-'+posts});}});
-  const results=await Promise.allSettled(Array.from({length:8},(_,index)=>f.service.submit({prompt:'A teapot '+index},{...owner,messageId:'reply-'+index})));
-  assert.equal(results.filter(result=>result.status==='fulfilled').length,4);
+  const results=await Promise.allSettled(Array.from({length:16},(_,index)=>f.service.submit({prompt:'A teapot '+index},{...owner,messageId:'reply-'+index})));
+  assert.equal(results.filter(result=>result.status==='fulfilled').length,12);
   assert.equal(results.filter(result=>result.status==='rejected'&&result.reason.status===409).length,4);
-  assert.equal(posts,4);assert.equal(f.service.getSettings().activeJobs,4);
+  assert.equal(posts,1);assert.equal(f.service.getSettings().activeJobs,12);
 });
 test('connection test reads actual HTTP endpoints, checks both exact models and never sends prompt',async t=>{
   const routes=[],info=structuredClone(schema);
@@ -220,7 +220,7 @@ test('v1 and v2 settings preserve previous cleanup, v3 explicitly disabled survi
     await fs.writeFile(f.settingsFile,JSON.stringify({version,enabled:true,url:'http://127.0.0.1:8188',workflowId:'krea2_turbo'}));
     await f.restart();assert.equal(f.service.getSettings().memoryCleanup,true);
     await f.service.updateSettings({memoryCleanup:false});
-    assert.equal(JSON.parse(await fs.readFile(f.settingsFile)).version,3);
+    assert.equal(JSON.parse(await fs.readFile(f.settingsFile)).version,4);
     await f.restart();assert.equal(f.service.getSettings().memoryCleanup,false);
   }
   for(const memoryCleanup of ['false',1,null])await assert.rejects(f.service.updateSettings({memoryCleanup}),{status:400});

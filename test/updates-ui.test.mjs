@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 
-const source = await fs.readFile(new URL('../public/updates.js', import.meta.url), 'utf8');
+const componentSource = await fs.readFile(new URL('../public/updates.js', import.meta.url), 'utf8');
+const source = (await Promise.all(['i18n.js', 'locales/fr/components.js', 'locales/en/components.js'].map(file => fs.readFile(new URL('../public/'+file, import.meta.url), 'utf8')))).join('\n') + '\n' + componentSource;
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const initial = () => ({ currentVersion: '2.1.0', enabled: false, channel: 'stable', installedChannel: 'stable', candidate: null, canInstall: false, installation: { status: 'idle' } });
 

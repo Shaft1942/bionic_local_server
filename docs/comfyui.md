@@ -1,92 +1,72 @@
-# Images ComfyUI dans les conversations
+# Images ComfyUI
 
-Dans **Paramètres**, activer ComfyUI, choisir son URL et son modèle d’image, tester puis
-enregistrer. Dans le menu Outils du message, activer **Générer des images avec ComfyUI**,
-puis demander une image en langage naturel. Un modèle compatible avec les appels
-d’outils est nécessaire. L’image et son bouton de téléchargement apparaissent dans
-le message de l’assistant. Le rendu continue lorsque le navigateur est fermé.
+[Utilisation](utilisation.md) · [Serveurs sur le PC](local-services.md) · [Configuration](configuration.md)
 
-Dans **Outils → Modèle d’image**, choisir Krea 2 Turbo ou Hassaku XL pour le prochain
-message. Le choix est conservé avec le brouillon et la conversation. Dans
-**Paramètres → ComfyUI**, chaque modèle dispose de deux emplacements LoRA facultatifs
-avec un slider de force entre −2 et 20, au pas de 0,05, et sa valeur affichée en direct (0 désactive l’emplacement). Changer de modèle dans ce
-formulaire permet de préparer ses propres LoRA ; enregistrer sauvegarde les deux
-recettes. Le modèle et les LoRA sont figés lors de l’envoi du message.
+Le compagnon utilise une instance ComfyUI séparée, avec les profils **Krea 2 Turbo** et **Hassaku XL Illustrious** fournis. Les poids, licences et nœuds requis restent à installer dans ComfyUI. Aucun modèle n’est téléchargé automatiquement.
 
-**Actualiser les LoRA** consulte les listes `lora_name` de `LoraLoader` et de
-`LoraLoaderModelOnly` dans `/object_info`. Tous les fichiers reconnus par ComfyUI,
-y compris ses dossiers supplémentaires et les téléchargements de l’application,
-sont proposés avec leur chemin relatif. Après un ajout, actualiser le catalogue ;
-si ComfyUI n’a pas encore indexé le fichier, le faire reconnaître dans ComfyUI.
-Une présence dans la liste ne prouve pas la compatibilité : choisir des LoRA
-SDXL/Illustrious pour Hassaku, et Krea 2 pour Krea 2. Aucun LoRA n’est activé d’office.
-Krea utilise `LoraLoaderModelOnly` ; Hassaku applique la même force au modèle et au
-CLIP avec `LoraLoader`, sans remplacer le VAE du checkpoint.
+## Configurer ComfyUI
 
-## Configuration guidée (2.2.1-beta.3)
+Dans **Paramètres → Images et ComfyUI** :
 
-Dans **Paramètres → Images**, suivre les trois étapes :
+1. Démarrez ComfyUI, puis **Rechercher le serveur** ou saisissez son adresse. La recherche consulte seulement l’adresse indiquée et les ports 8188/8000 du PC ; elle ne parcourt pas le réseau.
+2. Choisissez le modèle d’image, puis **Tester la connexion et les modèles**. Le diagnostic distingue serveur, fichiers attendus et nœuds. Il ne génère rien et n’enregistre pas la saisie. Les noms relatifs attendus dans le catalogue ComfyUI doivent correspondre au profil.
+3. Choisissez la gestion du modèle texte et le nettoyage ComfyUI, activez le service et enregistrez.
 
-1. **Trouver ComfyUI** : démarrer ComfyUI, puis **Rechercher le serveur**. Le compagnon interroge seulement `/system_stats` sur les ports 8188 et 8000 du PC du compagnon et sur l'adresse saisie. Il ne parcourt pas le réseau. Choisir un résultat lance le diagnostic complet sans enregistrer ni générer. Un port différent se saisit manuellement. L'absence de résultat ne prouve pas que l'option serveur est désactivée : vérifier démarrage, port, adresse et, uniquement pour un autre PC, accès réseau privé.
-2. **Vérifier le modèle d'image** : choisir Krea 2 ou Hassaku puis **Tester la connexion et les modèles**. Le résultat sépare serveur, fichiers attendus et nœuds. Chaque modèle est marqué présent/manquant avec son dossier dans ComfyUI : `models/diffusion_models`, `models/text_encoders`, `models/vae` ou `models/checkpoints`. Les noms exacts du graphe sont requis ; les modèles renommés ou rangés sous un autre nom relatif ne sont pas sélectionnés automatiquement. Les dossiers supplémentaires configurés dans ComfyUI restent pris en compte via son catalogue.
-3. **Choisir le nettoyage mémoire**, puis activer ComfyUI et enregistrer. Aucun diagnostic ne télécharge de poids, ne lance un rendu ou ne modifie le serveur. Les poids et leurs licences restent à obtenir auprès de leurs éditeurs ; voir le [guide officiel des modèles](https://docs.comfy.org/basic-concepts/models). Les LoRA sont facultatifs dans les réglages avancés.
+L’adresse initiale est `http://127.0.0.1:8188`. Les URL HTTP de boucle locale ou IPv4 privées sont acceptées, sans identifiants, chemin ou redirection. Une installation neuve laisse ComfyUI et son nettoyage désactivés. Les préférences enregistrées dans l’interface prennent ensuite le pas sur l’initialisation de `config.local.json` ; elles sont privées dans `data/comfy-settings.json`.
 
-Une installation neuve laisse ComfyUI et le nettoyage désactivés. Une configuration déjà enregistrée en version 1 ou 2 conserve son ancien nettoyage activé ; le passage au format 3 est enregistré au prochain changement. Un choix explicitement désactivé reste désactivé après redémarrage.
+Les profils de production se trouvent dans `workflows/` : Krea 2 Turbo utilise 8 étapes et CFG 1 ; Hassaku XL Illustrious v34 utilise 25 étapes et CFG 6. Ce sont des recettes fixes, pas un éditeur de workflow. Les formats proposés sont carré 1024 × 1024, portrait 832 × 1216 et paysage 1216 × 832.
+
+## Demander une ou plusieurs images
+
+Dans **Outils**, activez **Générer des images avec ComfyUI**, choisissez le **Modèle d’image** puis **Images par demande**, de **1 à 5**. Envoyez votre demande à un modèle de conversation capable d’appeler des outils. Pour 2 à 5 images, le modèle doit préparer exactement ce nombre de prompts et de graines distinctes ; le compagnon valide le lot avant de l’admettre.
+
+Les cartes indiquent l’état de chaque image et sa position. Le suivi continue sur le PC lorsque vous fermez le navigateur. Les lots de cette installation sont traités dans l’ordre d’arrivée, sans mélange entre séries ; douze images au maximum peuvent être actives ou en attente, avec une seule soumission ComfyUI à la fois.
+
+Pour utiliser votre texte exact sans préparation par un modèle de conversation, choisissez **Outils → Générer ce prompt directement**. Ce parcours produit **une image**, utilise le profil choisi et les réglages globaux de génération ; les fichiers joints et le curseur de quantité ne sont pas utilisés. Depuis un historique Bionic, il crée une suite web distincte.
+
+Une image réussie est copiée dans les données privées du compagnon et devient téléchargeable depuis l’appareil. Les historiques natifs Bionic ne sont pas modifiés. La langue de l’interface ne traduit pas les prompts ; choisissez leur langue selon le modèle d’image et vos besoins.
+
+## Modèle texte pendant les images
+
+Le défaut se règle dans **Paramètres → Images et ComfyUI**. Pour une demande conversationnelle, **Outils → Modèle texte pendant les images** peut créer une exception ; **Paramètres globaux** la retire. Le choix est figé à l’envoi et ne change pas les lots déjà acceptés.
+
+| Choix | Effet |
+| --- | --- |
+| **Conserver le modèle texte** (`keep`, défaut) | Permet aux autres conversations de répondre pendant le rendu. Le partage de mémoire ou de GPU peut ralentir les travaux. |
+| **Répondre entre les images** (`alternate`) | Garde le modèle chargé et laisse passer les réponses en attente entre deux images. Une image commencée finit avant de céder la place ; une réponse longue retarde la suivante. |
+| **Décharger avant les images** (`unload`) | Attend les inférences en cours, décharge les instances texte Bionic avec confirmation puis bloque les nouvelles inférences du compagnon pendant le lot. Le prochain message peut recharger le modèle avec les réglages Bionic. |
+
+Le choix image pilote la coordination avec les phases texte ; les plafonds d’admission restent actifs. Il ne réserve pas le GPU face à d’autres applications ou clients Bionic. Aucun mode ne garantit un temps total plus court. Les réglages globaux de génération ne peuvent pas être modifiés avec une file active.
+
+## LoRA
+
+Chaque profil possède deux emplacements LoRA facultatifs. **Actualiser les LoRA** relit le catalogue de ComfyUI. Une présence dans la liste ne prouve pas la compatibilité : utilisez des LoRA adaptés à Hassaku/Illustrious ou à Krea 2.
+
+La force va de **−2 à 20**, par pas de **0,05** ; zéro désactive l’emplacement. Aucun LoRA n’est sélectionné au départ. Les profils se règlent séparément et sont figés lors de l’envoi. Hassaku applique la force au modèle et au CLIP ; Krea utilise le chargeur modèle seul.
 
 ## Nettoyage mémoire facultatif
 
-L'option **Décharger les modèles ComfyUI après chaque rendu** peut aider à rendre de la mémoire à d'autres applications ou à traiter un ralentissement entre rendus, notamment avec Krea 2. Elle ne garantit aucun gain : le rechargement des poids peut ralentir le rendu suivant. Elle ne décharge jamais le modèle de conversation Bionic et ne constitue pas un déchargement systématique avant chaque prompt.
+**Libérer les modèles ComfyUI après chaque image** est indépendant du modèle texte Bionic. Le nettoyage demande une libération **après** le workflow ; ce n’est pas un déchargement systématique avant chaque prompt. Il peut rendre de la mémoire, au prix d’un rechargement au rendu suivant, sans garantie de gain.
 
-- **Désactivée** : le compagnon retire le nœud 99 du graphe soumis. Aucun module supplémentaire n'est nécessaire ; un `SaveImage` standard sans sortie IMAGE est accepté. La gestion mémoire normale de ComfyUI reste active. Aucune récupération `/free` n'est déclenchée après erreur pour ces nouvelles demandes.
-- **Activée** : le graphe conserve `FreeMemoryAfterWorkflow`, dépendant de `SaveImage`. Les indicateurs `unload_models` et `free_memory` sont traités après le workflow. La récupération après échec reste limitée au propre job terminal du compagnon et à une file observée vide ; aucun `/interrupt` n'est appelé. Le choix est figé à l'acceptation du message et persisté avec le job ; les anciens jobs conservent leurs règles.
+- **Désactivé** : aucun module supplémentaire n’est requis ; ComfyUI conserve sa gestion mémoire normale.
+- **Activé** : le nœud `FreeMemoryAfterWorkflow` fourni doit être installé dans l’instance utilisée, avec un `SaveImage` compatible. Le diagnostic explique les manques. En cas d’incompatibilité, désactivez le nettoyage pour utiliser le profil standard.
 
-Le formulaire permet de **télécharger le module mémoire fourni** via une route authentifiée du compagnon. Copier `free_memory_after_workflow.py` dans `custom_nodes` de l'instance ComfyUI utilisée, attendre la fin des travaux puis redémarrer cette instance. Aucun paquet Python supplémentaire n'est requis. Copier le fichier uniquement dans le compagnon ne l'installe pas dans ComfyUI. L'installation et le redémarrage restent manuels.
+Le bouton de téléchargement du module est authentifié. Copiez `free_memory_after_workflow.py` dans `custom_nodes/` de ComfyUI puis, après la fin des travaux, redémarrez cette instance. Aucun paquet Python supplémentaire n’est requis. Copier le fichier dans le seul compagnon ne l’installe pas dans ComfyUI.
 
-Le diagnostic montre l'absence du module même lorsque l'option est désactivée, sans bloquer le workflow. Activée, elle exige aussi que le module soit un nœud de sortie et que `SaveImage` fournisse une sortie IMAGE d'indice 0. Si cette combinaison est incompatible, désactiver le nettoyage pour continuer. Les graphes archivés restent des exports historiques ; les graphes de production incluent le nœud facultatif que le service retire au besoin.
+Le choix est conservé avec chaque image. Après un échec terminal connu, la récupération mémoire peut être demandée seulement si cette option était active et si la file moteur est observée vide. Le compagnon n’utilise pas d’interruption globale pour cela.
 
-Le serveur ComfyUI doit être démarré sur le PC ou le réseau privé. L’adresse par
-défaut est `http://127.0.0.1:8188` ; HTTP loopback et les IPv4 RFC1918 sont acceptés,
-sans identifiants, chemin ou redirection. Une nouvelle installation laisse ComfyUI
-désactivé. Les réglages initiaux `comfyEnabled`, `comfyUrl`, `comfyWorkflowId` dans
-`config.local.json`, ou `BIONIC_COMFY_ENABLED`, `BIONIC_COMFY_URL`,
-`BIONIC_COMFY_WORKFLOW_ID`, s’appliquent avant le premier enregistrement dans l’UI.
-Ensuite les préférences sont dans `data/comfy-settings.json`.
+## Galerie, annulation et relance
 
-Le workflow Krea2 utilise Krea2 Turbo FP8 scaled, Qwen3VL 4B FP8 type `krea2`,
-Qwen Image VAE, Euler/simple, 8 étapes, CFG 1, lot 1. Les fichiers de modèle doivent
-être disponibles dans ComfyUI. Le modèle de conversation fournit uniquement le
-prompt, le format (1024², 832×1216, 1216×832) et éventuellement une seed 32 bits.
+**Annuler cette image** retire uniquement une image encore dans la file locale, avant soumission au moteur. Les autres images du lot continuent. Après le début de l’envoi, cette commande n’interrompt pas le moteur. **Arrêter** la réponse texte n’annule pas un lot déjà enregistré.
 
-Le second profil reprend HassakuXL Illustrious v34, 25 étapes, CFG 6,
-Euler ancestral/normal, en portrait par défaut. Les profils de production sont
-dans `workflows`. Les exports éditables et la variante mixte expérimentale sont
-archivés dans `docs/comfy-workflows`. Aucun modèle ou nœud n’est installé automatiquement.
+**Relancer** crée une nouvelle image dans le chat source avec la même recette : prompt, format, profil, LoRA, nettoyage et politique texte. Choisissez la même graine ou une nouvelle graine. L’original reste disponible. Une image active ou incertaine ne se relance pas ; un changement d’adresse moteur ou de contenu du workflow demande une nouvelle génération ordinaire.
 
-Le contrôle **Tester la connexion et les modèles** consulte seulement
-`/system_stats`, `/object_info` et `/queue` ; il ne soumet pas de job. L’outil
-`generate_comfy_image` et son alias historique `generate_krea2_image` utilisent
-le modèle choisi pour le message, avec le réglage des paramètres comme valeur par défaut.
+La galerie propose le ZIP des images disponibles d’une série. **Livrables → Génération** regroupe les copies réussies du projet, même après suppression du chat source. Le téléchargement sélectionné accepte **1 à 20 images**, au plus **32 Mio par image** et **128 Mio par archive**. Le ZIP conserve les PNG et ajoute un manifeste des prompts, graines, profils, LoRA et empreintes SHA-256. Il ne relance aucun rendu.
 
-Une image maximum par message et quatre générations en attente dans le compagnon.
-Les demandes sont enregistrées sous `data/comfy-generations` avant soumission,
-puis suivies par `prompt_id`. Les images sont copiées dans ce dossier privé et
-servies par une route authentifiée du compagnon, jamais par un localhost envoyé au téléphone.
-Les chemins et le graphe ne sont pas choisis par le modèle.
-Chaque job garde son URL, son workflow et son nœud de sortie. Les anciennes
-images restent lisibles après désactivation. Attendre la fin des générations
-pour changer de connexion ou de workflow.
+## File suspendue ou soumission incertaine
 
-Un délai expiré ou un redémarrage pendant la soumission donne un état inconnu,
-sans répétition automatique du POST. Vérifier ComfyUI avant de soumettre un nouveau
-message. Un redémarrage reprend le suivi des jobs déjà connus. Arrêter la réponse
-du modèle n’interrompt pas globalement les travaux ComfyUI.
+Un délai expiré ou un redémarrage pendant la soumission peut laisser le résultat **inconnu**. Le compagnon ne répète pas automatiquement le POST et suspend les nouvelles images.
 
-Cette fonction est indépendante des outils fichiers, Internet et scripts ; elle
-n’affaiblit pas leurs validations. Les conversations natives Bionic restent en
-lecture seule. La cohabitation mémoire et la durée de génération dépendent des
-modèles chargés dans Bionic et de l’offload ComfyUI.
+Vérifiez d’abord les sorties et travaux dans ComfyUI. **Reprendre la file après vérification** exige une file moteur vide, clôt les soumissions incertaines sans les rejouer et reprend seulement les lots encore admis en mémoire. Après redémarrage du compagnon, les jobs distants connus restent suivis ; les images qui attendaient encore localement sont marquées interrompues. Ne renvoyez pas une demande incertaine avant cette vérification.
 
-Un rendu Krea2 1024 × 1024 piloté par Gemma a réussi pendant la validation V2.
-Voir `docs/history/v2-live-proof.json`. Les ajouts LoRA réunis dans la release 2.0.0 ont été testés avec
-des rendus HassakuXL et Krea2 avec LoRA depuis des prompts du compagnon ; voir
-`docs/v2-validation.md`. Le workflow mixte reste expérimental et non validé.
+Pour configurer le démarrage facultatif de l’instance depuis le compagnon, voir [Serveurs sur le PC](local-services.md). Les performances et la compatibilité dépendent des versions, des modèles, du matériel et des autres usages de votre installation.

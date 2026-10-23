@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 
-const source=(await Promise.all(['certificates.js','help.js','settings.js'].map(file=>fs.readFile(new URL('../public/'+file,import.meta.url),'utf8')))).join('\n');
+const source=(await Promise.all(['i18n.js','locales/fr/ui.js','locales/en/ui.js','locales/fr/settings.js','locales/en/settings.js','locales/fr/components.js','locales/en/components.js','locales/fr/local-services.js','locales/en/local-services.js','certificates.js','help.js','settings.js'].map(file=>fs.readFile(new URL('../public/'+file,import.meta.url),'utf8')))).join('\n');
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const defaultComfy={enabled:false,url:'http://127.0.0.1:8188',workflowId:'krea2_turbo',activeJobs:0,workflows:[{id:'krea2_turbo',label:'Krea 2 Turbo'}]};
 
 /** A small DOM boundary keeps scope and asynchronous transport tests independent of a browser. */
 function fixture(intercept=()=>undefined) {
-  const elements=new Map(),writes=[],navigations=[],globalEvents={};
+  const elements=new Map(),writes=[],navigations=[],globalEvents={},serviceCalls=[];
   const document={activeElement:null,getElementById:element,querySelectorAll:selector=>['[data-settings-page]','#settings-nav [data-settings-page]'].includes(selector)?[...elements.values()].filter(value=>value.dataset.settingsPage):[]};
   function element(id) {
     if(!elements.has(id)) {
@@ -19,13 +19,13 @@ function fixture(intercept=()=>undefined) {
         get value(){return value;},set value(next){value=String(next);},
         focus(){document.activeElement=this;},scrollIntoView(){},setAttribute(name,next){this.attributes[name]=String(next);},
         closest(selector){if(selector!=='[hidden]')return null;const parents={'certificate-prepare':'certificate-setup-form','certificate-setup-form':'certificate-controls','certificate-device-name':'certificate-device-form','certificate-device-form':'certificate-controls'};let current=this;while(current){if(current.hidden)return current;current=parents[current.id]?element(parents[current.id]):null;}return null;},
-        replaceChildren(...children){this.children=children;},append(...children){this.children.push(...children);},
+        replaceChildren(...children){this.children=children;},append(...children){this.children.push(...children);},querySelectorAll(){return [];},contains(target){return this===target||this.children.includes(target);},
         addEventListener(type,callback){this.listeners[type]=callback;}
       });
     }
     return elements.get(id);
   }
-  for(const page of ['reading','models','tools','images','connection','maintenance','help'])element('nav-'+page).dataset.settingsPage=page;
+  for(const page of ['reading','models','tools','images','servers','connection','maintenance','help'])element('nav-'+page).dataset.settingsPage=page;
   const state={authenticated:true,authEpoch:1,projectId:'p',chat:null,viewKey:'p|new',status:{models:[{id:'m',name:'Modèle M'}]}};
   element('model').value='m';document.activeElement=element('settings-open-sidebar');
   const api=async(route,options)=>{
@@ -38,14 +38,32 @@ function fixture(intercept=()=>undefined) {
     if(route==='/api/capabilities')return {items:[{name:'Capacité actuelle',description:'Description actuelle.'}]};
     throw Error('Unexpected API route '+route);
   };
-  const context=vm.createContext({document,Intl,URL,URLSearchParams,structuredClone,addEventListener:(name,callback)=>globalEvents[name]=callback});
+  const context=vm.createContext({document,Intl,URL,URLSearchParams,structuredClone,addEventListener:(name,callback)=>globalEvents[name]=callback,createLocalServices:()=>({setVisible:visible=>serviceCalls.push({visible}),openService:id=>serviceCalls.push({id}),reset:()=>serviceCalls.push({reset:true})})});
   vm.runInContext(source,context);
   let nodes=0;const settings=context.createCompanionSettings({api,getState:()=>state,node:(tag,className,textContent)=>Object.assign(element('node-'+nodes++),{tag,className,textContent}),onChange(){},onNavigate:target=>navigations.push(target)});
   const fire=(id,type='click')=>element(id).listeners[type]({currentTarget:element(id),preventDefault(){}});
   const open=()=>fire('settings-open-sidebar');
   async function saveOutput(value,all=false){element('output-mode').value=value===null?'auto':'manual';element('output-tokens').value=value??8192;element('output-all-sessions').value=all?'model':'session';return fire('output-settings-form','submit');}
-  return {state,document,element,settings,writes,navigations,globalEvents,fire,open,saveOutput};
+  return {state,document,element,settings,writes,navigations,globalEvents,serviceCalls,fire,open,saveOutput};
 }
+
+test('server navigation and authentication reset preserve image request options until reset',async()=>{
+  const f=fixture(route=>route==='/api/comfy/settings'?{...defaultComfy,enabled:true}:undefined);
+  f.state.draftImageAccess=true;f.state.draftImageCount=5;f.state.draftImageModelPolicy='alternate';
+  await f.open();await tick();
+  await f.settings.openService('comfyui');
+  assert.equal(f.element('settings-page-servers').hidden,false);
+  assert.ok(f.serviceCalls.some(call=>call.visible===true));
+  assert.ok(f.serviceCalls.some(call=>call.id==='comfyui'));
+  const request=f.settings.decorate({model:'m',imageAccess:true});
+  assert.equal(request.imageCount,5);assert.equal(request.imageModelPolicy,'alternate');
+  await f.settings.openPage({currentTarget:f.element('settings-open-sidebar')},'images');
+  assert.equal(f.element('settings-page-images').hidden,false);
+  assert.equal(f.element('image-count').value,'5');
+  f.settings.reset();
+  assert.ok(f.serviceCalls.some(call=>call.reset===true));
+  assert.equal(f.serviceCalls.at(-1).visible,false);
+});
 
 test('LoRA form keeps two choices and strengths independently when switching image models',async()=>{
   const data={...defaultComfy,enabled:true,workflows:[{id:'krea2_turbo',label:'Krea2'},{id:'hassaku_illustrious',label:'HassakuXL'}],loraProfiles:{krea2_turbo:[],hassaku_illustrious:[]}};
@@ -74,7 +92,7 @@ test('late LoRA catalog replies cannot overwrite a newer settings view or its se
   await f.open();f.settings.close();await f.open();await tick();
   assert.equal(f.element('comfy-lora-1').value,'new.safetensors');
   old.resolve({loras:['stale.safetensors']});await tick();
-  assert.equal(f.element('comfy-lora-1').value,'new.safetensors');assert.equal(f.element('comfy-loras-status').textContent,'1 LoRA disponible(s) dans ComfyUI.');
+  assert.equal(f.element('comfy-lora-1').value,'new.safetensors');assert.equal(f.element('comfy-loras-status').textContent,'1 LoRA disponible dans ComfyUI.');
 });
 
 test('image selection follows each conversation and its draft when the composer is refreshed',async()=>{
@@ -86,6 +104,106 @@ test('image selection follows each conversation and its draft when the composer 
   assert.equal(f.element('image-workflow').value,'krea2_turbo');
   f.state.draftImageWorkflowId=null;f.state.chat={imageWorkflowId:'krea2_turbo'};f.settings.imagePermission();
   assert.equal(f.element('image-workflow').value,'krea2_turbo');
+});
+
+test('series selection follows its conversation and draft, and is sent only with image permission',async()=>{
+  const f=fixture(route=>route==='/api/comfy/settings'?{...defaultComfy,enabled:true,modelPolicy:'unload'}:undefined);
+  await f.settings.refresh();f.element('agent-images').checked=true;
+  f.state.chat={imageCount:3};f.settings.imagePermission();
+  assert.equal(f.element('image-count').value,'3');assert.equal(!!f.element('image-count').disabled,false);
+  assert.equal(f.settings.decorate({model:'m',imageAccess:true}).imageCount,3);
+  assert.equal(f.settings.decorate({model:'m',imageAccess:false}).imageCount,undefined);
+  assert.match(f.element('image-settings-help').textContent,/3 prompts différents/);
+  assert.match(f.element('image-settings-help').textContent,/réponses texte attendront/);
+  f.state.draftImageCount=1;f.settings.imagePermission();assert.equal(f.element('image-count').value,'1');
+  f.state.draftImageCount=null;f.state.chat={};f.settings.imagePermission();assert.equal(f.element('image-count').value,'1');
+  f.element('agent-images').checked=false;f.settings.imagePermission();assert.equal(f.element('image-count').disabled,true);
+});
+
+test('text model policy defaults to keep and participates in dirty state, cancellation and saved settings',async()=>{
+  let saved={...defaultComfy,enabled:true};
+  const f=fixture((route,options)=>route==='/api/comfy/settings'?options?.method==='POST'?(saved={...saved,...JSON.parse(options.body)}):structuredClone(saved):undefined);
+  await f.open();assert.equal(f.element('comfy-model-policy').value,'keep');
+  f.element('comfy-model-policy').value='unload';f.fire('comfy-model-policy','change');assert.equal(f.settings.hasUnsaved(),true);
+  await f.fire('comfy-cancel');assert.equal(f.element('comfy-model-policy').value,'keep');assert.equal(f.settings.hasUnsaved(),false);
+  f.element('comfy-model-policy').value='unload';f.fire('comfy-model-policy','change');await f.fire('comfy-settings-form','submit');
+  assert.equal(f.writes.findLast(write=>write.route==='/api/comfy/settings').body.modelPolicy,'unload');
+  await f.settings.close();await f.open();assert.equal(f.element('comfy-model-policy').value,'unload');assert.equal(f.settings.hasUnsaved(),false);
+});
+
+test('alternate policy is saved and restored without converting it to keep or claiming concurrent rendering',async()=>{
+  let saved={...defaultComfy,enabled:true};
+  const f=fixture((route,options)=>route==='/api/comfy/settings'?options?.method==='POST'?(saved={...saved,...JSON.parse(options.body)}):structuredClone(saved):undefined);
+  await f.open();f.element('comfy-model-policy').value='alternate';f.fire('comfy-model-policy','change');assert.equal(f.settings.hasUnsaved(),true);
+  await f.fire('comfy-settings-form','submit');assert.equal(saved.modelPolicy,'alternate');assert.equal(f.settings.hasUnsaved(),false);
+  await f.settings.close();await f.open();assert.equal(f.element('comfy-model-policy').value,'alternate');
+  f.element('agent-images').checked=true;f.state.chat={imageCount:2};f.settings.imagePermission();assert.match(f.element('image-settings-help').textContent,/attendent la fin de l’image en cours/);
+  assert.match(f.element('image-settings-help').textContent,/entre deux images/);assert.doesNotMatch(f.element('image-settings-help').textContent,/pendant un rendu|simultané/);
+  f.element('comfy-model-policy').value='keep';f.fire('comfy-model-policy','change');await f.fire('comfy-cancel');assert.equal(f.element('comfy-model-policy').value,'alternate');
+});
+
+test('image counts from one to five restore with an accessible count and respect disabled permissions',async()=>{
+  const f=fixture(route=>route==='/api/comfy/settings'?{...defaultComfy,enabled:true}:undefined);await f.settings.refresh();f.element('agent-images').checked=true;
+  for(const count of [1,2,3,4,5]){
+    f.state.chat={imageCount:count};f.settings.imagePermission();
+    assert.equal(f.element('image-count').value,String(count));assert.equal(f.element('image-count-value').textContent,count+' image'+(count>1?'s':''));
+    assert.equal(f.element('image-count').attributes['aria-valuetext'],count+' image'+(count>1?'s':''));
+    assert.equal(f.settings.decorate({model:'m',imageAccess:true}).imageCount,count);
+    assert.match(f.element('image-settings-help').textContent,count===1?/Une image/:new RegExp(count+' prompts différents'));
+  }
+  f.state.draftImageCount=2;f.settings.imagePermission();assert.equal(f.element('image-count').value,'2');
+  f.element('agent-images').checked=false;f.settings.imagePermission();assert.equal(f.element('image-count-value').textContent,'0 image (désactivé)');
+  assert.equal(f.element('image-count').disabled,true);assert.equal(f.element('image-model-policy').disabled,true);assert.match(f.element('image-settings-help').textContent,/0 image autorisée/);
+  assert.equal(f.settings.decorate({model:'m',imageAccess:false}).imageCount,undefined);
+});
+
+test('per-message model policy preserves the chosen intent across settings refreshes and can clear an earlier override',async()=>{
+  let globalPolicy='unload';const f=fixture(route=>route==='/api/comfy/settings'?{...defaultComfy,enabled:true,modelPolicy:globalPolicy}:undefined);
+  await f.settings.refresh();f.element('agent-images').checked=true;f.state.chat={imageCount:3,imageModelPolicy:'keep'};f.settings.imagePermission();
+  assert.equal(f.element('image-model-policy').value,'keep');assert.equal(f.settings.decorate({model:'m',imageAccess:true}).imageModelPolicy,'keep');
+  f.state.draftImageModelPolicy='alternate';globalPolicy='keep';await f.settings.refresh();
+  assert.equal(f.element('image-model-policy').value,'alternate');assert.match(f.element('image-settings-help').textContent,/Choix pour ce message/);
+  assert.equal(f.settings.decorate({model:'m',imageAccess:true}).imageModelPolicy,'alternate');
+  f.state.draftImageModelPolicy='';globalPolicy='unload';await f.settings.refresh();
+  assert.equal(f.element('image-model-policy').value,'');assert.equal(Object.hasOwn(f.settings.decorate({model:'m',imageAccess:true}),'imageModelPolicy'),false);
+  assert.match(f.element('image-settings-help').textContent,/Paramètres globaux/);assert.match(f.element('image-settings-help').textContent,/déchargé avant les images/);
+  f.state.draftImageModelPolicy=null;f.state.chat={imageCount:1};f.settings.imagePermission();assert.equal(f.element('image-model-policy').value,'');
+  f.state.draftImageModelPolicy='unload';f.settings.imagePermission();assert.equal(f.settings.decorate({model:'m',imageAccess:false}).imageModelPolicy,undefined);
+});
+
+test('queue recovery is hidden unless the server explicitly reports a paused queue',async()=>{
+  const f=fixture();await f.open();assert.equal(f.element('comfy-queue-paused').hidden,true);
+  await f.fire('comfy-queue-resume');assert.equal(f.writes.filter(write=>write.route==='/api/comfy/queue/resume').length,0);
+});
+
+test('queue recovery refreshes queue state without saving or replacing an edited image configuration',async()=>{
+  let paused=true;
+  const f=fixture(route=>route==='/api/comfy/settings'?{...defaultComfy,queuePaused:paused,activeJobs:paused?3:2}:route==='/api/comfy/queue/resume'?(paused=false,{ok:true}):undefined);
+  await f.open();assert.equal(f.element('comfy-queue-paused').hidden,false);
+  f.element('comfy-model-policy').value='unload';f.fire('comfy-model-policy','change');
+  await f.fire('comfy-queue-resume');
+  const writes=f.writes.filter(write=>write.route==='/api/comfy/queue/resume');assert.equal(writes.length,1);assert.deepEqual(writes[0].body,{});
+  assert.equal(f.element('comfy-queue-paused').hidden,true);assert.match(f.element('comfy-result').textContent,/File reprise/);
+  assert.equal(f.element('comfy-model-policy').value,'unload');assert.equal(f.settings.hasUnsaved(),true);
+  assert.equal(f.writes.filter(write=>write.route==='/api/comfy/settings').length,0);
+});
+
+test('busy queue recovery displays its error and prevents duplicate clicks while the request is pending',async()=>{
+  const response=deferred(),f=fixture(route=>route==='/api/comfy/settings'?{...defaultComfy,queuePaused:true}:route==='/api/comfy/queue/resume'?response.promise:undefined);
+  await f.open();const pending=f.fire('comfy-queue-resume');assert.equal(f.element('comfy-queue-resume').disabled,true);
+  await f.fire('comfy-queue-resume');assert.equal(f.writes.filter(write=>write.route==='/api/comfy/queue/resume').length,1);
+  response.reject(Error('ComfyUI traite encore une image.'));await pending;
+  assert.equal(f.element('comfy-queue-paused').hidden,false);assert.equal(f.element('comfy-queue-resume').disabled,false);
+  assert.equal(f.element('comfy-error').hidden,false);assert.match(f.element('comfy-error').textContent,/traite encore une image/);
+});
+
+test('an old queue recovery cannot update a reopened settings view',async()=>{
+  const response=deferred();let paused=true;
+  const f=fixture(route=>route==='/api/comfy/settings'?{...defaultComfy,queuePaused:paused}:route==='/api/comfy/queue/resume'?response.promise:undefined);
+  await f.open();const pending=f.fire('comfy-queue-resume');await f.settings.close();paused=false;await f.open();
+  assert.equal(f.element('comfy-queue-paused').hidden,true);assert.equal(f.element('comfy-result').textContent,'');
+  response.resolve({ok:true});await pending;
+  assert.equal(f.element('comfy-queue-paused').hidden,true);assert.equal(f.element('comfy-result').textContent,'');assert.equal(f.element('comfy-queue-resume').disabled,false);
 });
 
 test('a session-only draft preference is consumed after acceptance and does not leak into the next new chat',async()=>{
@@ -254,11 +372,11 @@ test('output shortcut uses its known model, and unknown provenance focuses the m
 function editOutput(f,value){f.element('output-mode').value='manual';f.fire('output-mode','change');f.element('output-tokens').value=String(value);f.fire('output-tokens','input');}
 const persistedWrites=f=>f.writes.filter(write=>['/api/model-preferences','/api/comfy/settings'].includes(write.route));
 
-test('six pages and local search keep form edits, expose scope and never submit values',async()=>{
+test('eight pages and local search keep form edits, expose scope and never submit values',async()=>{
   const f=fixture();await f.open();editOutput(f,4567);await f.fire('nav-images');
   assert.equal(f.element('settings-page-images').hidden,false);assert.equal(f.element('settings-page-models').hidden,true);assert.equal(f.element('output-tokens').value,'4567');
   assert.equal(f.element('settings-view').dataset.settingsIndex,'false');await f.fire('settings-back');assert.equal(f.element('settings-view').dataset.settingsIndex,'true');
-  for(const query of ['tokens','permissions','LoRA','certificat','brouillons','renommer','corbeille','python']){f.element('settings-search').value=query;await f.fire('settings-search','input');assert(f.element('settings-results').children.length>0,query);}
+  for(const query of ['tokens','permissions','LoRA','certificat','brouillons','renommer','corbeille','python','redémarrer']){f.element('settings-search').value=query;await f.fire('settings-search','input');assert(f.element('settings-results').children.length>0,query);}
   f.element('settings-search').value='tokens';await f.fire('settings-search','input');const result=f.element('settings-results').children[0];assert.equal(result.children[1].textContent,'Chat ou défaut du modèle');await result.listeners.click();
   assert.equal(f.element('settings-page-models').hidden,false);assert.equal(f.element('output-tokens').value,'4567');assert.equal(f.document.activeElement,f.element('output-mode'));assert.equal(persistedWrites(f).length,0);
 });

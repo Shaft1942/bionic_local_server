@@ -1,211 +1,117 @@
-# Certificats : configuration depuis le navigateur
+# Certificats et connexion sécurisée
 
-Le compagnon commence en HTTP. Ouvrir **Paramètres → Connexion et appareils → Sécurité des connexions**
-sur le téléphone ou le PC. Le lien `/?settings=security` ouvre directement cette
-section après connexion ; **Accès sécurisés** dans l’assistant Windows ouvre
-la même interface. Aucune opération de ce parcours ne sollicite Bionic ou ComfyUI.
+[Installation](installation.md) · [Dépannage](depannage.md) · [Sécurité](../SECURITY.md)
 
-## Parcours recommandé sur le téléphone
+Une nouvelle installation commence en HTTP sur le réseau de confiance. **Paramètres → Sécurité et accès → Sécurité des connexions** prépare HTTPS, puis facultativement mTLS. Le lien `/?settings=security` et **Accès sécurisés** dans l’assistant ouvrent ce même parcours. Aucune de ces actions ne sollicite Bionic ou ComfyUI.
 
-1. Lors de l’installation Windows, autoriser si souhaité l’accès au téléphone.
-   L’assistant prépare les deux ports précis, principal et vérification HTTPS,
-   sur le même réseau Windows privé. Une installation existante sans ce réglage
-   le signale dans les paramètres : terminer cette configuration une fois sur le
-   PC. Le navigateur n’ouvre aucune règle de pare-feu et ne demande pas d’UAC.
-2. Dans **Sécurité des connexions**, choisir **Préparer HTTPS**. Les adresses
-   actuelles sont proposées ; les autres noms/IP se règlent sous **Adresses du
-   serveur**. Le niveau actif reste HTTP à ce stade.
-3. Télécharger **l’autorité du compagnon** directement sur ce téléphone et
-   l’installer comme autorité de confiance dans les réglages du système. Le
-   système impose ses confirmations. Pour ce premier transfert HTTP, comparer
-   l’empreinte avec celle affichée sur le PC par un canal fiable : le réseau HTTP
-   initial ne fournit pas à lui seul une preuve d’identité.
-4. Choisir **Vérifier la connexion sécurisée**, puis **Ouvrir la vérification
-   sécurisée**. Un nouvel onglet vérifie le certificat du candidat. Ne jamais
-   confirmer après avoir ignoré un avertissement de certificat. Confirmer le
-   passage à HTTPS dans la page sécurisée, puis ouvrir le compagnon à l’adresse
-   HTTPS et se reconnecter avec son code. Les anciennes sessions sont invalidées.
-5. Depuis cette connexion HTTPS, nommer l’appareil puis choisir **Créer le
-   certificat de cet appareil**. Télécharger le `.p12` chiffré et importer ce
-   fichier dans le système avec le mot de passe affiché dans le panneau. Le
-   téléchargement est lié à la session et utilisable une fois pendant cinq
-   minutes. Le mot de passe disparaît à la fermeture du panneau ou après cinq
-   minutes ; aucune copie n’est conservée dans le stockage du navigateur.
-6. Pour rendre ce certificat obligatoire, choisir **Exiger un certificat client
-   pour se connecter**. La nouvelle preuve TLS exige une identité enregistrée ;
-   un appareil sans certificat ne peut pas confirmer. Le niveau HTTPS reste
-   actif tant que la preuve mTLS n’est pas confirmée.
+## Quel fichier sert à quoi ?
 
-Créer un certificat par appareil. En mTLS, un appareil déjà autorisé peut créer
-une identité pour le suivant ; transférer le fichier privé et communiquer son
-mot de passe de façon appropriée. Ce second appareil doit importer la même
-autorité et sa propre identité. Aucun mot de passe ou export privé ne transite
-par HTTP, par une URL ou par le canal de maintenance local.
+| Élément | Usage et confidentialité |
+| --- | --- |
+| **Autorité publique** `bionic-autorite.crt` | À installer comme autorité de confiance/CA sur l’appareil. Comparez sa SHA-256 complète avec celle affichée sur le PC ; elle ne contient pas la clé privée |
+| Certificat serveur | Présenté automatiquement ; doit couvrir les noms/IP réellement utilisés. Ce n’est pas une identité à importer sur le téléphone |
+| **Identité client** `.p12` et mot de passe | Privés, propres à un appareil, pour mTLS. Inutiles pour HTTPS seul. Importez l’identité sur l’appareil prévu puis retirez les copies de transfert |
+| Clé privée de l’autorité ou du serveur | Sur le PC uniquement. Ne transmettez jamais `.key`, `rootCA-key.pem` ou le dossier `data/security/` à un téléphone ou pour demander de l’aide |
 
-Pour renouveler une identité, utiliser **Renouveler** dans sa ligne. L’ancien
-certificat reste autorisé pendant l’import et la vérification du remplaçant.
-Le retirer ensuite explicitement depuis un autre appareil autorisé. **Retirer
-cet appareil** demande une confirmation nommée et ferme ses connexions. Le
-certificat de la connexion actuelle ne peut pas être révoqué depuis cette même
-connexion. Une course entre deux révocations ne retire pas tous les accès.
+Le nom du certificat ne suffit pas à identifier la bonne autorité. Son empreinte diffère de celle du certificat serveur ; comparez des éléments de même type.
 
-Le port de preuve `certificateProofPort` écoute seulement pendant la préparation,
-dix minutes au maximum. Un conflit de port ou un échec de preuve conserve le
-niveau confirmé et les données. Recommencer dans les paramètres après correction.
-La réception du `.p12` facilite le parcours ; le navigateur ne peut pas effectuer
-l’import système ou la sélection de certificat à la place de l’utilisateur.
+## Passer du HTTP initial à HTTPS
+
+1. Lors de l’installation Windows, préparez si nécessaire l’accès au téléphone : port principal et port de preuve HTTPS, sur le même réseau privé. Le navigateur n’ouvre pas le pare-feu ; une installation sans ce réglage doit être configurée sur le PC.
+2. Dans **Sécurité des connexions**, choisissez **Préparer HTTPS**. Vérifiez les noms/IP sous **Adresses du serveur**. Le niveau confirmé reste inchangé pendant la préparation.
+3. Téléchargez l’autorité publique sur l’appareil. Pour ce premier transfert HTTP, comparez sa SHA-256 avec celle affichée sur le PC par un canal fiable, puis [installez-la comme CA](#installer-lautorité-sur-son-appareil). Le téléchargement seul ne suffit pas.
+4. Choisissez **Vérifier la connexion sécurisée**, puis ouvrez la vérification. La page doit s’ouvrir **sans alerte de certificat**. N’ignorez jamais une alerte pour confirmer. Confirmez dans cette page, ouvrez l’adresse HTTPS habituelle et reconnectez-vous avec votre code.
+
+Après confirmation, les anciennes sessions sont invalidées et le niveau actif devient HTTPS. Le port principal reste le même ; le port de preuve n’écoute que pendant la préparation, dix minutes maximum. Un échec ou une expiration conserve le niveau confirmé, sans retour automatique à HTTP.
+
+## Installer l’autorité sur son appareil
+
+Les menus varient selon le système, sa version et le fabricant. Utilisez les réglages intégrés. Une politique d’appareil géré peut empêcher l’import ; faites intervenir son administrateur.
+
+### Android avec Chrome
+
+Dans les réglages Android, recherchez **certificat**, puis **Chiffrement et identifiants → Installer un certificat → Certificat CA** ou le libellé équivalent. Choisissez l’autorité publique vérifiée ; Android peut demander le code de verrouillage de l’appareil. Ce code n’est pas le mot de passe d’une archive `.p12`.
+
+Revenez dans Chrome et ouvrez la preuve HTTPS. Si la bonne autorité reste ignorée, fermez puis rouvrez Chrome ; un redémarrage du téléphone peut aussi permettre la prise en compte. Cela ne corrige ni une mauvaise adresse ni une expiration.
+
+### iPhone / iPad avec Safari
+
+Téléchargez puis ouvrez l’autorité dans Safari. Dans **Réglages → Profil téléchargé**, examinez et installez le profil. Activez ensuite explicitement sa confiance TLS dans **Général → Informations → Réglages des certificats**. Installer le profil et lui faire confiance sont deux étapes distinctes.
+
+Les profils installés se trouvent dans **Général → VPN et gestion de l’appareil**. Si le profil téléchargé a disparu avant installation, téléchargez-le à nouveau. Revenez dans Safari et vérifiez l’absence d’alerte.
+
+### Windows avec Chrome ou Edge
+
+Vérifiez la SHA-256 de l’autorité publique, puis ouvrez `certmgr.msc` pour le compte du navigateur. Importez-la dans **Autorités de certification racines de confiance → Certificats** du magasin **Utilisateur actuel**. Un magasin machine modifierait une autre portée de confiance. Rouvrez le navigateur et contrôlez la preuve HTTPS.
+
+Une empreinte affichée dans un autre algorithme ne se compare pas directement à la SHA-256 du compagnon.
+
+## Ajouter l’application sur l’écran d’accueil
+
+Après confirmation, ouvrez **l’adresse HTTPS habituelle**, reconnectez-vous et utilisez l’offre du navigateur : installation dans Chrome Android ou ajout à l’écran d’accueil de Safari. L’offre dépend du navigateur et ne constitue pas une preuve TLS. Une ancienne icône HTTP peut devoir être recréée depuis la bonne adresse. Le PC et le compagnon doivent toujours rester actifs.
+
+## Ajouter une identité privée puis activer mTLS (facultatif)
+
+1. Depuis HTTPS vérifié, nommez l’appareil puis choisissez **Créer le certificat de cet appareil**. L’archive `.p12` chiffrée est téléchargeable une fois pendant cinq minutes, liée à la session. Son mot de passe disparaît à la fermeture du panneau ou à l’expiration ; aucune copie n’est conservée dans le stockage du navigateur.
+2. Importez cette **identité client**, avec le mot de passe d’archive : certificat utilisateur pour VPN/applications sous Android, profil d’identité sur iOS/iPadOS, magasin **Personnel** du compte sous Windows. Ne l’importez pas comme autorité racine. Revenez dans le navigateur et sélectionnez cette identité si demandé.
+3. Choisissez **Exiger un certificat client pour se connecter**. La preuve exige alors une identité enregistrée. Tant qu’elle n’est pas confirmée, HTTPS reste le niveau actif.
+
+Créez une identité distincte par appareil, en plus de la même CA publique. En mTLS, un appareil autorisé peut préparer l’identité du suivant. Privilégiez le téléchargement sur l’appareil cible ; si un transfert privé est nécessaire, utilisez un canal maîtrisé et communiquez le mot de passe séparément. Aucun export privé ne transite par HTTP ou par une URL. N’envoyez jamais `.p12` ou mot de passe dans une demande d’aide.
+
+**Renouveler** depuis l’interface conserve l’ancienne identité pendant l’import et le contrôle du remplaçant. Retirez ensuite l’ancienne depuis un autre appareil autorisé. **Retirer cet appareil** demande confirmation et ferme ses connexions ; vous ne pouvez pas retirer le certificat de votre connexion actuelle ni révoquer simultanément tous les accès.
+
+L’import et la sélection restent à vérifier dans le navigateur de chaque appareil ; la réception du fichier seule ne prouve pas qu’il est utilisé.
+
+## Si la vérification échoue
+
+Relevez l’**adresse exacte** et le **code complet** de l’erreur, sans ticket ni paramètres privés. Vérifiez l’autorité et son empreinte, l’heure des appareils et les noms/IP dans **Détails des certificats → Adresses couvertes**.
+
+Un nom DNS et une IP sont deux entrées différentes. Après changement d’adresse, renouvelez le certificat serveur avec les bonnes adresses ; réinstaller la CA ne corrige pas ce défaut. Un délai sur le port de preuve peut être réseau, sans défaut de certificat. Voir la [table de dépannage HTTPS](depannage.md#https-affiche-une-alerte-de-certificat).
 
 ## Maintenance et compatibilité sur le PC
 
-`Certificats.cmd` conserve les commandes locales ci-dessous pour la récupération,
-un serveur expiré ou les anciens usages. Ce n’est plus le parcours normal.
+**Certificats.cmd** fournit la maintenance locale et la récupération quand le navigateur n’est plus utilisable.
 
 ### Préparer HTTPS depuis le PC
 
-1. Démarrer ce compagnon avec `Demarrer.cmd`, puis ouvrir `Certificats.cmd` et
-   choisir **Préparer HTTPS**. Indiquer les noms/IP réellement utilisés par les
-   appareils. Conserver `127.0.0.1` et `localhost` si une vérification sur le PC
-   est souhaitée. Un changement d’adresse ultérieur nécessite un renouvellement.
-2. Depuis le PC, transférer le **certificat public de l’autorité** indiqué par
-   l’assistant par un canal fiable. Comparer son empreinte SHA-256 avec celle
-   affichée par le PC. Aucun fichier `.key`, aucune clé de CA et aucun dossier
-   `data/security` ne doit être transmis à un appareil.
-3. Installer cette autorité sur l’appareil et activer sa confiance TLS. Les
-   manipulations dépendent du système. Sur iPhone/iPad, l’installation du profil
-   et l’activation explicite de sa confiance sont deux étapes distinctes.
-4. Si le port temporaire de preuve est bloqué par Windows, lancer depuis ce PC
-   **`Autoriser-preparation-certificats.cmd`** et accepter l’élévation Windows.
-   Ce choix ouvre uniquement le port candidat, pour l’exécutable Node de cette
-   instance, l’interface et le sous-réseau Windows privés sélectionnés. Il ne
-   modifie pas le profil réseau, le routeur ni le port de maintenance.
-5. Ouvrir le lien **preuve HTTPS** sur l’appareil. Un lien local alternatif est
-   affiché si `127.0.0.1` fait partie du certificat. Ne pas poursuivre après
-   avoir ignoré un avertissement de certificat. Confirmer dans la page de preuve
-   seulement après vérification. La préparation expire après dix minutes.
-6. L’assistant **État** doit alors indiquer `https`. Revenir à l’adresse HTTPS
-   du compagnon et saisir le code. Les anciennes sessions ont été déconnectées.
-   `ACCES-PRIVE.txt` contient les adresses actualisées.
+Démarrez cette installation, ouvrez **Certificats.cmd → Préparer HTTPS**, puis indiquez les noms/IP nécessaires. Transférez uniquement l’autorité publique vérifiée. Si la preuve est bloquée par Windows, **Autoriser-preparation-certificats.cmd** demande l’élévation pour une règle limitée au port candidat, au Node.js de cette installation et au réseau privé choisi. Cette règle est retirée à la fin ou à l’expiration ; le port principal reste géré séparément.
 
-Une préparation ne change pas le niveau confirmé. L’application conserve son
-port habituel après confirmation ; le port candidat sert seulement à cette
-preuve. Le pare-feu habituel reste géré par `Autoriser-reseau.cmd`.
-
-L’autorisation temporaire dispose d’un moniteur caché qui retire sa propre règle
-dès la fin, l’annulation, le changement ou l’expiration de la préparation. Une
-tâche Windows SYSTEM indépendante est enregistrée avant l’ouverture, à la même
-échéance, pour retirer cette règle si le moniteur disparaît ; elle est supprimée
-lors du retrait normal. Après une veille ou un redémarrage, son exécution dépend
-du planificateur Windows. La preuve serveur expire indépendamment de ce
-mécanisme. Le statut final du moniteur est dans
-`runtime/certificate-firewall-status.json`. Aucun changement de pare-feu ni tâche
-Windows n’est exécuté lors des tests automatisés de ce helper : ses commandes
-sont simulées.
+Ouvrez la preuve sur l’appareil sans contourner d’alerte, confirmez, puis reconnectez-vous à l’adresse habituelle. **État** et `ACCES-PRIVE.txt` indiquent les adresses actualisées.
 
 ### Export local d’un appareil, puis certificat obligatoire
 
-1. Arrêter **cette installation** avec `Arreter.cmd`. Bionic et ComfyUI restent
-   ouverts. Dans `Certificats.cmd`, choisir **Créer un certificat appareil** et
-   lui donner un nom distinct.
-2. L’assistant écrit un `.p12` chiffré et son fichier de mot de passe dans un
-   sous-dossier privé de `runtime/certificate-exports/`. Les ACL Windows limitent
-   ces fichiers au compte qui exploite le compagnon et à SYSTEM. Le mot de passe
-   n’est ni passé en argument de commande, ni envoyé en HTTP, ni affiché dans
-   les diagnostics. Le nom du fichier du mot de passe est indiqué localement.
-3. Transférer l’archive par un canal fiable ; communiquer le mot de passe
-   séparément. Importer l’identité client sur cet appareil. Effacer les copies de
-   transfert après l’import. Chaque appareil reçoit une archive différente.
-4. Redémarrer ce compagnon. Choisir **Préparer mTLS**, puis effectuer et confirmer
-   la preuve HTTPS depuis un navigateur présentant le certificat de cet appareil.
-   Le niveau `mtls` confirmé exige ensuite le certificat client et le code/session.
+Arrêtez cette installation, puis utilisez **Certificats.cmd → Créer un certificat appareil**. L’archive chiffrée et son mot de passe sont écrits séparément dans un sous-dossier privé de `runtime/certificate-exports/`. Transférez-les par un canal maîtrisé, importez l’identité puis retirez les copies de transfert.
 
-Pour ajouter un appareil après activation du mTLS, répéter la création locale
-serveur arrêté, puis redémarrer. Le niveau confirmé reste mTLS pendant toute
-l’opération. Aucun accès réseau HTTP n’est rouvert.
+Redémarrez le compagnon et préparez mTLS. Confirmez la preuve avec le navigateur présentant cette identité. Ajouter ensuite une identité locale exige de nouveau l’arrêt du compagnon, sans réouvrir d’accès HTTP réseau.
 
 ### Perte, révocation et renouvellement depuis le PC
 
-- **Retirer un appareil** : serveur actif, utiliser son identifiant ou son
-  empreinte visible dans **État**. Son certificat est refusé et ses connexions
-  actives fermées. Les autres identités restent autorisées.
-- **Renouveler un appareil** : serveur arrêté, choisir **Renouveler un appareil**.
-  Un nouveau `.p12` avec un nouveau mot de passe est exporté, puis l’ancien
-  identifiant est révoqué. Importer la nouvelle archive et redémarrer. En cas
-  d’interruption de l’opération, vérifier le registre dans **État** avant reprise.
-- **Renouveler le serveur ou changer de nom/IP** : serveur actif, choisir
-  **Renouveler serveur/adresse**, fournir les nouveaux SAN et refaire une preuve
-  au même niveau. La CA reste propre à cette installation. Un serveur expiré ne
-  donne pas accès aux données en réseau ; sa maintenance locale permet le
-  renouvellement si les clés sont encore valides et présentes. Une autorité
-  expirée ou des clés perdues peuvent nécessiter la réinitialisation locale.
-- **Annuler une préparation** : retire le candidat réseau ; conserve le niveau
-  déjà confirmé.
+| Besoin | Commande et effet |
+| --- | --- |
+| Retirer une identité perdue | Serveur actif, **Retirer un appareil** avec son identifiant/empreinte ; les autres restent admis |
+| Renouveler une identité localement | Serveur arrêté, **Renouveler un appareil** ; nouvel export et révocation de l’ancien. Ce parcours local diffère du renouvellement progressif de l’interface |
+| Nouveau nom/IP ou serveur expiré | Serveur actif, **Renouveler serveur/adresse**, puis nouvelle preuve au même niveau ; les clés et la CA doivent encore être utilisables |
+| Annuler une préparation | Retirer le candidat sans changer le niveau déjà confirmé |
 
-Les commandes avancées peuvent être lancées via `Certificats.ps1` avec `status`,
-`https`, `mtls`, `issue-device "Nom appareil"`, `renew-device IDENTIFIANT`,
-`revoke-device IDENTIFIANT`, `renew-server` ou `cancel-preparation`. Les commandes
-qui créent des clés ou réinitialisent l’identité exigent un serveur arrêté. Ne
-pas utiliser un mot de passe comme argument.
+Les commandes avancées de `Certificats.ps1` sont `status`, `https`, `mtls`, `issue-device`, `renew-device`, `revoke-device`, `renew-server` et `cancel-preparation`. Ne passez jamais un mot de passe en argument.
 
 ## Recommencer depuis le PC
 
-Arrêter ce compagnon, ouvrir `Certificats.cmd`, puis choisir **Réinitialiser les
-accès**. La saisie locale de `REINITIALISER` est obligatoire. Cette action change
-le code d’accès et le jeton de maintenance, remplace l’identité de certificats et
-revient explicitement au HTTP initial. Les anciennes archives client deviennent
-inutilisables. Les anciens exports locaux sont retirés. Les conversations,
-pièces jointes, travaux images, livrables et fichiers projets sont conservés.
-L’identifiant de l’installation reste stable ; l’époque de sécurité et la CA
-seront nouvelles. Une simple réinstallation conserve l’identité existante et ne
-remplace pas cette action.
+Arrêtez le compagnon, ouvrez **Certificats.cmd → Réinitialiser les accès** et saisissez localement **REINITIALISER**. Cette récupération explicite renouvelle code et jeton de maintenance, remplace l’identité de certificats et revient au HTTP initial. Les anciennes identités client deviennent inutilisables et les exports locaux sont retirés. Conversations, pièces jointes, images, livrables et fichiers des projets sont conservés.
 
-La récupération reste possible si le stockage de certificats est corrompu ou si
-une clé a disparu. Un processus encore actif, un port occupé, un lien symbolique
-ou une incohérence d’identité du runtime entraînent un refus explicite. Aucun
-processus découvert n’est tué. Ne pas supprimer manuellement le plancher de
-sécurité pour contourner un refus.
+L’identifiant d’installation reste stable ; la CA et l’époque de sécurité changent. Une réinstallation ordinaire conserve l’identité et ne remplace pas cette récupération. Un serveur encore actif, un port occupé ou une incohérence de runtime provoque un refus, sans tuer un processus inconnu. Ne supprimez pas le plancher de sécurité pour contourner un refus.
 
 ## Arrêt, diagnostic et mises à jour
 
-`Demarrer.cmd`, `Arreter.cmd`, `Deconnecter-appareils.cmd` et `Diagnostic.cmd`
-utilisent la maintenance locale de la même instance aux trois niveaux. Ce canal
-HTTP est lié uniquement à `127.0.0.1` et ne sert ni l’application, ni des clés, ni
-une récupération distante. Son port éphémère est publié sans secret dans
-`runtime/transport.json`; le jeton reste dans `data/config.json` et voyage
-seulement dans le corps des requêtes locales. L’identité du serveur est vérifiée
-avant toute action, sans désactiver la validation TLS de l’application.
+Les lanceurs et diagnostics utilisent la maintenance locale sur `127.0.0.1`, aux trois niveaux de sécurité, sans désactiver TLS dans le navigateur. Un diagnostic confirmant HTTPS/mTLS côté serveur ne remplace pas une connexion depuis le téléphone.
 
-Les diagnostics construisent une liste de codes, sans clés, mot de passe,
-archives client ou copie du stockage privé. Un code `COMPANION_HTTPS_OK` ou
-`COMPANION_MTLS_OK` signifie que la maintenance locale confirme ce mode ; ce test
-ne remplace pas une connexion TLS depuis le téléphone.
+Installation et mises à jour conservent l’identité existante et refusent un programme qui ignorerait les certificats. Une sauvegarde complète de `data/` contient des clés et peut restaurer d’anciens droits : protégez-la séparément des copies ordinaires de conversations. Voir [Sauvegarde et récupération](sauvegarde-mise-a-jour.md).
 
-L’installateur conserve `data/` et la PKI lors d’une reconfiguration sur place.
-L’outil de mise à jour refuse une distribution sans capacité certificats dès
-qu’une identité ou un plancher existent, y compris après une réinitialisation
-en HTTP. Une restauration applicative ne doit pas réimporter silencieusement
-une ancienne identité. La sauvegarde préparée par `scripts/deploy-local.mjs`
-exclut le stockage de certificats, le plancher et les exports ; le déploiement
-vérifie que l’identité présente sur la cible n’a pas changé. Conserver les
-sauvegardes de conversations séparément de toute sauvegarde volontaire de PKI.
-Une restauration manuelle complète par le propriétaire du PC sort de cette
-garantie.
+## Références système
 
-## Limites de recette
+- [Google — Certificats Android](https://support.google.com/pixelphone/answer/2844832?hl=fr)
+- [Apple — Confiance d’un certificat installé manuellement](https://support.apple.com/fr-fr/102390) et [installation d’un profil](https://support.apple.com/fr-fr/102400)
+- [Microsoft — Magasins de certificats](https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/inspect-certificates-manage-certificate-stores)
+- [Google Chrome — Erreurs de certificat](https://support.google.com/chrome/answer/95669?hl=fr)
 
-Le worker de mise à jour a été testé avec de vrais processus détachés, de vrais
-serveurs TLS/mTLS et une maintenance locale sur port dynamique. Leur application
-était une fixture minimale : cette preuve couvre la sonde de redémarrage, la
-conservation de la PKI et le refus d’une régression HTTP avec retour au code mTLS
-antérieur. Elle ne constitue pas un déploiement de l’application utilisée.
-
-Les connexions TLS automatisées et les fixtures Windows ne prouvent pas l’import
-ou la sélection d’identité dans un téléphone physique. Avant distribution,
-essayer sur chaque couple OS/navigateur cible : confiance CA, import PKCS#12,
-présentation du bon certificat, renouvellement, révocation et perte d’appareil.
-L’élévation UAC, la création réelle de la règle temporaire, son expiration après
-veille et la tâche de secours restent également à vérifier sur un PC Windows
-consentant. Aucun de ces changements système n’a été activé sur l’installation
-utilisée pendant ce développement.
-
-Références système : [règles Windows NetSecurity](https://learn.microsoft.com/en-us/powershell/module/netsecurity/new-netfirewallrule),
-[paramètres du planificateur Windows](https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/new-scheduledtasksettingsset).
+Les versions et politiques du système peuvent modifier les écrans ou empêcher un import. Contrôlez le résultat sur chaque appareil utilisé.

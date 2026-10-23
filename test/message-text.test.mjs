@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 
-const source = await fs.readFile(new URL('../public/message-text.js', import.meta.url), 'utf8');
+const componentSource = await fs.readFile(new URL('../public/message-text.js', import.meta.url), 'utf8');
+const source = (await Promise.all(['i18n.js', 'locales/fr/ui.js', 'locales/en/ui.js'].map(file => fs.readFile(new URL('../public/'+file, import.meta.url), 'utf8')))).join('\n') + '\n' + componentSource;
 
 // Observe DOM output and events, without a browser, network or private instance.
 function fixture({ clipboard = async () => {} } = {}) {

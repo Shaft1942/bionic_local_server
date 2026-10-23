@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "services": {
+    "bionic": { "enabled": false },
+    "comfyui": { "enabled": false }
+  }
+}
