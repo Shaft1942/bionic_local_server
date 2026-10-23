@@ -1,6 +1,6 @@
 {
   "name": "bionic-mobile-local",
-  "version": "2.2.1-beta.1",
+  "version": "2.2.1-beta.2",
   "private": true,
   "type": "module",
   "description": "Compagnon local pour consulter les projets et chats Bionic et continuer par API",

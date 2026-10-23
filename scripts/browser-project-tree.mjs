@@ -60,7 +60,11 @@ function fixture() {
       assert(chat, 'conversation must be scoped to its actual project');
       return chat;
     }
-    if (route === '/api/comfy/settings') return { enabled: false, url: 'http://127.0.0.1:8188', workflowId: 'synthetic-workflow', activeJobs: 0, workflows: [] };
+    if (route === '/api/comfy/settings') return { enabled: false, url: 'http://127.0.0.1:8188', workflowId: 'krea2_turbo', activeJobs: 0, workflows: [{ id: 'krea2_turbo', label: 'Krea 2 Turbo' }] };
+    if (route === '/api/model-preferences') return { model: url.searchParams.get('model'), automatic: true, source: 'auto', maxOutputTokens: 8192, contextLength: 16384 };
+    if (route === '/api/comfy/loras') return { loras: [], checkedAt: Date.now() };
+    if (route === '/api/security/status') return { mode: 'http', epoch: 1, devices: [] };
+    if (route === '/api/capabilities') return { items: [] };
     if (route === '/api/updates') return { currentVersion: '2.0.0', enabled: false, candidate: null, canInstall: false, installation: { status: 'idle' } };
     if (route === '/api/activity') return { events: [], warnings: [], truncated: false };
     if (route === '/api/login' || route === '/api/logout') return { ok: true };
@@ -188,7 +192,7 @@ try {
         await request;
         assert.equal(await group(page, 'p2').locator('.project-group-state').textContent(), 'Chargement des conversations…');
         assert.notEqual(await page.evaluate(() => sessionStorage.getItem('bm_project_tree')), null);
-        await page.locator('#logout').click();
+        await page.locator('#settings-open-sidebar').click();await page.locator('[data-settings-page="connection"]').click();await page.locator('#logout').click();
         await page.locator('#login').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#sessions').innerHTML(), '');
         assert.equal(await page.evaluate(() => sessionStorage.getItem('bm_project_tree')), null);

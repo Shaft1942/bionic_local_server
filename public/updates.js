@@ -22,10 +22,7 @@ function initUpdates({ api, isAuthenticated = () => true, toast = () => {}, befo
   function render() {
     const data = state.status, next = candidate(), available = !!next && next.version !== data?.ignoredVersion && next.version !== state.dismissed;
     $('updates-badge').hidden = !available;
-    $('settings-open-sidebar').classList.toggle('update-available', available);
     $('settings-maintenance-nav').classList.toggle('update-available', available);
-    $('settings-open-sidebar').title = available ? `Paramètres · mise à jour ${next.version} disponible` : 'Paramètres';
-    $('settings-open-sidebar').setAttribute('aria-label', available ? `Paramètres · mise à jour ${next.version} disponible` : 'Paramètres');
     $('updates-version').textContent = data ? `Version installée : ${data.currentVersion} · canal ${channelLabel(data.installedChannel)}` : 'Lecture de la version installée…';
     const installing = state.restarting || ['preparing', 'installing', 'restarting'].includes(data?.installation?.status);
     $('updates-status').textContent = installing ? data?.installation?.message || 'Installation en cours. Le serveur va redémarrer…' : state.busy ? state.action : data?.checking ? 'Vérification en cours…' : next ? next.version === data?.ignoredVersion ? 'Cette version est ignorée.' : `Une version compatible est disponible : ${next.version}.` : data ? `Aucune mise à jour compatible sur le canal ${channelLabel(data.channel)}.` : '';

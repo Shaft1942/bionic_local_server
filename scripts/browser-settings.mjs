@@ -86,6 +86,7 @@ function fixture() {
 
 async function openSettings(page, section = 'reading') {
   if (!(await page.locator('#settings-view').isVisible())) {
+    if (!(await page.locator('#settings-open-sidebar').isVisible()) && await page.locator('#back').isVisible()) await page.locator('#back').click();
     await page.locator('#settings-open-sidebar').click();
   }
   await navigate(page, section);
@@ -147,8 +148,9 @@ try {
     const started = performance.now();
     try {
       await page.goto(origin); await page.locator('#app').waitFor({ state: 'visible' }); await chooseChat(page, chatA);
-      // The same bottom controls remain reachable while a conversation is open, including mobile.
-      const footerControls = [['settings-open-sidebar', 'Paramètres'], ['models-open-sidebar', 'Modèles chargés'], ['reconnect', 'Reconnexion au PC'], ['logout', 'Déconnecter']];
+      await page.locator('#prompt').fill('Brouillon à préserver pendant la reconnexion.');
+      if(width<=760){assert.equal(await page.locator('.sidebar-bottom').isVisible(),false,'no sidebar bar below the mobile conversation');await page.locator('#back').click();}
+      const footerControls = [['settings-open-sidebar', 'Paramètres'], ['models-open-sidebar', 'Modèles chargés'], ['reconnect', 'Reconnexion au PC']];
       for (const [id, label] of footerControls) {
         const control = page.locator('#' + id);
         assert.equal(await control.count(), 1, 'one bottom action ' + label);
@@ -158,29 +160,35 @@ try {
         assert.equal(await control.locator('svg').count(), 1, 'icon action ' + label);
         assert.equal(await control.evaluate(el => { const rect = el.getBoundingClientRect(); return rect.left >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight && rect.top >= 0; }), true, 'bottom action is in the viewport ' + label);
       }
-      assert.equal(await page.evaluate(() => { const footer = document.querySelector('.sidebar-bottom').getBoundingClientRect(), composer = document.querySelector('#composer').getBoundingClientRect(); return composer.bottom <= footer.top + 1; }), true, 'footer does not cover the composer');
+      assert.equal(await page.evaluate(() => { const bar=document.querySelector('.sidebar-bottom'),footer=bar.getBoundingClientRect(),sidebar=document.querySelector('#sidebar').getBoundingClientRect();return bar.closest('#sidebar')!==null&&footer.left>=sidebar.left&&footer.right<=sidebar.right+1; }),true,'bar stays inside the projects column');
+      if(width>760)assert.equal(await page.evaluate(()=>{const thread=document.querySelector('#thread').getBoundingClientRect(),bar=document.querySelector('.sidebar-bottom').getBoundingClientRect();return thread.left>=bar.right&&Math.abs(thread.bottom-innerHeight)<2;}),true,'conversation keeps full height beside the sidebar');
+      assert.equal(await page.locator('.sidebar-bottom #logout,.sidebar-bottom .update-available,.sidebar-bottom [id^="updates-"]').count(),0);
+      assert.equal(await page.locator('#logout').evaluate(el=>!!el.closest('#settings-page-connection')),true);
       await capture(page, width, 'footer');
-      await page.locator('#prompt').fill('Brouillon à préserver pendant la reconnexion.');
       await page.locator('#models-open-sidebar').click(); await page.locator('#models-dialog').waitFor({ state: 'visible' });
       await page.waitForFunction(() => document.querySelector('#models-list').textContent.includes('Modèle A'));
       await page.locator('#models-close').press('Escape'); assert.equal(await page.locator('#models-dialog').isVisible(), false);
       assert.equal(await page.evaluate(() => document.activeElement.id), 'models-open-sidebar');
       assert.equal(await page.locator('#prompt').inputValue(), 'Brouillon à préserver pendant la reconnexion.');
       const statusBeforeReconnect = api.calls.filter(call => call.route === '/api/status').length;
-      await page.locator('#prompt').fill('Brouillon à préserver pendant la reconnexion.'); await page.locator('#reconnect').click();
+      await page.locator('#reconnect').click();
       await page.waitForFunction(() => !document.querySelector('#reconnect').disabled);
       assert(api.calls.filter(call => call.route === '/api/status').length > statusBeforeReconnect, 'reconnect checks the PC status');
       assert.equal(await page.locator('#prompt').inputValue(), 'Brouillon à préserver pendant la reconnexion.');
       assert.equal(api.calls.some(call => call.route === '/api/logout'), false, 'reconnect preserves authentication');
       // A reconnect started before opening settings cannot close or overwrite a dirty form.
+      if(!(await page.locator('#reconnect').isVisible())&&await page.locator('#back').isVisible())await page.locator('#back').click();
       api.holdStatus(); await page.locator('#reconnect').click(); assert.equal(api.heldStatus, true);
       await openSettings(page, 'models'); await outputReady(page); await page.locator('#output-mode').selectOption('manual'); await page.locator('#output-tokens').fill('333');
       api.releaseStatus(); await page.waitForFunction(() => !document.querySelector('#reconnect').disabled); await tick(page);
       assert.equal(await page.locator('#settings-view').isVisible(), true, 'late reconnect keeps settings open');
       assert.equal(await page.locator('#output-tokens').inputValue(), '333', 'late reconnect preserves unsaved settings');
-      await page.locator('#output-cancel').click(); await page.locator('#settings-close').click();
+      if(!(await page.locator('[data-settings-page="connection"]').isVisible()))await page.locator('#settings-back').click();
+      await page.locator('[data-settings-page="connection"]').click();await page.locator('#settings-page-connection').waitFor({state:'visible'});
+      await page.locator('#logout').click();assert.equal(api.calls.some(call=>call.route==='/api/logout'),false,'logout protects unsaved settings');assert.match(await page.locator('#toast').textContent(),/Enregistre ou annule/);
+      await navigate(page,'models');await outputReady(page);await page.locator('#output-cancel').click(); await page.locator('#settings-close').click();
       assert.equal(await page.locator('#prompt').inputValue(), 'Brouillon à préserver pendant la reconnexion.');
-      await page.locator('#prompt').fill('');
+      await chooseChat(page,chatA);await page.locator('#prompt').fill('');
       // Shortcuts opened from the mobile project list must expose their canonical target.
       for (const [section, control] of [['models', 'settings-edit-model'], ['tools', 'settings-edit-tools'], ['images', 'settings-edit-image'], ['maintenance', 'settings-help']]) {
         if (await page.locator('#back').isVisible()) await page.locator('#back').click();
@@ -270,9 +278,10 @@ try {
       assert.equal(api.writes.length, beforePending); await page.locator('#settings-close').click(); assert.equal(await page.evaluate(() => companionSettings.decorate({ model: 'settings-a' }).outputPreferences.maxOutputTokens), 321);
       await chooseChat(page, nativeId); await openSettings(page, 'models'); await outputReady(page); assert.equal(await page.locator('#output-tokens').inputValue(), '5000000', 'new-chat pending preference must not leak into native history');
       await page.locator('#output-mode').selectOption('manual'); await page.locator('#output-tokens').fill('654'); await page.locator('#output-all-sessions').selectOption('session'); await page.locator('#output-save').click(); await page.waitForFunction(() => document.querySelector('#output-result').textContent.includes('envoi')); assert.equal(api.writes.length, beforePending); await page.locator('#settings-close').click();
+      if(!(await page.locator('#prompt').isVisible()))await chooseChat(page,nativeId);
       await page.locator('#prompt').fill('Suite web de l’historique synthétique.'); await page.locator('#send').click(); await page.waitForFunction(() => document.querySelector('#messages').textContent.includes('Suite synthétique reçue.')); assert.equal(api.sends.length, 1); assert.equal(api.sends[0].outputPreferences.maxOutputTokens, 654); assert.equal(api.chats.get(nativeId).outputPreferencesByModel, undefined);
       await openSettings(page, 'maintenance'); await capture(page, width, 'maintenance');
-      api.holdDiagnostic(); await page.locator('#diagnostics-open').click(); await page.waitForTimeout(30); assert.equal(api.heldDiagnostic, true); await page.locator('#settings-close').click(); if (await page.locator('#back').isVisible()) await page.locator('#back').click(); await page.locator('#logout').click(); await page.locator('#login').waitFor({ state: 'visible' });
+      api.holdDiagnostic(); await page.locator('#diagnostics-open').click(); await page.waitForTimeout(30); assert.equal(api.heldDiagnostic, true); await page.locator('#settings-close').click();await openSettings(page,'connection'); await page.locator('#logout').click(); await page.locator('#login').waitFor({ state: 'visible' });
       await page.locator('#code').fill('synthetic-login-only'); await page.locator('#login-button').click(); await page.locator('#app').waitFor({ state: 'visible' }); api.releaseDiagnostic(); await tick(page); await page.waitForTimeout(60);
       assert.equal(await page.locator('#diagnostics-result').textContent(), '', 'old diagnostic cannot repopulate a new authenticated session');
       await openSettings(page, 'maintenance'); await search(page, ''); await page.locator('#settings-search').focus(); await page.locator('#settings-search').press('Escape'); assert.equal(await page.locator('#settings-view').isVisible(), false); assert.equal(await page.evaluate(() => document.activeElement.id === 'settings-open-sidebar' && document.activeElement.getClientRects().length > 0), true, 'focus returns to the bottom settings control');

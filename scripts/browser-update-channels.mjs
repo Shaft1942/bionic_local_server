@@ -109,7 +109,8 @@ try {
       await page.locator('#updates-check').click(); await page.locator('#updates-candidate').waitFor({ state: 'visible' });
       assert.match(await page.locator('#updates-candidate-title').textContent(), /2\.2\.0-beta\.1 · Bêta/);
       assert.equal(await page.locator('#updates-badge').isVisible(), true);
-      assert.equal(await page.locator('#settings-open-sidebar').evaluate(el => el.classList.contains('update-available')), true, 'available version is signalled on the bottom settings action');
+      assert.equal(await page.locator('#settings-open-sidebar').evaluate(el => el.classList.contains('update-available')), false, 'updates never add an indicator to the sidebar bar');
+      assert.equal(await page.locator('#settings-maintenance-nav').evaluate(el => el.classList.contains('update-available')), true, 'available version is signalled only inside settings');
       assert.equal(await page.locator('#updates-install').isDisabled(), true); await capture(page, width, 'beta');
 
       api.failNextPreference(); await select.focus(); await select.selectOption('stable');

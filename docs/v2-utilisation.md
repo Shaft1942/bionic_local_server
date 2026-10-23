@@ -1,6 +1,6 @@
 # Utiliser le compagnon 2.0
 
-Dans la barre du bas, l'icône **Paramètres** ouvre les réglages. Le bouton de fermeture
+Au pied de la colonne des projets et conversations, l'icône **Paramètres** ouvre les réglages. Le bouton de fermeture
 reste visible ; Échap ferme le panneau et rend le focus à son bouton d’ouverture.
 
 ## Longueur des réponses

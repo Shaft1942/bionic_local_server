@@ -47,6 +47,7 @@
       <div class="list-heading"><h2>Projets et conversations</h2><span id="session-count"></span></div>
       <p id="sessions-warning" class="listing-warning" hidden></p>
       <nav id="sessions" class="sessions" aria-label="Projets et conversations"></nav>
+      <footer class="sidebar-bottom" aria-label="Connexion et réglages du compagnon"><span id="status" class="status" role="status">Connexion…</span><div class="sidebar-system-actions" role="group" aria-label="Actions du compagnon"><button id="settings-open-sidebar" class="icon-button" type="button" aria-label="Paramètres" title="Paramètres" aria-controls="settings-view"></button><button id="models-open-sidebar" class="icon-button" type="button" aria-label="Modèles chargés" title="Modèles chargés" aria-controls="models-dialog"></button><button id="reconnect" class="icon-button" type="button" aria-label="Reconnexion au PC" title="Reconnexion au PC"></button></div></footer>
     </aside>
     <main class="thread" id="thread">
       <header class="thread-header"><button id="back" class="icon-button back" aria-label="Retour aux conversations"></button><div class="thread-titles"><h1 id="thread-title">Tes conversations, ici.</h1><p id="thread-subtitle">Choisis un projet et un fil pour commencer.</p></div><button id="activity-open-thread" class="icon-button activity-thread" aria-label="Depuis votre départ"></button><button id="conversation-options-toggle" class="icon-button" type="button" aria-label="Options de la conversation" aria-expanded="false" aria-controls="conversation-options"></button></header>
@@ -92,7 +93,6 @@
         <p id="composer-note">Le modèle reçoit les messages et les fichiers que tu joins.</p>
       </form>
     </main>
-    <footer class="sidebar-bottom" aria-label="Connexion et réglages du compagnon"><span id="status" class="status" role="status">Connexion…</span><div class="sidebar-system-actions" role="group" aria-label="Actions du compagnon"><button id="settings-open-sidebar" class="icon-button" type="button" aria-label="Paramètres" title="Paramètres" aria-controls="settings-view"></button><button id="models-open-sidebar" class="icon-button" type="button" aria-label="Modèles chargés" title="Modèles chargés" aria-controls="models-dialog"></button><button id="reconnect" class="icon-button" type="button" aria-label="Reconnexion au PC" title="Reconnexion au PC"></button><button id="logout" class="icon-button" type="button" aria-label="Déconnecter" title="Déconnecter"></button></div></footer>
   </div>
   <section id="files-view" class="files-view" aria-label="Fichiers du projet" hidden>
     <header class="files-header"><button id="files-close" class="icon-button" aria-label="Revenir au chat" type="button"></button><div><h1 id="files-title">Fichiers du projet</h1><p>Les fichiers restent sur ce PC.</p></div></header>
@@ -218,6 +218,7 @@
         </div>
         <p id="settings-connection-availability" class="certificate-local-help">Les actions apparaissent selon la connexion et les capacités annoncées par le serveur. Créer un certificat d’appareil exige HTTPS. Si une action manque, actualise l’état ou reprends depuis le PC. Le niveau supérieur devient actif après vérification de la connexion.</p>
         <p>Certificat perdu ? Retourne sur le PC serveur et ouvre <strong>Certificats.cmd</strong> pour rétablir l’accès. La récupération conserve les conversations et les fichiers.</p>
+        <h3>Session de cet appareil</h3><p>Déconnecte cet appareil du compagnon sans arrêter le serveur sur le PC.</p><button id="logout" class="file-action" type="button" aria-label="Déconnecter">Déconnecter cet appareil</button>
       </section>
 </section>
 <section id="settings-page-maintenance" class="settings-page" data-settings-section="maintenance" aria-labelledby="settings-heading-maintenance" hidden><h2 id="settings-heading-maintenance" tabindex="-1">Maintenance et aide</h2><p class="settings-page-description">Installation PC · actions appliquées séparément.</p>  <section id="updates-dialog" class="settings-updates" aria-labelledby="updates-title" aria-describedby="updates-description">

@@ -58,7 +58,7 @@ L'icône de deux feuilles permet de copier le texte seul d'un prompt (y compris 
 
 ## Retrouver les paramètres
 
-La barre du bas réunit les icônes **Paramètres**, **Modèles chargés**, **Reconnexion au PC** et **Déconnecter**, à côté de l'état de connexion. Sur téléphone, ces accès restent disponibles depuis la conversation. Les mises à jour sont intégrées à **Paramètres → Maintenance et aide** ; le choix du canal Stable ou Bêta ne déclenche aucune installation.
+La barre située au pied de la colonne des projets et conversations réunit **Paramètres**, **Modèles chargés** et **Reconnexion au PC**, à côté de l'état de connexion. Sur téléphone, revenez à cette colonne avec **Retour aux conversations** pour retrouver ces accès. Les mises à jour sont entièrement intégrées à **Paramètres → Maintenance et aide**, y compris leur indication de disponibilité ; le choix du canal Stable ou Bêta ne déclenche aucune installation. **Déconnecter cet appareil** se trouve dans **Paramètres → Connexion et appareils** et demande d'enregistrer ou d'annuler les saisies des paramètres avant de quitter la session.
 
 **Paramètres** regroupe six rubriques : Conversations et affichage, Modèles et réponses, Outils et autorisations, Images et ComfyUI, Connexion et appareils, Maintenance et aide. Sur téléphone, **Rubriques** revient à la liste. **Fermer** et Échap ramènent au déclencheur. La recherche locale comprend aussi des synonymes comme « tokens », « longueur » ou « certificat » ; elle recherche les intitulés et les portées, sans indexer les valeurs personnelles.
 

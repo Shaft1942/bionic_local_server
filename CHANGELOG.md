@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.2.1-beta.2 — 23 octobre 2026
+
+- Barre de statut, modèles chargés et paramètres limitée à la colonne des projets et conversations ; la conversation retrouve toute sa hauteur.
+- Informations et indications de mise à jour exclusivement dans les paramètres.
+- Déconnexion déplacée dans Connexion et appareils, avec protection des saisies de paramètres non enregistrées.
+
 ## 2.2.1-beta.1 — 23 octobre 2026
 
 - Mises à jour intégrées aux paramètres, dans Maintenance et aide, avec canal Stable ou Bêta, version et état de vérification.

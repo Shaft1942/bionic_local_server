@@ -1,6 +1,6 @@
 :root{color-scheme:light;--bg:#fff;--side:#f4f5f7;--ink:#20242c;--muted:#596170;--line:#dce0e7;--blue:#1265e8;--blue-dark:#0953c9;--selected:#e4edff;--error:#a62032;--focus:#1265e8;font-family:"Segoe UI",system-ui,sans-serif;font-size:16px;color:var(--ink);background:var(--bg)}
 .updates-channel{margin-bottom:20px}.updates-channel select{display:block;box-sizing:border-box;width:100%;min-width:0;min-height:44px;margin:0 0 10px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:16px;color:var(--ink);background:var(--bg)}.updates-channel select:focus-visible{outline:3px solid var(--focus);outline-offset:3px}.updates-channel select:disabled{opacity:.7;cursor:not-allowed}.updates-preferences .updates-channel p{margin:6px 0}
-#settings-open-sidebar,#settings-maintenance-nav{position:relative}
+#settings-maintenance-nav{position:relative}
 .update-available::after{content:"";position:absolute;top:7px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--blue)}
 .updates-badge{padding:3px 7px;border-radius:5px;color:#104eaf;background:var(--selected);font-size:11px;font-weight:600}
 .settings-updates{padding:0 0 24px;margin:24px 0;border-bottom:1px solid var(--line)}
@@ -224,18 +224,12 @@
 }
 @media(max-width:760px){.message-code-toolbar{gap:4px 8px;padding:6px 10px}.message-body .message-code>pre{padding:12px;font-size:13px}.message-table-wrap th,.message-table-wrap td{padding:8px}.message-body h1{font-size:21px}}
 
-/* Shared footer stays in the layout on both conversation and project views. */
-.app{grid-template-rows:minmax(0,1fr) auto}
-.sidebar-bottom{grid-column:1/-1;gap:12px;min-width:0;padding:8px 18px calc(8px + env(safe-area-inset-bottom));background:var(--side)}
-.sidebar-system-actions{display:flex;align-items:center;flex-shrink:0;gap:4px}
+/* System controls belong to the projects and conversations column. */
+.sidebar-bottom{flex-shrink:0;gap:8px;min-width:0;background:var(--side)}
+.sidebar-system-actions{display:flex;align-items:center;flex-shrink:0;gap:0}
 .sidebar-bottom .status{min-width:0;padding:0;line-height:1.4;overflow-wrap:anywhere}
 .sidebar-bottom .status::before{flex-shrink:0}
 .sidebar-system-actions .icon-button:focus-visible{outline:3px solid var(--focus);outline-offset:1px}
 @media(max-width:760px){
-  .app{display:flex;flex-direction:column}
-  .sidebar,.thread{flex:1;min-height:0;height:auto}
-  .sidebar-bottom{flex-shrink:0;padding:6px 12px calc(6px + env(safe-area-inset-bottom));gap:8px}
-  .sidebar-system-actions{gap:0}
-  .sidebar-bottom .status{font-size:11px;max-width:calc(100% - 184px)}
-  .composer{padding-bottom:8px}
+  .sidebar-bottom .status{font-size:11px}
 }

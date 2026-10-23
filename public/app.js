@@ -45,7 +45,7 @@ const icons = {
   activity: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7M12 7v5l3 2"/>'
 };
 function icon(name) { const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); el.setAttribute('viewBox', '0 0 24 24'); el.setAttribute('aria-hidden', 'true'); el.innerHTML = icons[name]; return el; }
-for (const [id, name] of [['refresh', 'refresh'], ['search-icon', 'search'], ['back', 'back'], ['send', 'send'], ['info-button', 'info'], ['logout', 'logout'], ['reveal', 'eye']]) $(id).append(icon(name));
+for (const [id, name] of [['refresh', 'refresh'], ['search-icon', 'search'], ['back', 'back'], ['send', 'send'], ['info-button', 'info'], ['reveal', 'eye']]) $(id).append(icon(name));
 for (const [id, name] of [['settings-open-sidebar','settings'], ['reconnect','refresh'], ['models-close','close'], ['models-refresh','refresh']]) $(id).append(icon(name));
 $('info-close').append(icon('close'));
 $('models-open-sidebar').prepend(icon('models'));
@@ -1218,6 +1218,7 @@ $('refresh').addEventListener('click', refreshConnection);
 $('reconnect').addEventListener('click', refreshConnection);
 $('logout').addEventListener('click', async () => {
   if (state.uploading || conversationMove.busy) return;
+  if (companionSettings.hasUnsaved()) { toast('Enregistre ou annule les saisies des paramètres avant de te déconnecter.'); return; }
   try { sessionStorage.removeItem(updateRecoveryKey); } catch {}
   hidePrivateViews(); $('code').focus();
   try { await api('/api/logout', { method: 'POST', body: '{}' }); } catch {}
