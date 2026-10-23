@@ -11,7 +11,7 @@ const results = [];
 const message = index => ({ id: 'history-' + index, role: index % 2 ? 'assistant' : 'user', text: 'Message synthétique ' + index + '\n\nTexte de lecture conservé. '.repeat(8), complete: true });
 try {
   for (const width of [1280, 320]) {
-    const context = await browser.newContext({ viewport: { width, height: 900 } }), page = await context.newPage(), errors = [], calls = [], receipts = new Map();
+    const context = await browser.newContext({ locale: 'fr-FR', viewport: { width, height: 900 } }), page = await context.newPage(), errors = [], calls = [], receipts = new Map();
     const model = { id: 'synthetic-unknown-tools', name: 'Modèle synthétique', tools: null, toolsCapability: 'unknown', type: 'llm', loaded: true, loadedInstances: [], reasoning: null };
     const image = { id: 'synthetic-wait-image', prompt: 'Image de fixture', status: 'waiting-resource', workflowId: 'krea2_turbo', width: 1024, height: 1024, seed: 42 };
     const history = { id: historyId, projectId, name: 'Grand historique synthétique', source: 'web', model: model.id, messages: Array.from({ length: 250 }, (_, index) => message(index)), generation: { status: 'running', phase: 'waiting-model', requestId: 'synthetic-history-request', replyId: 'history-249' } };
@@ -26,7 +26,7 @@ try {
       if (url.origin !== origin) return route.abort();
       if (!url.pathname.startsWith('/api/')) {
         const name = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-        if (!/^[a-z0-9.-]+$/i.test(name)) return route.abort();
+        if (!/^(?:locales\/(?:fr|en)\/(?:ui|app|settings|components)\.js|[a-z0-9.-]+)$/i.test(name)) return route.abort();
         return route.fulfill({ contentType: name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css' : name.endsWith('.svg') ? 'image/svg+xml' : 'text/html', body: await fs.readFile(path.join(root, 'public', name)) });
       }
       const input = req.postData() ? JSON.parse(req.postData()) : null;
@@ -67,6 +67,22 @@ try {
     assert.match(await page.locator('#model option').first().textContent(), /outils non confirmés/);
     assert.equal(await page.locator('#model-tools-help').isVisible(), true);
     assert.equal(await page.locator('#comfy-storage-warning').getAttribute('hidden'), null);
+    const originalMessage = await page.locator('#messages>.message .message-body').first().textContent();
+    await page.locator('#prompt').fill('Brouillon français conservé tel quel.');
+    await page.evaluate(() => BionicI18n.setLanguage('en'));
+    assert.equal(await page.locator('#history-load').textContent(), 'Load previous messages');
+    assert.match(await page.locator('#history-count').textContent(), /100 of 250/);
+    assert.match(await page.locator('#composer-activity').textContent(), /Waiting for a PC resource/);
+    assert.match(await page.locator('#model-tools-help').textContent(), /unconfirmed/);
+    assert.match(await page.locator('#comfy-storage-warning').textContent(), /unreadable/);
+    assert.equal(await page.locator('.generated-image-status').textContent(), await page.evaluate(() => BionicI18n.t('components.images.waitingResource')));
+    assert.equal(await page.locator('#prompt').inputValue(), 'Brouillon français conservé tel quel.');
+    assert.equal(await page.locator('#messages>.message .message-body').first().textContent(), originalMessage);
+    history.generation.phase = 'waiting-image'; await page.evaluate(() => recoverReplies());
+    assert.match(await page.locator('#composer-activity').textContent(), /image is rendering/);
+    await page.evaluate(() => BionicI18n.setLanguage('fr'));
+    assert.match(await page.locator('#composer-activity').textContent(), /image est en cours de rendu/);
+    history.generation.phase = 'waiting-model'; await page.evaluate(() => recoverReplies());
     await page.locator('#messages').evaluate(element => { element.scrollTop = 0; });
     const topBefore = await page.locator('.message[data-message-id="history-150"]').evaluate(element => element.getBoundingClientRect().top);
     await page.locator('#history-load').click(); await page.waitForFunction(() => document.querySelectorAll('#messages>.message').length === 200);
@@ -87,7 +103,11 @@ try {
     assert.equal(await page.locator('#messages>.message').count(), 252, 'manual refresh preserves loaded older pages');
     await choose(page, otherId); await page.locator('#prompt').fill('Essai volontaire des outils.'); await page.locator('#send').click();
     await page.locator('.message-capability-notice').waitFor({ state: 'visible' }); await page.evaluate(() => recoverReplies());
-    assert.match(await page.locator('.message-capability-notice').textContent(), /inconnue.*volontaire/);
+    assert.match(await page.locator('.message-capability-notice').textContent(), /inconnue.*essayés/);
+    await page.evaluate(() => BionicI18n.setLanguage('en'));
+    assert.match(await page.locator('.message-capability-notice').textContent(), /tool support is unknown/);
+    assert.equal(await page.locator('.message[data-message-id="synthetic-capability-reply"] .message-body').textContent(), 'Essai reçu.');
+    await page.evaluate(() => BionicI18n.setLanguage('fr'));
     const late = await context.newPage(); attach(late); await late.goto(origin); await late.locator('#app').waitFor({ state: 'visible' }); await choose(late, historyId);
     await late.waitForFunction(() => document.querySelectorAll('#messages>.message').length === 100);
     holdOlder = true; await late.locator('#history-load').click(); await olderStarted;
@@ -96,7 +116,7 @@ try {
     assert.equal(await late.locator('.message[data-message-id="history-0"]').count(), 0, 'late history result cannot change the active chat');
     assert(calls.filter(call => call.path === '/api/conversation').every(call => call.query.limit === '100'), 'normal and recovery reads are paginated');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true); assert.deepEqual(errors, []);
-    results.push({ width, passed: true, initialMessages: 100, fullyLoadedMessages: 252, scrollPreserved: true, cacheRefreshPreserved: true, lateResponseIgnored: true, capabilityAndWaitingVisible: true });
+    results.push({ width, passed: true, initialMessages: 100, fullyLoadedMessages: 252, scrollPreserved: true, cacheRefreshPreserved: true, lateResponseIgnored: true, capabilityAndWaitingVisible: true, hotLanguages: ['fr', 'en'], chatAndDraftTextPreserved: true });
     await context.close();
   }
   console.log(JSON.stringify({ mode: 'synthetic browser only', results, limitations: ['No real model, GPU, phone or network service.'] }, null, 2));

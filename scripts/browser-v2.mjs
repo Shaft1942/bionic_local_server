@@ -10,14 +10,14 @@ const captures=process.env.BIONIC_SMOKE_SCREENSHOTS;if(captures)await fs.mkdir(c
 const results=[],origin='http://bionic.test';
 try{
   for(const width of [1280,320]){
-    const context=await browser.newContext({viewport:{width,height:900}}),page=await context.newPage(),errors=[],writes=[],sends=[];let tests=0,discoveries=0,diagnosis="offline";
+    const context=await browser.newContext({locale:'fr-FR',viewport:{width,height:900}}),page=await context.newPage(),errors=[],writes=[],sends=[];let tests=0,discoveries=0,diagnosis="offline";
     page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(6000);
     const models=['a','b'].map(id=>({id,name:'Modèle '+id,type:'llm',tools:true,contextLength:16384,reasoning:{allowedOptions:[],default:'default'}}));
     let comfy={enabled:false,url:'http://127.0.0.1:8188',workflowId:'krea2_turbo',activeJobs:0,loraProfiles:{krea2_turbo:[],hassaku_illustrious:[]},workflows:[{id:'krea2_turbo',label:'Krea2 Turbo'},{id:'hassaku_illustrious',label:'Hassaku XL Illustrious v34'}]};
     const defaults=new Map();let sentChat;
     await context.route('**/*',async route=>{
       const request=route.request(),url=new URL(request.url());if(url.origin!==origin)return route.abort();
-      if(!url.pathname.startsWith('/api/')){const file=url.pathname==='/'?'index.html':url.pathname.slice(1);if(!/^[\w.-]+$/.test(file))return route.abort();return route.fulfill({contentType:file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.html')?'text/html':'image/svg+xml',body:await fs.readFile(path.join(root,'public',file))});}
+      if(!url.pathname.startsWith('/api/')){const file=url.pathname==='/'?'index.html':url.pathname.slice(1);if(!/^(?:locales\/(?:fr|en)\/(?:ui|app|settings|components)\.js|[\w.-]+)$/.test(file))return route.abort();return route.fulfill({contentType:file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.html')?'text/html':'image/svg+xml',body:await fs.readFile(path.join(root,'public',file))});}
       const input=request.postData()?JSON.parse(request.postData()):null;let data={};
       if(url.pathname==='/api/status')data={ok:true,models,addresses:[]};
       else if(url.pathname==='/api/projects')data={projects:[{id:'p1',name:'Projet de test',sessionsCount:0}]};

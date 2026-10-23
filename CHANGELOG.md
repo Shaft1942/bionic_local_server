@@ -7,7 +7,8 @@
 - Génération d'image directe sans appel texte, projets locaux et adoption explicite des dossiers/droits ; index de résumés, cache borné et pagination des historiques.
 - Fiabilité : jobs images illisibles isolés, admission/arrêt bornés, coordination configurable par phase texte/images, transport/adaptateur et capacités outils à trois états, clients lents détachés avec reprise.
 - Optimisation du diagnostic de génération intégrée : confirmation d'un lot image sans second appel texte ; attente d'un lot mixte avant synthèse, sans resoumission d'un résultat incertain.
-- Le lot français/anglais est suivi séparément avant intégration finale. La préparation locale n'est ni une publication ni une validation matérielle. Voir [le périmètre 2.4](docs/beta-2.4.md).
+- Interface français/anglais avec choix mémorisé par navigateur, catalogues extensibles, pluriels et formats locaux. Aucun changement de la langue des réponses du modèle, des prompts, du code ou des fichiers. Les formulaires et brouillons sont conservés pendant le changement de langue.
+- Validation de l'assemblage : 665 tests réussis, contrôles syntaxe/export, parcours navigateur synthétiques et bootstrap TLS isolé. La préparation locale n'est ni une publication ni une validation matérielle. Voir [le périmètre 2.4](docs/beta-2.4.md).
 
 ## 2.3.0 — 2026-10-23
 

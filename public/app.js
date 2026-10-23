@@ -1,4 +1,11 @@
 'use strict';
+const appT = (key, params) => globalThis.BionicI18n.t(key, params);
+const appNumber = (value, options) => globalThis.BionicI18n.number(value, options);
+const appLabelBindings = new Map();
+function setAppLabel(id, key, params) {
+  const value = appT(key, typeof params === 'function' ? params() : params);
+  setText($(id), value); appLabelBindings.set(id, { key, params, value });
+}
 const $ = id => document.getElementById(id);
 const composerFiles = $('composer-files'), composerFilesToggle = $('files-menu-toggle');
 const mobileComposer = matchMedia('(max-width:760px)');
@@ -85,7 +92,8 @@ for (const [id, name] of [['refresh', 'refresh'], ['search-icon', 'search'], ['b
 for (const [id, name] of [['settings-open-sidebar','settings'], ['models-close','close'], ['models-refresh','refresh']]) $(id).append(icon(name));
 $('models-open-sidebar').prepend(icon('models'));
 $('conversation-options-toggle').append(icon('more'));
-$('new-chat').append(icon('plus'), document.createTextNode('Nouveau chat web'));
+const newChatLabel = document.createTextNode(appT('app.newChat'));
+$('new-chat').append(icon('plus'), newChatLabel);
 const state = { projects: [], sessions: [], projectId: null, chat: null, sending: false, loading: false, uploading: false, status: null, viewSeq: 0, projectSeq: 0, authenticated: false, authEpoch: 0, viewKey: null, draftReasoning: {}, draftFileProfile: null, draftFileAccess: null, draftWebAccess:null, draftWebApproval:null, draftScriptAccess:null, draftImageAccess:null, draftImageWorkflowId:null, sessionsPartial:false, sessionWarnings:[] };
 const companionSettings = createCompanionSettings({api,getState:()=>state,node,onChange:()=>setSending(),onPageChange:page=>page==='maintenance'?updatesPanel.refresh():undefined,onNavigate:target=>{
   $('app').classList.add('thread-open');
@@ -96,11 +104,11 @@ const textDraftStore = createMessageDraftStore({ storage: { getItem: key => loca
 const chats = new Map(), drafts = readDrafts(), jobs = readJobs();
 const projectTree = createProjectTree({
   container: $('sessions'), node, icon,
-  getView: () => ({ authenticated: state.authenticated, authEpoch: state.authEpoch, revision: conversationMove.revision, projectId: state.projectId, currentId: state.chat?.id, viewKey: state.viewKey, search: $('search').value, disabled: state.uploading || conversationMove.busy, pending: [...jobs.values()].filter(job => !job.id).map(job => ({ projectId: job.projectId, id: 'pending:' + job.requestId, name: job.chat?.name || 'Envoi au PC…', source: 'web', generation: { status: 'running' }, pending: job })), jobs: [...jobs.values()].map(job => [job.requestId, job.projectId, job.id, job.status]) }),
+  getView: () => ({ authenticated: state.authenticated, authEpoch: state.authEpoch, revision: conversationMove.revision, projectId: state.projectId, currentId: state.chat?.id, viewKey: state.viewKey, search: $('search').value, disabled: state.uploading || conversationMove.busy, pending: [...jobs.values()].filter(job => !job.id).map(job => ({ projectId: job.projectId, id: 'pending:' + job.requestId, name: job.chat?.name || appT('app.sendingPc'), source: 'web', generation: { status: 'running' }, pending: job })), jobs: [...jobs.values()].map(job => [job.requestId, job.projectId, job.id, job.status]) }),
   fetchSessions: projectId => api('/api/sessions?projectId=' + encodeURIComponent(projectId)),
   renderSession: renderSessionRow,
   onSelectProject: projectId => selectProject(projectId).catch(e => error(e.message)),
-  onCount: (count, unloaded, searching) => { setText($('session-count'), String(count)); $('session-count').setAttribute('aria-label', count + ' conversations chargées' + (unloaded ? ', ' + unloaded + ' projets à charger' : '') + (searching ? ' correspondant à la recherche' : '')); }
+  onCount: (count, unloaded, searching) => { setText($('session-count'), appNumber(count)); $('session-count').dataset.count = String(count); $('session-count').setAttribute('aria-label', appT('app.sessionsCount', { count, unloaded: unloaded ? appT('app.projectsUnloaded', { count: unloaded }) : '', search: searching ? appT('app.searchMatching') : '' })); }
 });
 let recoveryTimer, recoveryBusy = false, renderTimer;
 const observedGenerations = new Map(), announcedEvents = new Set();
@@ -114,8 +122,8 @@ function announce(message, key = message) {
 function observeGeneration(chat, projectId) {
   if (!chat?.id) return;
   const key = chatKey(projectId, chat.id), previous = observedGenerations.get(key), generation = chat.generation || {};
-  if (generation.awaitingApproval && (!previous?.awaitingApproval || previous.replyId !== generation.replyId)) announce('Une demande attend ton accord dans « ' + chat.name + ' ».', 'approval:' + key + ':' + generation.replyId);
-  if (previous?.status === 'running' && generation.status && generation.status !== 'running') announce('La réponse de « ' + chat.name + ' » est ' + (generation.status === 'done' || generation.status === 'completed' ? 'terminée.' : 'arrêtée ou en erreur.'), 'finished:' + key + ':' + (generation.replyId || previous.replyId));
+  if (generation.awaitingApproval && (!previous?.awaitingApproval || previous.replyId !== generation.replyId)) announce(appT('app.approvalAnnounce', { name: chat.name }), 'approval:' + key + ':' + generation.replyId);
+  if (previous?.status === 'running' && generation.status && generation.status !== 'running') announce(appT('app.finishedAnnounce', { name: chat.name, status: appT(generation.status === 'done' || generation.status === 'completed' ? 'app.finishedStatus' : 'app.stoppedStatus') }), 'finished:' + key + ':' + (generation.replyId || previous.replyId));
   observedGenerations.set(key, { status:generation.status, replyId:generation.replyId, awaitingApproval:!!generation.awaitingApproval });
 }
 function fileProfile(source, fallback = 'write') {
@@ -124,8 +132,8 @@ function fileProfile(source, fallback = 'write') {
 }
 function currentFileProfile() { return unassignedProject() ? 'none' : $('agent-files').value; }
 function draftFailure() {
-  setText($('draft-status'), 'Conservation locale indisponible. Le texte courant reste affiché : télécharge ce brouillon avant de fermer.');
-  if (!draftStorageWarning) { toast('Brouillon non conservé : utilise « Télécharger ce brouillon » dans les options.'); draftStorageWarning = true; }
+  setAppLabel('draft-status', 'app.draftUnavailable');
+  if (!draftStorageWarning) { toast(appT('app.draftNotSaved')); draftStorageWarning = true; }
 }
 function downloadMessageDraft() {
   const url = URL.createObjectURL(new Blob([$('prompt').value], { type:'text/plain;charset=utf-8' }));
@@ -147,7 +155,7 @@ function rememberJobs() {
 function readDrafts() {
   try { const saved = JSON.parse(sessionStorage.getItem('bm_drafts') || '[]'); return new Map(Array.isArray(saved) ? saved.slice(-100) : []); } catch { return new Map(); }
 }
-function applyDraftRevocation() { for(const [key,draft]of drafts)drafts.set(key,{...draft,text:'',failed:[]});$('prompt').value='';$('draft-duration').value='0';setText($('draft-status'),'Textes effacés depuis un autre onglet. Conservation durable désactivée.'); }
+function applyDraftRevocation() { for(const [key,draft]of drafts)drafts.set(key,{...draft,text:'',failed:[]});$('prompt').value='';$('draft-duration').value='0';setAppLabel('draft-status', 'app.draftRevoked'); }
 function rememberDrafts() {
   try { if(textDraftStore.synchronize())applyDraftRevocation(); } catch { draftFailure(); }
   try { sessionStorage.setItem('bm_drafts', JSON.stringify([...drafts.entries()].slice(-100))); } catch { draftFailure(); }
@@ -176,13 +184,14 @@ function restoreDraft(key) {
 function rememberView() { try { sessionStorage.setItem('bm_view', JSON.stringify({ projectId: state.projectId, key: state.viewKey })); } catch {} }
 function rememberChat() { if (state.chat?.id) { try { localStorage.setItem('bm_chat_' + state.projectId, state.chat.id); } catch {} } }
 const imageGenerationView = createImageGenerationView({api,node,getState:()=>state,redraw:()=>renderChat()});
-const EFFORT_LABELS = { off: 'Désactivé', on: 'Activé', low: 'Faible', medium: 'Moyen', high: 'Élevé', xhigh: 'Très élevé' };
+const EFFORT_LABEL_KEYS = { off: 'app.effortOff', on: 'app.effortOn', low: 'app.effortLow', medium: 'app.effortMedium', high: 'app.effortHigh', xhigh: 'app.effortXhigh' };
+function effortLabel(value) { return EFFORT_LABEL_KEYS[value] ? appT(EFFORT_LABEL_KEYS[value]) : value; }
 const modelPanel = { models: [], loading: false, unloading: null, generationActive: false };
 const fileBrowser = createProjectFileBrowser({ api, node, icon, toast, getProject: () => state.projects.find(project => project.id === state.projectId), isBusy: () => state.loading || state.uploading || conversationMove.busy, onChange: saveDraft, onAttach: () => { $('app').classList.add('thread-open'); renderChat(); $('prompt').focus(); } });
 const workspace = createWorkspace({ api, node, icon, toast, getState: () => state, openTarget: async (projectId, chatId, messageId) => {
-  if (state.uploading) throw new Error('Attends la fin de l’import avant d’ouvrir cette conversation.');
-  if (conversationMove.busy) throw new Error('Attends la fin de la modification de cette conversation.');
-  if (!state.projects.some(project => project.id === projectId)) throw new Error('Le projet de cette réponse n’est plus disponible. Actualise les projets.');
+  if (state.uploading) throw new Error(appT('app.waitImport'));
+  if (conversationMove.busy) throw new Error(appT('app.waitConversationChange'));
+  if (!state.projects.some(project => project.id === projectId)) throw new Error(appT('app.replyProjectUnavailable'));
   saveDraft();
   if (state.projectId !== projectId) {
     ++state.viewSeq; state.projectId = projectId; $('project').value = projectId; state.chat = null; state.loading = false;
@@ -207,7 +216,7 @@ expireUpdateDrafts();
 function rememberUpdateDrafts(instanceId) {
   saveDraft();
   const saved = JSON.stringify({ instanceId, savedAt: Date.now(), entries: [...drafts.entries()].slice(-100), view: sessionStorage.getItem('bm_view') });
-  if (saved.length > 2_000_000) throw new Error('Tes brouillons sont trop volumineux pour préparer la mise à jour. Télécharge-les avant de continuer.');
+  if (saved.length > 2_000_000) throw new Error(appT('app.draftsTooLarge'));
   sessionStorage.setItem(updateRecoveryKey, saved);
   expireUpdateDrafts();
 }
@@ -228,24 +237,26 @@ function recoverUpdateDrafts(instanceId) {
 const updatesPanel = initUpdates({ api, isAuthenticated: () => state.authenticated, toast,
   openSettings: opener => companionSettings.openPage({currentTarget:opener},'maintenance','updates-title'),
   beforeInstall: async () => {
-    if (companionSettings.hasUnsaved()) throw new Error('Enregistre ou annule les saisies des paramètres avant d’installer la mise à jour.');
-    if (state.uploading || conversationMove.busy || fileBrowser.isWorking() || fileBrowser.hasUnsavedChanges()) throw new Error('Enregistre le fichier ouvert et attends la fin des opérations avant d’installer.');
+    if (companionSettings.hasUnsaved()) throw new Error(appT('app.saveSettingsBeforeInstall'));
+    if (state.uploading || conversationMove.busy || fileBrowser.isWorking() || fileBrowser.hasUnsavedChanges()) throw new Error(appT('app.saveFilesBeforeInstall'));
     const info = await api('/api/ping');
     rememberUpdateDrafts(info.instanceId);
     return true;
   },
   beforeReload: info => {
-    if (companionSettings.hasUnsaved()) throw new Error('La mise à jour est installée. Enregistre ou annule les saisies des paramètres avant d’actualiser.');
-    if (fileBrowser.hasUnsavedChanges()) throw new Error('Enregistre le fichier ouvert avant d’actualiser.');
+    if (companionSettings.hasUnsaved()) throw new Error(appT('app.saveSettingsBeforeReload'));
+    if (fileBrowser.hasUnsavedChanges()) throw new Error(appT('app.saveFileBeforeReload'));
     const saved = JSON.parse(sessionStorage.getItem(updateRecoveryKey) || 'null');
-    if (saved?.instanceId && saved.instanceId !== info?.instanceId) throw new Error('L’instance du serveur a changé. Reconnexion automatique refusée.');
+    if (saved?.instanceId && saved.instanceId !== info?.instanceId) throw new Error(appT('app.instanceChanged'));
     if (saved?.instanceId) rememberUpdateDrafts(saved.instanceId);
   }
 });
 $('upload-file').prepend(icon('upload'));
 let toastTimeout;
-function toast(message) { $('toast').textContent = message; $('toast').hidden = false; clearTimeout(toastTimeout); toastTimeout = setTimeout(() => $('toast').hidden = true, 4500); }
-function error(message) { $('message-error').textContent = message || ''; $('message-error').hidden = !message; }
+function toast(message) { appLabelBindings.delete('toast'); $('toast').textContent = message; $('toast').hidden = false; clearTimeout(toastTimeout); toastTimeout = setTimeout(() => $('toast').hidden = true, 4500); }
+function toastLabel(key, params) { toast(appT(key, params)); setAppLabel('toast', key, params); }
+function error(message) { appLabelBindings.delete('message-error'); $('message-error').textContent = message || ''; $('message-error').hidden = !message; }
+function errorLabel(key, params) { error(appT(key, params)); setAppLabel('message-error', key, params); }
 function unassignedProject() { return !!state.projects.find(project => project.id === state.projectId)?.isUnassigned; }
 function closeConversationOptions(focus = false) {
   $('conversation-options').hidden = true; $('conversation-options-toggle').setAttribute('aria-expanded', 'false');
@@ -262,19 +273,19 @@ function updateConversationOptions() {
   const active = state.sending || state.chat?.queue?.some(item => item.status === 'queued');
   select.disabled = conversationMove.busy || state.loading || state.uploading || !state.chat?.id || !!active;
   $('move-conversation').disabled = select.disabled || select.value === state.projectId;
-  $('move-conversation').textContent = conversationMove.action === 'move' ? 'Déplacement…' : 'Déplacer';
-  $('move-help').textContent = active ? 'Attends la fin de la réponse et de sa file pour déplacer ce chat.' : !state.chat?.id ? 'Envoie un premier message pour enregistrer la conversation avant de la déplacer.' : 'Le classement concerne le compagnon. Les fichiers et les livrables restent dans leur projet ; les fichiers du brouillon seront à joindre à nouveau. Les modifications seront désactivées après le déplacement.';
+  $('move-conversation').textContent = conversationMove.action === 'move' ? appT('app.moving') : appT('app.move');
+  $('move-help').textContent = active ? appT('app.moveWaitGeneration') : !state.chat?.id ? appT('app.moveSaveFirst') : appT('app.moveHelp');
   const name = $('conversation-name'), original = state.chat?.name || '';
   if (name.dataset.chat !== key || name.value === name.dataset.originalName) {
     name.value = original; name.dataset.chat = key; name.dataset.originalName = original;
   }
   name.disabled = select.disabled;
   $('rename-conversation').disabled = select.disabled || !name.value.trim() || name.value.trim() === original;
-  $('rename-conversation').textContent = conversationMove.action === 'rename' ? 'Renommage…' : 'Renommer';
+  $('rename-conversation').textContent = conversationMove.action === 'rename' ? appT('app.renaming') : appT('app.rename');
   $('rename-help').hidden = state.chat?.source !== 'bionic';
-  $('rename-help').textContent = 'Le nom change uniquement dans le compagnon. L’original Bionic est conservé.';
+  $('rename-help').textContent = appT('app.renameHelp');
   $('delete-conversation').disabled = select.disabled;
-  $('delete-conversation').textContent = conversationMove.action === 'delete' ? 'Suppression…' : state.chat?.source === 'bionic' ? 'Supprimer du compagnon' : 'Supprimer la conversation';
+  $('delete-conversation').textContent = conversationMove.action === 'delete' ? appT('app.deleting') : state.chat?.source === 'bionic' ? appT('app.deleteFromCompanion') : appT('app.deleteConversation');
 }
 async function moveCurrentConversation(event) {
   event.preventDefault(); if ($('move-conversation').disabled) return;
@@ -292,17 +303,17 @@ async function moveCurrentConversation(event) {
     state.chat = conversation; state.loading = false; restoreDraft(newKey); cacheChat(conversation, state.projectId); rememberChat();
     await loadSessions(); if (epoch !== state.authEpoch || !state.authenticated) return;
     renderChat(); closeConversationOptions(); workspace.refreshActivity();
-    toast('Conversation déplacée vers « ' + (state.projects.find(project => project.id === state.projectId)?.name || 'Sans projet') + ' ».' + (draft.attachments?.length ? ' Rejoins les fichiers du brouillon depuis ce projet.' : ''));
+    toast(appT('app.conversationMoved', { project: state.projects.find(project => project.id === state.projectId)?.name || appT('app.unassigned'), attachments: draft.attachments?.length ? appT('app.reattachDraft') : '' }));
     $('prompt').focus();
   } catch (error) {
     if (epoch !== state.authEpoch || !state.authenticated) return;
-    $('move-error').textContent = committed ? 'Le déplacement est enregistré. Actualise les conversations pour terminer la navigation.' : error.status === 404 && /Action inconnue/.test(error.message) ? 'Relance le serveur avec Relancer.cmd sur le PC pour activer les déplacements.' : error.message;
+    $('move-error').textContent = committed ? appT('app.moveRecorded') : error.status === 404 && /Action inconnue/.test(error.message) ? appT('app.restartForMoves') : error.message;
     $('move-error').hidden = false;
   } finally { conversationMove.busy = false; conversationMove.action = null; setSending(); scheduleRecovery(); if (committed && epoch === state.authEpoch && state.authenticated) $('prompt').focus(); }
 }
 function conversationActionError(action, failure) {
   const target = $(action + '-error');
-  target.textContent = failure.status === 404 && /Action inconnue/.test(failure.message) ? 'Relance le serveur avec Relancer.cmd sur le PC pour activer cette action.' : failure.message;
+  target.textContent = failure.status === 404 && /Action inconnue/.test(failure.message) ? appT('app.restartForAction') : failure.message;
   target.hidden = false;
   if ($('conversation-options').hidden && state.authenticated) toast(target.textContent);
 }
@@ -317,7 +328,7 @@ async function renameCurrentConversation(event) {
     committed = true;
     state.chat = conversation; cacheChat(conversation, projectId); rememberChat();
     $('conversation-name').value = conversation.name; $('conversation-name').dataset.originalName = conversation.name;
-    renderChat(); closeConversationOptions(); toast('Conversation renommée.');
+    renderChat(); closeConversationOptions(); toast(appT('app.renamed'));
     $('prompt').focus();
   } catch (failure) { if (epoch === state.authEpoch && state.authenticated) conversationActionError('rename', failure); }
   finally { conversationMove.busy = false; conversationMove.action = null; setSending(); scheduleRecovery(); if (committed && epoch === state.authEpoch && state.authenticated) $('prompt').focus(); }
@@ -325,7 +336,7 @@ async function renameCurrentConversation(event) {
 async function deleteCurrentConversation() {
   if ($('delete-conversation').disabled) return;
   const epoch = state.authEpoch, projectId = state.projectId, id = state.chat.id, key = state.viewKey, native = state.chat.source === 'bionic';
-  const confirmation = native ? 'Supprimer « ' + state.chat.name + ' » du compagnon ?\n\nCe chat sera masqué ici. L’original Bionic, les fichiers du projet et les livrables seront conservés.' : 'Supprimer définitivement la conversation « ' + state.chat.name + ' » ?\n\nSes messages et son brouillon seront supprimés du compagnon. Les fichiers du projet et les livrables seront conservés.';
+  const confirmation = native ? appT('app.deleteNativeConfirm', { name: state.chat.name }) : appT('app.deleteWebConfirm', { name: state.chat.name });
   if (!window.confirm(confirmation)) return;
   saveDraft(); conversationMove.busy = true; conversationMove.action = 'delete'; ++conversationMove.revision; $('delete-error').hidden = true; setSending();
   let committed = false;
@@ -339,9 +350,9 @@ async function deleteCurrentConversation() {
     try { if (localStorage.getItem('bm_chat_' + projectId) === id) localStorage.removeItem('bm_chat_' + projectId); } catch {}
     ++state.viewSeq; ++state.projectSeq; state.sessions = state.sessions.filter(chat => chat.id !== id); state.chat = null; state.loading = false;
     restoreDraft(chatKey(projectId)); renderChat(); closeConversationOptions(); error(''); workspace.refreshActivity();
-    toast(native ? 'Conversation supprimée du compagnon. L’original reste dans Bionic.' : 'Conversation supprimée.');
+    toast(native ? appT('app.nativeRemoved') : appT('app.conversationDeleted'));
     $('prompt').focus();
-    try { await loadSessions(); } catch { if (epoch === state.authEpoch && state.authenticated) toast('Conversation supprimée. Actualise la liste après reconnexion au PC.'); }
+    try { await loadSessions(); } catch { if (epoch === state.authEpoch && state.authenticated) toast(appT('app.deletedRefresh')); }
   } catch (failure) { if (epoch === state.authEpoch && state.authenticated) conversationActionError('delete', failure); }
   finally { conversationMove.busy = false; conversationMove.action = null; setSending(); scheduleRecovery(); if (committed && epoch === state.authEpoch && state.authenticated) $('prompt').focus(); }
 }
@@ -349,17 +360,18 @@ function node(tag, className, text) { const el = document.createElement(tag); if
 async function api(route, options = {}) {
   const epoch = state.authEpoch;
   const r = await fetch(route, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
-  const j = await r.json().catch(() => ({ error: 'Réponse du serveur illisible.' }));
+  const j = await r.json().catch(() => ({ error: appT('app.invalidServerResponse') }));
   if (route === '/api/updates/install' && !r.ok) { try { sessionStorage.removeItem(updateRecoveryKey); } catch {} }
   if (r.status === 401 && !updatesPanel.isRestarting()) hidePrivateViews();
-  if (!r.ok) throw Object.assign(new Error(j.error || `Le serveur ne répond pas (HTTP ${r.status}).`), { status: r.status });
+  if (!r.ok) throw Object.assign(new Error(j.error || appT('app.httpError', { status: r.status })), { status: r.status });
   if (route === '/api/comfy/settings' && epoch === state.authEpoch && state.authenticated) {
     $('comfy-storage-warning').hidden = j.degraded !== true;
-    $('comfy-storage-warning').textContent = j.degraded === true ? 'Certains suivis d’image sont illisibles et ont été isolés. Leurs fichiers sont conservés sur le PC ; les autres images restent accessibles. Consulte le dépannage avant toute récupération.' : '';
+    if (j.degraded === true) setAppLabel('comfy-storage-warning', 'app.beta24.imageStorageDegraded');
+    else { $('comfy-storage-warning').textContent = ''; appLabelBindings.delete('comfy-storage-warning'); }
   }
   return j;
 }
-function shortDate(time) { if (!time) return ''; return new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(time)); }
+function shortDate(time) { if (!time) return ''; return globalThis.BionicI18n.date(time, { day: 'numeric', month: 'short' }); }
 function modelForChat() {
   const current = state.chat?.model;
   const list = state.status?.models || [];
@@ -369,8 +381,8 @@ function setModels() {
   const previous = $('model').value;
   $('model').replaceChildren();
   const list = state.status?.models || [];
-  if (!list.length) $('model').append(new Option('Aucun modèle local disponible', ''));
-  for (const m of list) $('model').append(new Option(`${m.loaded ? 'Chargé · ' : ''}${m.name}${m.vision ? ' · Vision' : ''}${m.toolsCapability === 'unknown' || m.tools === null ? ' · outils non confirmés (essai)' : ''}`, m.id));
+  if (!list.length) $('model').append(new Option(appT('app.noLocalModels'), ''));
+  for (const m of list) $('model').append(new Option(appT('app.modelOption', { loaded: m.loaded ? appT('app.loadedPrefix') : '', name: m.name, vision: m.vision ? appT('app.visionSuffix') : '', tools: m.toolsCapability === 'unknown' || m.tools === null ? appT('app.beta24.toolsUnconfirmedSuffix') : '' }), m.id));
   $('model').value = list.find(m => m.id === draftForView().model)?.id || list.find(m => m.id === previous)?.id || list.find(m => m.id === state.chat?.model)?.id || list.find(m => m.loaded)?.id || list[0]?.id || '';
   setEffort();
   setSending(state.sending);
@@ -381,19 +393,20 @@ function setEffort() {
   const choices = capability?.allowedOptions || [];
   const stored = state.draftReasoning[model?.id] ?? state.chat?.reasoningByModel?.[model?.id] ?? 'default';
   const valid = stored === 'default' || choices.includes(stored);
-  $('effort').replaceChildren(new Option(capability?.default ? `Par défaut (${EFFORT_LABELS[capability.default]})` : 'Par défaut', 'default'));
-  for (const choice of choices) $('effort').append(new Option(EFFORT_LABELS[choice] || choice, choice));
+  $('effort').replaceChildren(new Option(capability?.default ? appT('app.effortDefaultWithValue', { value: effortLabel(capability.default) }) : appT('app.effortDefault'), 'default'));
+  for (const choice of choices) $('effort').append(new Option(effortLabel(choice), choice));
   $('effort').value = valid ? stored : 'default';
   $('effort').disabled = !choices.length || state.loading || !!modelPanel.unloading;
   const binary = choices.length && choices.every(choice => choice === 'on' || choice === 'off');
-  setText($('effort-help'), !valid ? 'Le niveau précédemment choisi n’est plus disponible. Le réglage par défaut sera utilisé.' : !choices.length ? 'Ce modèle ne propose pas de réglage d’effort par l’API.' : binary ? 'Ce modèle permet d’activer ou de désactiver le raisonnement, sans niveaux intermédiaires.' : 'Niveau de raisonnement appliqué au prochain message.');
+  setText($('effort-help'), !valid ? appT('app.effortUnavailable') : !choices.length ? appT('app.effortUnsupported') : binary ? appT('app.effortBinary') : appT('app.effortHelp'));
   const unknownTools = model?.toolsCapability === 'unknown' || model?.tools === null;
   $('model-tools-help').hidden = !unknownTools;
-  setText($('model-tools-help'), unknownTools ? 'Outils non confirmés pour ce modèle. Les outils que tu actives sont essayés pour le prochain envoi.' : '');
+  if (unknownTools) setAppLabel('model-tools-help', 'app.beta24.toolsUnconfirmedHelp');
+  else { $('model-tools-help').textContent = ''; appLabelBindings.delete('model-tools-help'); }
 }
 async function checkStatus() {
   state.status = await api('/api/status');
-  $('status').textContent = state.status.ok ? 'Bionic connecté' : 'API Bionic indisponible';
+  setAppLabel('status', state.status.ok ? 'app.connected' : 'app.apiUnavailable');
   $('status').className = 'status ' + (state.status.ok ? 'online' : 'offline');
   if (!state.status.ok) error(state.status.apiError);
   setModels();
@@ -403,25 +416,25 @@ function renderLoadedModels() {
   const instances = modelPanel.models.flatMap(model => model.loadedInstances.map(instance => ({ ...instance, model })));
   const locked = modelPanel.loading || !!modelPanel.unloading;
   $('models-refresh').disabled = locked;
-  $('models-summary').textContent = modelPanel.loading ? 'Actualisation…' : `${instances.length} instance${instances.length > 1 ? 's' : ''} en mémoire`;
+  $('models-summary').textContent = modelPanel.loading ? appT('app.refreshing') : appT('app.instancesInMemory', { count: instances.length });
   $('models-list').setAttribute('aria-busy', String(locked));
   $('models-list').replaceChildren();
-  if (!instances.length && !modelPanel.loading) $('models-list').append(node('p', 'models-empty', 'Aucun modèle n’est actuellement chargé. Le modèle choisi sera chargé à la demande lors d’un envoi.'));
+  if (!instances.length && !modelPanel.loading) $('models-list').append(node('p', 'models-empty', appT('app.noLoadedModel')));
   for (const instance of instances) {
     const row = node('section', 'loaded-model');
     const details = node('div', 'loaded-model-details');
     details.append(node('h3', '', instance.model.name));
-    const type = instance.model.type === 'embedding' ? 'Indexation de documents' : instance.model.type === 'decision' ? 'Modèle de décision' : 'Conversation';
-    let detail = type + (instance.contextLength ? ` · Contexte : ${new Intl.NumberFormat('fr-FR').format(instance.contextLength)} tokens` : '');
+    const type = instance.model.type === 'embedding' ? appT('app.modelEmbedding') : instance.model.type === 'decision' ? appT('app.modelDecision') : appT('app.modelConversation');
+    let detail = type + (instance.contextLength ? appT('app.modelContext', { count: appNumber(instance.contextLength) }) : '');
     details.append(node('p', 'loaded-model-meta', detail));
     if (instance.model.loadedInstances.length > 1) details.append(node('p', 'loaded-model-id', instance.id));
-    const button = node('button', 'unload-button', modelPanel.unloading === instance.id ? 'Déchargement…' : 'Décharger');
+    const button = node('button', 'unload-button', modelPanel.unloading === instance.id ? appT('app.unloading') : appT('app.unload'));
     button.type = 'button'; button.disabled = locked || anyGeneration() || modelPanel.generationActive;
-    button.setAttribute('aria-label', 'Décharger ' + instance.model.name + (instance.model.loadedInstances.length > 1 ? ' — ' + instance.id : ''));
+    button.setAttribute('aria-label', appT('app.unloadNamed', { name: instance.model.name, instance: instance.model.loadedInstances.length > 1 ? ' — ' + instance.id : '' }));
     button.addEventListener('click', () => unloadModel(instance.id));
     row.append(details, button); $('models-list').append(row);
   }
-  if ((anyGeneration() || modelPanel.generationActive) && !modelPanel.unloading) $('models-summary').textContent += ' · Une réponse est en cours. Le déchargement sera disponible après sa fin.';
+  if ((anyGeneration() || modelPanel.generationActive) && !modelPanel.unloading) $('models-summary').textContent += appT('app.unloadAfterResponse');
 }
 async function refreshLoadedModels() {
   if (modelPanel.unloading || modelPanel.loading) return;
@@ -431,7 +444,7 @@ async function refreshLoadedModels() {
     modelPanel.generationActive = response.generationActive;
     state.status = { ...state.status, models: response.models.filter(model => model.type === 'llm'), ok: true, apiError: null };
     setModels();
-  } catch (e) { modelError(e.status === 404 ? 'Redémarre le serveur avec Relancer.cmd sur le PC pour activer la gestion des modèles.' : e.message); }
+  } catch (e) { modelError(e.status === 404 ? appT('app.restartForModels') : e.message); }
   finally { modelPanel.loading = false; renderLoadedModels(); }
 }
 function openModels() { if (!$('models-dialog').open) $('models-dialog').showModal(); refreshLoadedModels(); }
@@ -443,8 +456,8 @@ async function unloadModel(instanceId) {
     modelPanel.models = result.models;
     state.status = { ...state.status, models: result.models.filter(model => model.type === 'llm') };
     setModels();
-    if (result.unloaded) toast('Modèle déchargé de la mémoire.');
-    else modelError('L’instance est de nouveau chargée. Une autre session peut l’avoir rechargée.');
+    if (result.unloaded) toast(appT('app.modelUnloaded'));
+    else modelError(appT('app.modelReloaded'));
   } catch (e) { modelError(e.message); }
   finally { modelPanel.unloading = null; renderLoadedModels(); setSending(state.sending); }
 }
@@ -459,7 +472,7 @@ async function loadProjects() {
   for (const p of j.projects) $('project').append(new Option(p.name, p.id));
   projectTree.setProjects(j.projects);
   if (state.projectId) { $('project').value = state.projectId; await loadSessions(); }
-  else $('sessions').replaceChildren(node('p', 'list-empty', 'Aucun projet disponible. Crée un projet local dans « Gérer les projets ».'));
+  else $('sessions').replaceChildren(node('p', 'list-empty', appT('app.beta24.noProject')));
   setSending(false);
 }
 async function loadSessions() {
@@ -476,7 +489,7 @@ function renderSessions() {
   if (!state.authenticated) return;
   if (state.projectId) projectTree.setSessions(state.projectId, { sessions: state.sessions, partial: state.sessionsPartial, warnings: state.sessionWarnings });
   projectTree.render();
-  const waiting = state.sessions.filter(x=>x.generation?.awaitingApproval).length; document.title = (waiting ? waiting+' à valider · ' : '')+'Bionic · compagnon local';
+  const waiting = state.sessions.filter(x=>x.generation?.awaitingApproval).length; document.title = appT('app.documentTitle', { waiting: waiting ? appT('app.approvalsPending', { count: waiting }) : '' });
 }
 function renderSessionRow(s, projectId) {
     observeGeneration(s, projectId);
@@ -487,7 +500,7 @@ function renderSessionRow(s, projectId) {
     const queued = Math.max(s.queueCount || s.queue?.filter(item => item.status === 'queued').length || 0, active.filter(job => job.status === 'queued').length);
     const running = s.generation?.status === 'running' || active.some(job => job.status !== 'queued');
     const waitingResource = ['waiting-model','waiting-resource','waiting-image-resource'].includes(s.generation?.phase);
-    const label = s.generation?.awaitingApproval ? 'À valider' + (queued ? ' · '+queued+' en attente' : '') : running ? (waitingResource ? 'En attente de ressource' : 'Réponse en cours') + (queued ? ` · ${queued} en attente` : '') : queued ? `${queued} en attente` : s.source === 'web' ? (s.origin?.kind==='fork' ? 'Branche' : s.origin ? 'Suite web' : 'Chat web') : 'Bionic';
+    const label = s.generation?.awaitingApproval ? appT('app.sessionApproval', { queued: queued ? ' · ' + appT('app.queuedCount', { count: queued }) : '' }) : running ? appT(s.generation?.phase === 'waiting-image' ? 'app.beta24.sessionWaitingImage' : waitingResource ? 'app.beta24.sessionWaiting' : 'app.sessionRunning', { queued: queued ? ' · ' + appT('app.queuedCount', { count: queued }) : '' }) : queued ? appT('app.queuedCount', { count: queued }) : s.source === 'web' ? (s.origin?.kind==='fork' ? appT('app.branch') : s.origin ? appT('app.webContinuation') : appT('app.webChat')) : 'Bionic';
     button.classList.toggle('session-active', running || queued > 0);
     const meta = node('span', 'session-meta'); meta.append(node('span', s.source === 'web' ? 'web-label' : '', label), node('span', '', shortDate(s.updatedAt)));
     button.append(meta); button.addEventListener('click', async () => {
@@ -508,7 +521,7 @@ function renderSessionRow(s, projectId) {
 }
 async function selectProject(projectId, { clearSearch = false } = {}) {
   if (state.uploading || conversationMove.busy || !state.authenticated) return false;
-  if (!state.projects.some(project => project.id === projectId)) throw new Error('Ce projet n’est plus disponible. Actualise les projets.');
+  if (!state.projects.some(project => project.id === projectId)) throw new Error(appT('app.projectUnavailable'));
   projectTree.activate(projectId);
   if (projectId === state.projectId) { projectTree.render(); return true; }
   closeConversationOptions(); saveDraft();
@@ -557,12 +570,12 @@ function updateReplyFollow() {
 function responseModelKey(message) { return JSON.stringify([state.projectId, message.requestId || message.localRequestId || '']); }
 function addBudgetWarning(article, message) {
   const warning = node('section', 'message-truncated');
-  warning.append(node('strong', '', 'Réponse coupée au plafond de tokens'), node('p', '', 'Un script ou document peut être incomplet. Vérifie le plafond avant de poursuivre.'));
-  if (message.outputBudget) warning.append(node('p', 'message-budget', 'Plafond de cet appel : ' + new Intl.NumberFormat('fr-FR').format(message.outputBudget.maxOutputTokens) + ' tokens.'));
+  warning.append(node('strong', '', appT('app.responseTruncated')), node('p', '', appT('app.truncatedHelp')));
+  if (message.outputBudget) warning.append(node('p', 'message-budget', appT('app.outputBudget', { count: appNumber(message.outputBudget.maxOutputTokens) })));
   const model = responseModels.get(responseModelKey(message));
   const available = model && state.status?.models?.some(item => item.id === model);
-  if (!available) warning.append(node('p', 'message-budget-target', (model ? 'Modèle de cette réponse indisponible.' : 'Modèle de cette réponse non relevé.') + ' Choisis le modèle du prochain envoi dans les paramètres.'));
-  const button = node('button', 'file-action message-budget-open', 'Régler le plafond'); button.type = 'button';
+  if (!available) warning.append(node('p', 'message-budget-target', (model ? appT('app.responseModelUnavailable') : appT('app.responseModelUnknown')) + appT('app.chooseNextModel')));
+  const button = node('button', 'file-action message-budget-open', appT('app.setOutputLimit')); button.type = 'button';
   button.dataset.workspaceFocus = 'budget:' + (message.id || message.localRequestId || message.requestId || '');
   button.addEventListener('click', event => companionSettings.openOutput(event, available ? model : null));
   warning.append(button); article.append(warning);
@@ -570,49 +583,49 @@ function addBudgetWarning(article, message) {
 function addFileAction(article, action, message) {
   const foreignProject = action.projectId && action.projectId !== state.projectId;
   let log = article.querySelector('.actions-log');
-  if (!log) { log = node('details', 'actions-log'); log.dataset.disclosureKey = 'actions'; log.append(node('summary', '', 'Actions sur les fichiers'), node('div', 'action-rows')); article.append(log); }
+  if (!log) { log = node('details', 'actions-log'); log.dataset.disclosureKey = 'actions'; log.append(node('summary', '', appT('app.fileActions')), node('div', 'action-rows')); article.append(log); }
   const row = node('div', 'action-row' + (action.ok ? '' : ' action-failed'));
   if (action.id) row.dataset.actionId = action.id;
-  row.append(node('strong', '', action.ok || action.name==='run_project_script' ? action.message : 'Action en erreur'), node('span', '', (action.path||'')+(action.destination?' vers '+action.destination:'')));
+  row.append(node('strong', '', action.ok || action.name==='run_project_script' ? action.message : appT('app.actionFailed')), node('span', '', action.destination ? appT('app.fileDestination', { path: action.path || '', destination: action.destination }) : action.path || ''));
   for(const source of action.webResults || (action.url?[{title:action.url,url:action.url}]:[])){
-    try{const url=new URL(source.url);if(!['https:','http:'].includes(url.protocol))continue;const link=node('a','tool-source',action.name==='read_web_page'?'Page source · '+url.host:source.title||source.url);link.href=url.href;link.target='_blank';link.rel='noopener noreferrer';row.append(link);}catch{}
+    try{const url=new URL(source.url);if(!['https:','http:'].includes(url.protocol))continue;const link=node('a','tool-source',action.name==='read_web_page'?appT('app.sourcePage', { host: url.host }):source.title||source.url);link.href=url.href;link.target='_blank';link.rel='noopener noreferrer';row.append(link);}catch{}
   }
-  if(action.outbound){const sent=node('details','outbound-receipt');sent.dataset.disclosureKey='outbound:'+action.id;sent.append(node('summary','','Données envoyées au web'),node('p','','Hôte : '+(action.outbound.host||'moteur configuré')),node('pre','',JSON.stringify(action.outbound,null,2)));row.append(sent);}
-  if(action.stdout||action.stderr){const output=node('details','tool-output');output.dataset.disclosureKey='output:'+action.id;output.append(node('summary','','Sortie du script'),node('pre','',(action.stdout||'')+(action.stderr?'\n'+action.stderr:'')));row.append(output);}
-  if(!foreignProject&&action.ok&&action.trashId){const restore=node('button','file-action restore-action',action.restored?'Fichier restauré':'Restaurer le fichier');restore.type='button';restore.disabled=state.sending||!!action.restored;if(action.restored)restore.dataset.restored='true';restore.addEventListener('click',async()=>{restore.disabled=true;try{await api('/api/file/restore-trash',{method:'POST',body:JSON.stringify({projectId:state.projectId,chatId:state.chat.id,actionId:action.id})});action.restored=true;restore.textContent='Fichier restauré';restore.dataset.restored='true';}catch(e){error(e.message);restore.disabled=false;}});row.append(restore);}
-  if (!action.ok) row.append(node('p', '', action.executed ? 'Ce script a été exécuté : des changements peuvent déjà avoir été enregistrés sur le PC.' : action.message));
+  if(action.outbound){const sent=node('details','outbound-receipt');sent.dataset.disclosureKey='outbound:'+action.id;sent.append(node('summary','',appT('app.outboundData')),node('p','',appT('app.host', { host: action.outbound.host || appT('app.configuredEngine') })),node('pre','',JSON.stringify(action.outbound,null,2)));row.append(sent);}
+  if(action.stdout||action.stderr){const output=node('details','tool-output');output.dataset.disclosureKey='output:'+action.id;output.append(node('summary','',appT('app.scriptOutput')),node('pre','',(action.stdout||'')+(action.stderr?'\n'+action.stderr:'')));row.append(output);}
+  if(!foreignProject&&action.ok&&action.trashId){const restore=node('button','file-action restore-action',action.restored?appT('app.fileRestored'):appT('app.restoreFile'));restore.type='button';restore.disabled=state.sending||!!action.restored;if(action.restored)restore.dataset.restored='true';restore.addEventListener('click',async()=>{restore.disabled=true;try{await api('/api/file/restore-trash',{method:'POST',body:JSON.stringify({projectId:state.projectId,chatId:state.chat.id,actionId:action.id})});action.restored=true;restore.textContent=appT('app.fileRestored');restore.dataset.restored='true';}catch(e){error(e.message);restore.disabled=false;}});row.append(restore);}
+  if (!action.ok) row.append(node('p', '', action.executed ? appT('app.scriptExecutedWarning') : action.message));
   if (action.ok && /^(?:replace_project_text|write_project_file)$/.test(action.name)) log.open = true;
-  if (foreignProject) row.append(node('span', 'action-origin', 'Action du projet d’origine ; ses fichiers sont restés dans ce projet.'));
+  if (foreignProject) row.append(node('span', 'action-origin', appT('app.foreignAction')));
   if (!foreignProject && action.ok && /^(?:replace_project_text|write_project_file)$/.test(action.name) && message) {
     const pin = workspace.pinControl(message, state.chat, action); if (pin) row.append(pin);
   }
   if (!foreignProject && action.backupId && action.hash && message) {
-    const compare=node('button','file-action','Comparer la modification'); compare.type='button';compare.addEventListener('click',async()=>{compare.disabled=true;try{const result=await api('/api/files/action-diff',{method:'POST',body:JSON.stringify({projectId:state.projectId,sessionId:state.chat.id,messageId:message.id,actionId:action.id})});const view=node('details','passive-diff');view.open=true;view.append(node('summary','',result.label||'Comparaison vérifiée'));if(result.status!=='comparable')view.append(node('p','','Version ultérieure : ce fichier ne prouve plus les changements exacts de cette action. Aucun diff historique présenté.'));else{const before=result.before.text.split(/\r?\n/),after=result.after.text.split(/\r?\n/),lines=[];const maximum=Math.min(2000,Math.max(before.length,after.length));for(let i=0;i<maximum;i++){if(before[i]===after[i])lines.push('  '+(before[i]??''));else{if(before[i]!==undefined)lines.push('− '+before[i]);if(after[i]!==undefined)lines.push('+ '+after[i]);}}view.append(node('p','','Comparaison des lignes à la même position (− avant, + après). Aucun changement appliqué.'),node('pre','',lines.join('\n')));if(maximum<Math.max(before.length,after.length))view.append(node('p','','Aperçu limité aux 2 000 premières lignes.'));}row.querySelector('.passive-diff')?.remove();row.append(view);}catch(e){error(e.message);}finally{compare.disabled=false;}});row.append(compare);
+    const compare=node('button','file-action',appT('app.compareChange')); compare.type='button';compare.addEventListener('click',async()=>{compare.disabled=true;try{const result=await api('/api/files/action-diff',{method:'POST',body:JSON.stringify({projectId:state.projectId,sessionId:state.chat.id,messageId:message.id,actionId:action.id})});const view=node('details','passive-diff');view.open=true;view.append(node('summary','',result.label||appT('app.verifiedComparison')));if(result.status!=='comparable')view.append(node('p','',appT('app.laterVersionDiff')));else{const before=result.before.text.split(/\r?\n/),after=result.after.text.split(/\r?\n/),lines=[];const maximum=Math.min(2000,Math.max(before.length,after.length));for(let i=0;i<maximum;i++){if(before[i]===after[i])lines.push('  '+(before[i]??''));else{if(before[i]!==undefined)lines.push('− '+before[i]);if(after[i]!==undefined)lines.push('+ '+after[i]);}}view.append(node('p','',appT('app.lineComparison')),node('pre','',lines.join('\n')));if(maximum<Math.max(before.length,after.length))view.append(node('p','',appT('app.diffPreviewLimit')));}row.querySelector('.passive-diff')?.remove();row.append(view);}catch(e){error(e.message);}finally{compare.disabled=false;}});row.append(compare);
   }
   if (!foreignProject && action.backupId && action.hash) {
-    const restore = node('button', 'file-action restore-action', action.restored ? 'Version précédente rétablie' : 'Rétablir la version précédente'); restore.type = 'button';
+    const restore = node('button', 'file-action restore-action', action.restored ? appT('app.previousVersionRestored') : appT('app.restorePreviousVersion')); restore.type = 'button';
     if (action.restored) restore.dataset.restored = 'true';
     restore.disabled = state.sending || state.loading || state.uploading || !!action.restored;
     restore.addEventListener('click', async () => {
       restore.disabled = true;
       try {
         await api('/api/file/restore', { method: 'POST', body: JSON.stringify({ projectId: state.projectId, rootId: 'project', path: action.path, hash: action.hash, backupId: action.backupId, chatId: state.chat?.id, actionId: action.id }) });
-        action.restored = true; restore.dataset.restored = 'true'; restore.textContent = 'Version précédente rétablie'; toast('La version précédente a été rétablie sur le PC.');
+        action.restored = true; restore.dataset.restored = 'true'; restore.textContent = appT('app.previousVersionRestored'); toast(appT('app.previousVersionRestoredPc'));
       } catch (e) { error(e.message); restore.disabled = false; }
     });
     row.append(restore);
   }
   log.querySelector('.action-rows').append(row);
-  log.querySelector('summary').textContent = 'Activité · ' + log.querySelectorAll('.action-row').length + ' action(s)';
+  log.querySelector('summary').textContent = appT('app.activityCount', { count: log.querySelectorAll('.action-row').length });
 }
 function addToolApproval(article,approval,chat) {
   const web=approval.kind==='web', panel=node('section','tool-approval');panel.dataset.approvalId=approval.id;
-  panel.append(node('h3','',web?'Envoi web à valider':'Script à valider'));
-  if(web){const preview=node(approval.status==='pending'?'div':'details','web-approval-preview');if(approval.status!=='pending')preview.append(node('summary','','Afficher la requête exacte'));preview.append(node('pre','',JSON.stringify({tool:approval.tool,...approval.parameters},null,2)));panel.append(node('p','tool-approval-meta','Hôte : '+approval.host),preview,node('p','tool-approval-scope','Ton accord concerne uniquement cette requête exacte. Les recherches suivantes demanderont un nouvel accord. Ce réglage ne limite pas le réseau d’un script approuvé.'));}
-  else panel.append(node('p','tool-approval-meta',(approval.runtime||'Script')+' · '+(approval.cwd||approval.directory||'Dossier du projet')),node('pre','',approval.code||''),node('p','tool-approval-scope','Ce script s’exécute avec les droits de ton compte sur le PC. Il peut agir au-delà du dossier du projet ; ses modifications ne sont pas toutes annulables.'));
-  const labels={pending:'En attente de ton accord.',approved:'Autorisé.',denied:web?'Refusé : aucun envoi web effectué.':'Refusé : aucun script exécuté.',expired:web?'Validation expirée : aucun envoi web effectué.':'Validation expirée : aucun script exécuté.',cancelled:'Validation annulée.'};
-  panel.append(node('p','tool-approval-status',approval.executionStatus==='interrupted'?'Exécution interrompue : vérifie les fichiers.':approval.executionStatus||labels[approval.status]||approval.status));
-  if(approval.status==='pending'&&Date.now()<approval.expiresAt){const controls=node('div','workspace-actions');for(const [decision,label]of [['approve',web?'Autoriser cet envoi':'Exécuter ce script'],['deny','Refuser']]){const button=node('button',decision==='approve'?'file-save':'file-action',label);button.type='button';button.dataset.workspaceFocus='approval:'+approval.id+':'+decision;button.addEventListener('click',async()=>{controls.querySelectorAll('button').forEach(x=>x.disabled=true);try{const result=await api('/api/tool-approval',{method:'POST',body:JSON.stringify({id:approval.id,projectId:chat.projectId,chatId:chat.id,decision})});approval.status=result.status;await recoverReplies();renderChat();}catch(e){error(e.message);controls.querySelectorAll('button').forEach(x=>x.disabled=false);}});controls.append(button);}panel.append(controls);}
+  panel.append(node('h3','',web?appT('app.webApprovalTitle'):appT('app.scriptApprovalTitle')));
+  if(web){const preview=node(approval.status==='pending'?'div':'details','web-approval-preview');if(approval.status!=='pending')preview.append(node('summary','',appT('app.showExactRequest')));preview.append(node('pre','',JSON.stringify({tool:approval.tool,...approval.parameters},null,2)));panel.append(node('p','tool-approval-meta',appT('app.host', { host: approval.host })),preview,node('p','tool-approval-scope',appT('app.webApprovalScope')));}
+  else panel.append(node('p','tool-approval-meta',(approval.runtime||appT('app.script'))+' · '+(approval.cwd||approval.directory||appT('app.projectFolder'))),node('pre','',approval.code||''),node('p','tool-approval-scope',appT('app.scriptApprovalScope')));
+  const labels={pending:appT('app.approvalPending'),approved:appT('app.approvalGranted'),denied:web?appT('app.webDenied'):appT('app.scriptDenied'),expired:web?appT('app.webApprovalExpired'):appT('app.scriptApprovalExpired'),cancelled:appT('app.approvalCancelled')};
+  panel.append(node('p','tool-approval-status',approval.executionStatus==='interrupted'?appT('app.executionInterrupted'):approval.executionStatus||labels[approval.status]||approval.status));
+  if(approval.status==='pending'&&Date.now()<approval.expiresAt){const controls=node('div','workspace-actions');for(const [decision,label]of [['approve',web?appT('app.approveWeb'):appT('app.approveScript')],['deny',appT('app.deny')]]){const button=node('button',decision==='approve'?'file-save':'file-action',label);button.type='button';button.dataset.workspaceFocus='approval:'+approval.id+':'+decision;button.addEventListener('click',async()=>{controls.querySelectorAll('button').forEach(x=>x.disabled=true);try{const result=await api('/api/tool-approval',{method:'POST',body:JSON.stringify({id:approval.id,projectId:chat.projectId,chatId:chat.id,decision})});approval.status=result.status;await recoverReplies();renderChat();}catch(e){error(e.message);controls.querySelectorAll('button').forEach(x=>x.disabled=false);}});controls.append(button);}panel.append(controls);}
   article.append(panel);
 }
 
@@ -627,23 +640,23 @@ function groupMessageExtras(article, message, role) {
     if (!failed || !child.matches('.actions-log') || !child.querySelector('.action-rows')) return true;
     child.classList.add('action-warning');
     child.open = true;
-    child.querySelector('summary').textContent = 'Action de l’agent en erreur · ' + (message.actions || []).filter(action => action.ok === false).length;
+    child.querySelector('summary').textContent = appT('app.failedActions', { count: (message.actions || []).filter(action => action.ok === false).length });
     return false;
   });
   if (!grouped.length) return;
   const details = node('details', 'message-extras'); details.dataset.disclosureKey = 'message-extras';
   const summary = node('summary'); summary.dataset.workspaceFocus = 'message-extras:' + (message.id || message.localRequestId || message.requestId || '');
-  if (message.role === 'user') { summary.append(icon('more'), node('span','sr-only','Actions de ce message')); summary.title = 'Actions de ce message'; }
+  if (message.role === 'user') { summary.append(icon('more'), node('span','sr-only',appT('app.messageActions'))); summary.title = appT('app.messageActions'); }
   else {
-    summary.append(node('span','message-extras-label','Détails du tour'));
+    summary.append(node('span','message-extras-label',appT('app.turnDetails')));
     if(message.metrics){
-      const m=message.metrics,format=value=>new Intl.NumberFormat('fr-FR',{maximumFractionDigits:1}).format(value);
-      const duration=Number.isFinite(m.responseSeconds)&&m.responseSeconds>=0?format(m.responseSeconds)+' s':'— s';
-      const tokens=Number.isSafeInteger(m.outputTokens)&&m.outputTokens>=0?format(m.outputTokens)+' tokens':'— tokens';
-      const rate=Number.isFinite(m.tokensPerSecond)&&m.tokensPerSecond>0?(m.rateSource==='observed'?'≈ ':'')+format(m.tokensPerSecond)+' tok/s':'— tok/s';
+      const m=message.metrics,format=value=>appNumber(value, { maximumFractionDigits: 1 });
+      const duration=Number.isFinite(m.responseSeconds)&&m.responseSeconds>=0?appT('app.durationSeconds', { seconds: format(m.responseSeconds) }):appT('app.durationUnavailable');
+      const tokens=Number.isSafeInteger(m.outputTokens)&&m.outputTokens>=0?appT('app.tokensValue', { tokens: format(m.outputTokens) }):appT('app.tokensUnavailable');
+      const rate=Number.isFinite(m.tokensPerSecond)&&m.tokensPerSecond>0?appT('app.shortThroughput', { approximate: m.rateSource === 'observed' ? '≈ ' : '', rate: format(m.tokensPerSecond) }):appT('app.throughputUnavailable');
       const measures=node('span','message-turn-measures'),time=node('span','message-turn-duration',duration),throughput=node('span','message-turn-throughput',tokens+' · '+rate);
-      time.title='Durée totale de la réponse'+(duration.startsWith('—')?' indisponible':'');
-      throughput.title='Tokens générés et débit'+(m.rateSource==='observed'?' estimé sur le flux reçu':'');
+      time.title=appT('app.responseDurationTitle', { unavailable: duration.startsWith('—') ? appT('app.unavailableSuffix') : '' });
+      throughput.title=appT('app.throughputTitle', { estimated: m.rateSource === 'observed' ? appT('app.estimatedSuffix') : '' });
       measures.append(time,throughput);summary.append(measures);
     }
   }
@@ -659,22 +672,23 @@ function addMessage(message, parent = $('messages'), renderBody = true) {
   if (message.id) { article.dataset.messageId = message.id; article.tabIndex = -1; }
   if (message.requestId || message.localRequestId) article.dataset.requestId = message.requestId || message.localRequestId;
   article.dataset.messageKey = (message.requestId || message.localRequestId) ? (message.requestId || message.localRequestId) + '-' + message.role : message.id || '';
-  const role = node('div', 'message-role', message.role === 'user' ? 'Toi' : 'Assistant');
-  if (message.fromBionic) role.append(node('span', 'origin-tag', 'historique Bionic'));
-  else if(message.fromFork)role.append(node('span','origin-tag','copié du fil source'));
+  const role = node('div', 'message-role', message.role === 'user' ? appT('app.roleUser') : appT('app.roleAssistant'));
+  if (message.fromBionic) role.append(node('span', 'origin-tag', appT('app.bionicHistory')));
+  else if(message.fromFork)role.append(node('span','origin-tag',appT('app.copiedFromSource')));
   const actions = node('div', 'message-actions'); role.append(actions);
   const content = node('div', 'message-body'); content.dataset.messageRole = message.role;
   if (renderBody) renderText(content, message.text || '');
   article.append(role, content);
-  const capabilityNotice = message.capabilityNotice || capabilityNotices.get(JSON.stringify([state.projectId, message.requestId || message.localRequestId]));
+  const storedCapabilityNotice = capabilityNotices.get(JSON.stringify([state.projectId, message.requestId || message.localRequestId]));
+  const capabilityNotice = storedCapabilityNotice?.key ? appT(storedCapabilityNotice.key) : message.capabilityNotice || storedCapabilityNotice?.message;
   if (message.role === 'assistant' && capabilityNotice) article.append(node('p', 'message-capability-notice', capabilityNotice));
   if (message.text && (message.role==='user'||message.role==='assistant')) {
-    const copy=messageCopyControl(message.role==='user'?'Copier mon prompt':'Copier la réponse');copy.dataset.workspaceFocus='message-copy:'+article.dataset.messageKey;actions.append(copy);
+    const copy=messageCopyControl(message.role==='user'?appT('app.copyPrompt'):appT('app.copyResponse'));copy.dataset.workspaceFocus='message-copy:'+article.dataset.messageKey;actions.append(copy);
   }
   if (message.attachments?.length) {
     const files = node('div', 'message-attachments');
     for (const file of message.attachments) {
-      const details = node('details'); details.append(node('summary', '', file.name + (file.excerpt ? ' · extrait joint' : ' · fichier joint')));
+      const details = node('details'); details.append(node('summary', '', file.name + (file.excerpt ? appT('app.attachmentExcerptSuffix') : appT('app.attachmentFileSuffix'))));
       if (file.kind === 'image') { const image = node('img', 'message-image'); image.alt = file.name; image.loading = 'lazy'; image.src = '/api/attachment-image?' + new URLSearchParams({ hash: file.hash, mime: file.mime }); details.append(image); }
       else details.append(node('pre', '', file.text));
       files.append(details);
@@ -682,39 +696,39 @@ function addMessage(message, parent = $('messages'), renderBody = true) {
     article.append(files);
   }
   for (const intent of message.mutationIntents || []) if (intent.status === 'uncertain' || intent.status === 'pending') {
-    const warning=node('div','mutation-warning'); warning.append(node('strong','','Opération à vérifier'),node('p','',intent.tool+(intent.path?' · '+intent.path:'')),node('p','',intent.message||'Le résultat de cette opération n’est pas confirmé. Aucun succès n’est déduit et aucune action ne sera rejouée.'));
-    for(const copy of intent.backupCandidates||[]) { const a=node('a','file-action','Télécharger une copie antérieure vérifiée');a.href='/api/files/backup/download?'+new URLSearchParams({projectId:state.projectId,backupId:copy.id});a.download='';warning.append(a); }
+    const warning=node('div','mutation-warning'); warning.append(node('strong','',appT('app.operationUncertain')),node('p','',intent.tool+(intent.path?' · '+intent.path:'')),node('p','',intent.message||appT('app.operationUncertainHelp')));
+    for(const copy of intent.backupCandidates||[]) { const a=node('a','file-action',appT('app.downloadVerifiedBackup'));a.href='/api/files/backup/download?'+new URLSearchParams({projectId:state.projectId,backupId:copy.id});a.download='';warning.append(a); }
     article.append(warning);
   }
   for(const job of message.imageGenerations||[])article.append(imageGenerationView.card(job,state.chat,message));
   for (const action of message.actions || []) addFileAction(article, action, message);
   for(const approval of message.approvals||[])addToolApproval(article,approval,state.chat);
-  if(message.historicalActions?.length){const history=node('details','actions-log');history.append(node('summary','','Actions dans la conversation source · '+message.historicalActions.length));for(const action of message.historicalActions)history.append(node('p','message-footer',(action.message||action.name||'Action')+(action.path?' · '+action.path:'')));article.append(history);}
-  if(message.id&&!(message.role==='assistant'&&(message.complete===false||state.chat?.generation?.status==='running'&&state.chat.generation.replyId===message.id))){const fork=node('button','message-copy-icon message-fork');fork.type='button';fork.title='Créer une branche depuis ici';fork.setAttribute('aria-label',fork.title);fork.dataset.workspaceFocus='message-fork:'+article.dataset.messageKey;fork.append(icon('branch'));fork.addEventListener('click',()=>forkChat(message.id));actions.append(fork);}
+  if(message.historicalActions?.length){const history=node('details','actions-log');history.append(node('summary','',appT('app.historicalActionCount', { count: appNumber(message.historicalActions.length) })));for(const action of message.historicalActions)history.append(node('p','message-footer',(action.message||action.name||appT('app.action'))+(action.path?' · '+action.path:'')));article.append(history);}
+  if(message.id&&!(message.role==='assistant'&&(message.complete===false||state.chat?.generation?.status==='running'&&state.chat.generation.replyId===message.id))){const fork=node('button','message-copy-icon message-fork');fork.type='button';fork.title=appT('app.branchFromHere');fork.setAttribute('aria-label',fork.title);fork.dataset.workspaceFocus='message-fork:'+article.dataset.messageKey;fork.append(icon('branch'));fork.addEventListener('click',()=>forkChat(message.id));actions.append(fork);}
   const footer = [];
-  if (message.reasoning && EFFORT_LABELS[message.reasoning]) article.append(node('p', 'message-footer message-effort', 'Effort : ' + EFFORT_LABELS[message.reasoning].toLocaleLowerCase('fr')));
+  if (message.reasoning && EFFORT_LABEL_KEYS[message.reasoning]) article.append(node('p', 'message-footer message-effort', appT('app.effortValue', { value: effortLabel(message.reasoning) })));
   if (message.truncated) addBudgetWarning(article, message);
-  if (message.outputBudget && !message.truncated) { const b=message.outputBudget; article.append(node('p','message-budget'+(b.adjusted?' message-budget-adjusted':''),'Plafond de cet appel : '+new Intl.NumberFormat('fr-FR').format(b.maxOutputTokens)+' tokens'+(b.adjusted?' · réduit pour tenir dans le contexte estimé':'')+'.')); }
-  if (message.interrupted || message.limited&&!message.truncated) footer.push(message.interrupted ? 'Réponse interrompue.' : 'Limite d’actions atteinte. Les opérations réalisées restent visibles.');
+  if (message.outputBudget && !message.truncated) { const b=message.outputBudget; article.append(node('p','message-budget'+(b.adjusted?' message-budget-adjusted':''),appT('app.outputBudgetAdjusted', { count: appNumber(b.maxOutputTokens), adjusted: b.adjusted ? appT('app.budgetAdjustedSuffix') : '' }))); }
+  if (message.interrupted || message.limited&&!message.truncated) footer.push(message.interrupted ? appT('app.responseInterrupted') : appT('app.actionLimitHelp'));
   if (footer.length) article.append(node('p', 'message-footer', footer.join(' · ')));
   if (message.metrics && message.role === 'assistant') {
     const m = message.metrics;
-    const number = value => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(value);
+    const number = value => appNumber(value, { maximumFractionDigits: 1 });
     const rate = Number.isFinite(m.tokensPerSecond) && m.tokensPerSecond > 0;
     const summary = [];
-    if (rate) summary.push((m.rateSource === 'observed' ? '≈ ' : '') + number(m.tokensPerSecond) + ' tokens/s');
-    if (Number.isSafeInteger(m.outputTokens)) summary.push(number(m.outputTokens) + ' tokens générés');
+    if (rate) summary.push(appT('app.throughput', { approximate: m.rateSource === 'observed' ? '≈ ' : '', rate: number(m.tokensPerSecond) }));
+    if (Number.isSafeInteger(m.outputTokens)) summary.push(appT('app.generatedTokens', { count: number(m.outputTokens) }));
     if (summary.length || Number.isFinite(m.responseSeconds)) {
       const details = node('details', 'message-metrics');
-      details.append(node('summary', '', summary.join(' · ') || 'Mesures du tour'));
+      details.append(node('summary', '', summary.join(' · ') || appT('app.turnMetrics')));
       const explanations = [];
-      if (rate) explanations.push(m.rateSource === 'observed' ? 'Débit approché sur le flux reçu, hors attente initiale. Il inclut le raisonnement transmis.' : 'Débit de génération communiqué par Bionic.');
-      if (Number.isFinite(m.firstFragmentSeconds)) explanations.push('Premier fragment reçu après ' + number(m.firstFragmentSeconds) + ' s.');
-      if (Number.isFinite(m.responseSeconds)) explanations.push('Durée totale : ' + number(m.responseSeconds) + ' s.');
-      if (Number.isSafeInteger(m.inputTokens)) explanations.push((m.generationPhases > 1 ? 'Tokens traités en entrée : ' : 'Contexte transmis : ') + number(m.inputTokens) + ' tokens.');
-      if (m.generationPhases > 1) explanations.push(m.generationPhases + ' étapes de génération, avec les appels d’outils.');
-      if (m.reasoningTokens > 0) explanations.push('Dont raisonnement : ' + number(m.reasoningTokens) + ' tokens générés.');
-      if (!rate) explanations.push('Débit indisponible pour cette réponse.');
+      if (rate) explanations.push(m.rateSource === 'observed' ? appT('app.observedRateHelp') : appT('app.bionicRateHelp'));
+      if (Number.isFinite(m.firstFragmentSeconds)) explanations.push(appT('app.firstFragment', { seconds: number(m.firstFragmentSeconds) }));
+      if (Number.isFinite(m.responseSeconds)) explanations.push(appT('app.totalDuration', { seconds: number(m.responseSeconds) }));
+      if (Number.isSafeInteger(m.inputTokens)) explanations.push(appT('app.inputTokens', { label: appT(m.generationPhases > 1 ? 'app.inputTokensLabel' : 'app.contextTokensLabel'), count: number(m.inputTokens) }));
+      if (m.generationPhases > 1) explanations.push(appT('app.generationPhases', { count: m.generationPhases }));
+      if (m.reasoningTokens > 0) explanations.push(appT('app.reasoningTokens', { count: number(m.reasoningTokens) }));
+      if (!rate) explanations.push(appT('app.rateUnavailable'));
       details.append(node('p', '', explanations.join(' '))); article.append(details);
     }
   }
@@ -736,15 +750,15 @@ function renderQueue(chat, parent = $('messages')) {
     const article = node('article', 'message queued-message');
     article.dataset.messageKey = 'queue:' + item.requestId;
     const interrupted = item.status === 'interrupted' || item.status === 'error', submitting = item.status === 'submitting';
-    const role=node('div', 'message-role', interrupted ? 'Message non exécuté · à reprendre' : submitting ? 'Envoi au PC…' : 'Message en attente');article.append(role);
+    const role=node('div', 'message-role', interrupted ? appT('app.queueInterrupted') : submitting ? appT('app.sendingPc') : appT('app.queueWaiting'));article.append(role);
     const content = node('div', 'message-body'); content.dataset.messageRole = 'user'; renderText(content, item.text || ''); article.append(content);
-    if(item.text){const copy=messageCopyControl('Copier mon prompt');copy.dataset.workspaceFocus='message-copy:'+article.dataset.messageKey;const actions=node('div','message-actions');actions.append(copy);role.append(actions);}
-    if (item.attachments?.length) article.append(node('p', 'message-footer', item.attachments.length + ' fichier' + (item.attachments.length > 1 ? 's joints' : ' joint')));
+    if(item.text){const copy=messageCopyControl(appT('app.copyPrompt'));copy.dataset.workspaceFocus='message-copy:'+article.dataset.messageKey;const actions=node('div','message-actions');actions.append(copy);role.append(actions);}
+    if (item.attachments?.length) article.append(node('p', 'message-footer', appT('app.attachedFiles', { count: item.attachments.length })));
     const actions = node('div', 'queue-actions');
     if (interrupted) {
-      const reuse = node('button', 'file-action', 'Reprendre dans le brouillon'); reuse.type = 'button';
+      const reuse = node('button', 'file-action', appT('app.resumeDraft')); reuse.type = 'button';
       reuse.addEventListener('click', () => {
-        if ($('prompt').value.trim() || fileBrowser.snapshot().length) return toast('Ton brouillon contient déjà un message. Envoie-le ou efface-le avant de reprendre celui-ci.');
+        if ($('prompt').value.trim() || fileBrowser.snapshot().length) return toast(appT('app.draftAlreadyFilled'));
         $('prompt').value = item.text || ''; $('model').value = item.model || $('model').value;
         const sameProject = !item.projectId || item.projectId === state.projectId;
         state.draftReasoning[$('model').value] = item.reasoning || 'default'; state.draftFileProfile = sameProject && !unassignedProject() ? fileProfile(item,'none') : 'none'; $('agent-files').value = state.draftFileProfile; state.draftWebApproval = item.webApproval === true; $('agent-web-approval').checked = state.draftWebApproval;
@@ -755,13 +769,13 @@ function renderQueue(chat, parent = $('messages')) {
         $('agent-images').checked = state.draftImageAccess;
         companionSettings.imagePermission();
         const references = sameProject ? item.attachmentReferences || item.attachments || [] : [];
-        if (!sameProject && item.attachments?.length) toast('Le texte est repris. Rejoins ses fichiers depuis le projet courant.');
+        if (!sameProject && item.attachments?.length) toast(appT('app.reattachResumed'));
         fileBrowser.restore(references.map(reference => ({ ...reference, name: item.attachments?.find(file => file.path === reference.path && file.rootId === reference.rootId)?.name || reference.name })));
         saveDraft(); setEffort(); $('prompt').focus();
         if (item.local) { const draft = draftForView(); draft.failed = (draft.failed || []).filter(failed => failed.requestId !== item.requestId); rememberDrafts(); renderChat(); }
       }); actions.append(reuse);
     } else if (!submitting) {
-      const remove = node('button', 'file-action', 'Retirer de la file'); remove.type = 'button';
+      const remove = node('button', 'file-action', appT('app.removeFromQueue')); remove.type = 'button';
       const target = { projectId: state.projectId, id: chat?.id, requestId: item.requestId };
       remove.addEventListener('click', async () => {
         remove.disabled = true;
@@ -841,7 +855,7 @@ function reconcileMessage(previous, next, text) {
   keepChildOrder(previous, children);
   return previous;
 }
-function renderChat() {
+function renderChat({ preserveComposer = false } = {}) {
   const chat = state.chat, project = state.projects.find(p => p.id === state.projectId);
   const view = JSON.stringify([state.projectId, state.viewKey]), sameView = readingView === view;
   const oldScroll = $('messages').scrollTop;
@@ -855,27 +869,29 @@ function renderChat() {
   const focusedDisclosure = document.activeElement?.tagName === 'SUMMARY' ? document.activeElement.closest('details[data-disclosure-key]') : null;
   const disclosureFocus = focusedDisclosure ? { key: focusedDisclosure.dataset.disclosureKey, messageKey: focusedDisclosure.closest('.message')?.dataset.messageKey } : null;
   const selection = focus && typeof document.activeElement.selectionStart === 'number' ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
+  if (!preserveComposer) {
   $('agent-files').value = unassignedProject() ? 'none' : state.draftFileProfile ?? fileProfile(chat);
   $('agent-web-approval').checked = state.draftWebApproval ?? chat?.webApproval ?? false;
   $('agent-web').checked = state.draftWebAccess ?? chat?.webAccess ?? false;
   $('agent-scripts').checked = unassignedProject() ? false : state.draftScriptAccess ?? chat?.scriptAccess ?? false;
   $('agent-images').checked = state.draftImageAccess ?? chat?.imageAccess ?? false;
-  $('thread-title').textContent = chat?.name || 'Nouveau chat web';
-  $('thread-subtitle').textContent = (project?.name || 'Projet') + (chat?.source === 'bionic' ? ' · historique Bionic' : ' · conversation web');
+  }
+  $('thread-title').textContent = chat?.name || appT('app.newChat');
+  $('thread-subtitle').textContent = (project?.name || appT('app.projectFallback')) + (chat?.source === 'bionic' ? appT('app.historySubtitle') : appT('app.webSubtitle'));
   $('banner').hidden = false;
-  let banner = chat?.source === 'bionic' ? 'Cet historique est lu depuis Bionic. Ton prochain message créera une suite web, conservée ici.' : chat?.origin?.kind==='fork' ? 'Branche indépendante de « '+chat.origin.name+' ». Aucun outil ni message n’a été rejoué.' : chat?.origin ? 'Suite web de « ' + chat.origin.name + ' ». Les nouveaux messages ne sont pas synchronisés vers Bionic.' : 'Ce chat est conservé dans le compagnon web sur ce PC.';
-  if (chat?.truncated || chat?.importedTruncated) banner += ' Historique long : seule la partie récente est disponible.';
-  if (chat?.omitted?.attachments) banner += ' Les pièces jointes ne sont pas affichées.';
-  if (chat?.model && !(state.status?.models || []).some(m => m.id === chat.model)) banner += ' Le modèle d’origine n’est pas disponible sous le même nom dans l’API : vérifie le modèle sélectionné avant d’envoyer.';
+  let banner = chat?.source === 'bionic' ? appT('app.nativeBanner') : chat?.origin?.kind==='fork' ? appT('app.forkBanner', { name: chat.origin.name }) : chat?.origin ? appT('app.continuationBanner', { name: chat.origin.name }) : appT('app.webBanner');
+  if (chat?.truncated || chat?.importedTruncated) banner += appT('app.longHistorySuffix');
+  if (chat?.omitted?.attachments) banner += appT('app.hiddenAttachmentsSuffix');
+  if (chat?.model && !(state.status?.models || []).some(m => m.id === chat.model)) banner += appT('app.originalModelMissingSuffix');
   $('banner').replaceChildren(document.createTextNode(banner));
-  if(chat?.origin){$('banner').append(node('span','',' Fichiers du projet partagés. '));const source=node('button','source-link','Voir la conversation source');source.type='button';source.addEventListener('click',()=>visitSource(chat.origin,source));$('banner').append(source);}
+  if(chat?.origin){$('banner').append(node('span','',appT('app.sharedFilesSuffix')));const source=node('button','source-link',appT('app.viewSource'));source.type='button';source.addEventListener('click',()=>visitSource(chat.origin,source));$('banner').append(source);}
   const nextMessages = document.createDocumentFragment(), displayText = new Map();
   if (chat?.messages?.length) for (const m of chat.messages) {
     const body = addMessage(m, nextMessages, false);
-    const text = m.role === 'assistant' && !m.text && chat.generation?.status === 'running' && (m.requestId === chat.generation.requestId || m.localRequestId === chat.generation.requestId) ? 'Le modèle prépare sa réponse sur le PC…' : m.text || '';
+    const text = m.role === 'assistant' && !m.text && chat.generation?.status === 'running' && (m.requestId === chat.generation.requestId || m.localRequestId === chat.generation.requestId) ? appT('app.modelPreparing') : m.text || '';
     displayText.set(body.parentElement.dataset.messageKey, text);
   }
-  else { const empty = node('div', 'welcome'); empty.append(node('h2', '', 'Commence une nouvelle idée.'), node('p', '', 'Le modèle local répondra à partir de tes messages et des fichiers que tu choisis de joindre.')); nextMessages.append(empty); }
+  else { const empty = node('div', 'welcome'); empty.append(node('h2', '', appT('app.welcomeTitle')), node('p', '', appT('app.welcomeHelp'))); nextMessages.append(empty); }
   renderQueue(chat, nextMessages);
   const nextArticles = [...nextMessages.children].map(article => {
     for (const {detail, key} of messageDisclosures(article)) {
@@ -894,7 +910,7 @@ function renderChat() {
   if (semanticSummary) semanticSummary.focus({ preventScroll: true });
   else if (focus) { const input = [...$('messages').querySelectorAll('[data-workspace-focus]')].find(el => el.dataset.workspaceFocus === focus); if (input) { input.focus({ preventScroll: true }); if (selection) input.setSelectionRange(...selection); } }
   restoreMessageSelection(textSelection);
-  const selectedModel = draftForView().model;
+  const selectedModel = preserveComposer ? $('model').value : draftForView().model;
   $('model').value = (state.status?.models || []).some(model => model.id === selectedModel) ? selectedModel : modelForChat();
   setEffort();
   updateHistoryControls();
@@ -911,8 +927,8 @@ async function openChat(id) {
   const seq = ++state.viewSeq, pid = state.projectId;
   state.loading = true; state.chat = chats.get(chatKey(pid, id)) || null; restoreDraft(chatKey(pid, id)); setSending();
   error(''); $('app').classList.add('thread-open');
-  $('thread-title').textContent = 'Ouverture de la conversation…';
-  if (!sameTarget) $('messages').replaceChildren(node('p', 'loading-label', 'Ouverture de la conversation…'));
+  $('thread-title').textContent = appT('app.openingConversation');
+  if (!sameTarget) $('messages').replaceChildren(node('p', 'loading-label', appT('app.openingConversation')));
   try {
     const chat = await fetchConversationPage(pid, id);
     if (seq !== state.viewSeq || pid !== state.projectId) return;
@@ -932,10 +948,10 @@ function setSending() {
   $('send').hidden = false; $('stop').hidden = !running || !state.chat?.id;
   $('prompt').disabled = locked;
   $('send').disabled = locked || unresolved || !state.projectId || !state.status?.ok || !state.status?.models?.length;
-  $('send').setAttribute('aria-label', state.sending ? 'Ajouter à la file' : 'Envoyer le message');
-  $('send').title = state.sending ? 'Ajouter à la file' : 'Envoyer le message';
+  $('send').setAttribute('aria-label', state.sending ? appT('app.addToQueue') : appT('app.sendMessage'));
+  $('send').title = state.sending ? appT('app.addToQueue') : appT('app.sendMessage');
   $('send').classList.toggle('queue-send', state.sending);
-  $('send-label').textContent = state.sending ? 'Ajouter à la file' : '';
+  $('send-label').textContent = state.sending ? appT('app.addToQueue') : '';
   for (const id of ['project', 'new-chat']) $(id).disabled = state.uploading || conversationMove.busy;
   $('refresh').disabled = connectionRefreshing || state.uploading || conversationMove.busy;
   syncProjectManagement();
@@ -948,19 +964,19 @@ function setSending() {
   companionSettings.imagePermission();
   $('image-workflow').disabled = locked || !companionSettings.enabled();
   $('agent-web-approval').disabled = locked || !$('agent-web').checked;
-  $('files-permission-state').textContent = ({none:'Outils fichiers désactivés',read:'Fichiers en lecture',write:'Fichiers modifiables'}[currentFileProfile()]) + ($('agent-web').checked ? ' · Web' : '') + ($('agent-scripts').checked ? ' · Scripts' : '') + (companionSettings.enabled()&&$('agent-images').checked ? ' · Images' : '');
+  $('files-permission-state').textContent = ({none:appT('app.filesDisabled'),read:appT('app.filesRead'),write:appT('app.filesWrite')}[currentFileProfile()]) + ($('agent-web').checked ? appT('app.webToolsSuffix') : '') + ($('agent-scripts').checked ? appT('app.scriptToolsSuffix') : '') + (companionSettings.enabled()&&$('agent-images').checked ? appT('app.imageToolsSuffix') : '');
   $('logout').disabled = state.uploading || conversationMove.busy;
   document.querySelectorAll('.restore-action').forEach(button => button.disabled = locked || state.sending || button.dataset.restored === 'true');
   $('effort').disabled = locked || !(state.status?.models || []).find(model => model.id === $('model').value)?.reasoning?.allowedOptions.length;
   document.querySelectorAll('.session,.project-toggle,.project-select,.project-more').forEach(b => b.disabled = state.uploading || conversationMove.busy);
   const queued = Math.max(state.chat?.queue?.filter(item => item.status === 'queued').length || 0, active.filter(job => job.status === 'queued').length);
   $('composer-activity').hidden = !state.sending;
-  const activityText = state.chat?.generation?.awaitingApproval ? 'Un outil attend ta validation dans ce chat. Tu peux continuer à écrire.' : unresolved ? 'Envoi au PC… Tu peux préparer ton prochain message.' : (running ? 'Réponse en cours sur le PC.' : '') + (queued ? ` ${queued} message${queued > 1 ? 's' : ''} en attente.` : '') + ' Tu peux écrire ou ouvrir un autre chat.';
-  setText($('composer-activity'), ['waiting-model','waiting-resource','waiting-image-resource'].includes(state.chat?.generation?.phase) ? 'En attente d’une ressource du PC pour continuer. Tu peux écrire ou ouvrir un autre chat.' : activityText);
-  $('composer-note').textContent = state.sending ? 'Les messages de ce chat seront traités dans l’ordre. Les réponses continuent si tu quittes le navigateur.' : unassignedProject() ? 'Sans projet : les outils de fichiers sont désactivés.' : currentFileProfile()==='write' ? 'Prochain envoi : lecture ciblée et modifications directes autorisées, avec sauvegardes.' : currentFileProfile()==='read' ? 'Prochain envoi : outils fichiers en lecture seule.' : 'Prochain envoi : outils fichiers désactivés.';
-  if(companionSettings.enabled()&&$('agent-images').checked) $('composer-note').textContent += ' ComfyUI peut générer une image ; son rendu continue après la réponse.';
-  if($('agent-scripts').checked) $('composer-note').textContent += ' Un script validé peut modifier le PC, y compris hors projet.';
-  if($('agent-web').checked) $('composer-note').textContent += ' Les recherches et URL quittent le PC.';
+  const activityText = state.chat?.generation?.awaitingApproval ? appT('app.approvalActivity') : unresolved ? appT('app.sendingActivity') : (running ? appT('app.runningActivity') : '') + (queued ? appT('app.queuedActivity', { count: queued }) : '') + appT('app.keepWritingSuffix');
+  setText($('composer-activity'), state.chat?.generation?.phase === 'waiting-image' ? appT('app.beta24.waitingImageHelp') : ['waiting-model','waiting-resource','waiting-image-resource'].includes(state.chat?.generation?.phase) ? appT('app.beta24.waitingResourceHelp') : activityText);
+  $('composer-note').textContent = state.sending ? appT('app.queueComposerHelp') : unassignedProject() ? appT('app.unassignedComposerHelp') : currentFileProfile()==='write' ? appT('app.writeComposerHelp') : currentFileProfile()==='read' ? appT('app.readComposerHelp') : appT('app.noneComposerHelp');
+  if(companionSettings.enabled()&&$('agent-images').checked) $('composer-note').textContent += appT('app.imageComposerHelp');
+  if($('agent-scripts').checked) $('composer-note').textContent += appT('app.scriptComposerHelp');
+  if($('agent-web').checked) $('composer-note').textContent += appT('app.webComposerHelp');
   updateConversationOptions();
   fileBrowser.refresh();
 }
@@ -976,41 +992,43 @@ function clearProjectAdoption() {
   projectManagement.preview = null; ++projectManagement.revision;
   $('project-adoption-form').hidden = true; $('project-adoption-roots').replaceChildren();
 }
-function projectManagementMessage(id, text = '') { $(id).textContent = text; $(id).hidden = !text; }
+function projectManagementMessage(id, text = '') { appLabelBindings.delete(id); $(id).textContent = text; $(id).hidden = !text; }
+function projectManagementLabel(id, key, params) { $(id).hidden = false; setAppLabel(id, key, params); }
 async function createLocalProject(event) {
   event.preventDefault(); if (projectManagement.busy || $('local-project-create').disabled) return;
   const name = $('local-project-name').value.trim(); if (!name) return;
   const epoch = state.authEpoch; projectManagement.busy = true; setSending();
-  projectManagementMessage('local-project-error'); projectManagementMessage('local-project-status', 'Création du projet…');
+  projectManagementMessage('local-project-error'); projectManagementLabel('local-project-status', 'app.beta24.creatingProject');
   try {
     const { project } = await api('/api/local-projects', { method: 'POST', body: JSON.stringify({ name }) });
     if (epoch !== state.authEpoch || !state.authenticated) return;
     await loadProjects(); await selectProject(project.id);
     if (epoch !== state.authEpoch || !state.authenticated) return;
     $('local-project-name').value = ''; $('project-management').open = false;
-    toast('Projet local créé, sans accès aux fichiers.'); $('project').focus();
+    toastLabel('app.beta24.projectCreated'); $('project').focus();
   } catch (failure) { if (epoch === state.authEpoch && state.authenticated) projectManagementMessage('local-project-error', failure.message); }
   finally { projectManagement.busy = false; if (epoch === state.authEpoch && state.authenticated) { projectManagementMessage('local-project-status'); setSending(); } }
 }
 async function previewProjectAdoption() {
   if ($('project-adoption-preview').disabled) return;
   clearProjectAdoption(); const revision = projectManagement.revision, epoch = state.authEpoch, projectId = state.projectId;
-  projectManagement.busy = true; setSending(); projectManagementMessage('local-project-error'); projectManagementMessage('local-project-status', 'Lecture des dossiers et de leurs droits…');
+  projectManagement.busy = true; setSending(); projectManagementMessage('local-project-error'); projectManagementLabel('local-project-status', 'app.beta24.readingRoots');
   try {
     const preview = await api('/api/local-projects/adoption?' + new URLSearchParams({ projectId }));
     if (revision !== projectManagement.revision || epoch !== state.authEpoch || projectId !== state.projectId || !state.authenticated) return;
     projectManagement.preview = preview;
-    $('project-adoption-title').textContent = 'Adopter « ' + preview.name + ' »';
-    $('project-adoption-notice').textContent = preview.notice;
+    setAppLabel('project-adoption-title', 'app.beta24.adoptTitle', { name: preview.name });
+    if (preview.notice === 'Choisis les dossiers et leurs droits. Les historiques Bionic restent en lecture seule.') setAppLabel('project-adoption-notice', 'app.beta24.adoptionNotice');
+    else { appLabelBindings.delete('project-adoption-notice'); $('project-adoption-notice').textContent = preview.notice; }
     for (const root of preview.roots) {
       const row = node('fieldset', 'project-adoption-root'), legend = node('legend', '', root.name), includeLabel = node('label'), include = node('input');
-      include.type = 'checkbox'; include.dataset.rootId = root.id; includeLabel.append(include, document.createTextNode(' Autoriser ce dossier en lecture'));
+      include.type = 'checkbox'; include.dataset.rootId = root.id; includeLabel.append(include, globalThis.BionicI18n.bindText(node('span'), 'app.beta24.allowRootRead'));
       const writeLabel = node('label'), write = node('input'); write.type = 'checkbox'; write.dataset.writeFor = root.id; write.disabled = true;
       include.addEventListener('change', () => { write.disabled = !include.checked || !root.writable; if (write.disabled) write.checked = false; });
-      writeLabel.append(write, document.createTextNode(root.writable ? ' Autoriser aussi les modifications' : ' Modifications interdites par la source'));
+      writeLabel.append(write, globalThis.BionicI18n.bindText(node('span'), root.writable ? 'app.beta24.allowRootWrite' : 'app.beta24.rootWriteDenied'));
       row.append(legend, node('p', 'project-root-path', root.path), includeLabel, writeLabel); $('project-adoption-roots').append(row);
     }
-    if (!preview.roots.length) $('project-adoption-roots').append(node('p', '', 'Aucun dossier partagé. Le projet sera créé sans accès aux fichiers.'));
+    if (!preview.roots.length) $('project-adoption-roots').append(globalThis.BionicI18n.bindText(node('p'), 'app.beta24.noSharedRoot'));
     $('project-adoption-form').hidden = false; $('project-adoption-title').focus({ preventScroll: true });
   } catch (failure) { if (revision === projectManagement.revision && epoch === state.authEpoch && state.authenticated) projectManagementMessage('local-project-error', failure.message); }
   finally { projectManagement.busy = false; if (epoch === state.authEpoch && state.authenticated) { projectManagementMessage('local-project-status'); setSending(); } }
@@ -1027,7 +1045,7 @@ async function adoptProject(event) {
     await api('/api/local-projects/adopt', { method: 'POST', body: JSON.stringify({ projectId: preview.id, fingerprint: preview.fingerprint, roots }) });
     if (epoch !== state.authEpoch || !state.authenticated) return;
     clearProjectAdoption(); await loadProjects(); $('project-management').open = false;
-    toast('Projet adopté avec les seuls dossiers et droits choisis.'); $('project').focus();
+    toastLabel('app.beta24.projectAdopted'); $('project').focus();
   } catch (failure) { if (epoch === state.authEpoch && state.authenticated) projectManagementMessage('local-project-error', failure.message); }
   finally { projectManagement.busy = false; if (epoch === state.authEpoch && state.authenticated) setSending(); }
 }
@@ -1058,8 +1076,8 @@ function updateHistoryControls() {
   $('history-controls').hidden = !page;
   $('history-load').hidden = !page?.hasMore;
   $('history-load').disabled = busy || state.loading;
-  setText($('history-load'), busy ? 'Chargement des messages…' : 'Charger les messages précédents');
-  setText($('history-count'), page ? (chat.historyWindowReset ? 'Historique récent rechargé ; les messages précédents restent accessibles. ' : '') + chat.messages.length + ' sur ' + page.total + ' messages' : '');
+  setText($('history-load'), busy ? appT('app.beta24.loadingMessages') : appT('app.beta24.loadPreviousMessages'));
+  setText($('history-count'), page ? (chat.historyWindowReset ? appT('app.beta24.historyReset') : '') + appT('app.beta24.historyCount', { shown: appNumber(chat.messages.length), count: page.total }) : '');
 }
 async function loadOlderMessages() {
   const chat = state.chat, projectId = state.projectId, epoch = state.authEpoch, seq = state.viewSeq;
@@ -1077,7 +1095,7 @@ async function loadOlderMessages() {
     state.chat = merged; followingReply = false; renderChat();
     const restoredAnchor = [...container.querySelectorAll(':scope > .message')].find(message => message.dataset.messageId === anchorId);
     if (restoredAnchor && offset !== undefined) container.scrollTop += restoredAnchor.getBoundingClientRect().top - offset;
-    announce('Messages précédents chargés. ' + merged.messages.length + ' messages affichés.', 'history:' + key + ':' + merged.messages[0]?.id);
+    announce(appT('app.beta24.previousMessagesLoaded', { count: merged.messages.length }), 'history:' + key + ':' + merged.messages[0]?.id);
     loaded = true;
   } catch (failure) { if (epoch === state.authEpoch && seq === state.viewSeq && state.chat?.id === chat.id) error(failure.message); }
   finally {
@@ -1132,8 +1150,8 @@ async function recoverReplies() {
         if (epoch !== state.authEpoch || revision !== conversationMove.revision) return;
         if (e.status === 404 && Date.now() - job.createdAt > 15000) {
           jobs.delete(job.requestId);
-          if (job.projectId === state.projectId && (job.id === state.chat?.id || job.viewKey === state.viewKey)) error('Le PC n’a pas confirmé cet envoi. Vérifie la conversation avant de le renvoyer.');
-        } else if (e.status !== 401 && job.projectId === state.projectId && job.id === state.chat?.id) error('Reconnexion au PC… Les messages ne sont pas renvoyés.');
+          if (job.projectId === state.projectId && (job.id === state.chat?.id || job.viewKey === state.viewKey)) error(appT('app.sendUnconfirmed'));
+        } else if (e.status !== 401 && job.projectId === state.projectId && job.id === state.chat?.id) error(appT('app.reconnectNoResend'));
       }
     }));
     if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return;
@@ -1151,7 +1169,7 @@ async function recoverReplies() {
       if (epoch === state.authEpoch && revision === conversationMove.revision && projectId === state.projectId) { state.sessions = response.sessions; state.sessionsPartial=!!response.partial; state.sessionWarnings=response.warnings||[]; renderSessions(); }
     }
     rememberJobs();
-  } catch (e) { if (e.status !== 401 && state.authenticated) $('status').textContent = 'Reconnexion au PC…';
+  } catch (e) { if (e.status !== 401 && state.authenticated) setAppLabel('status', 'app.reconnecting');
   } finally {
     recoveryBusy = false; if (state.authenticated) { setSending(); renderSessions(); workspace.refreshActivity(); scheduleRecovery(); }
   }
@@ -1190,7 +1208,7 @@ function redrawJob(job, full = false) {
     const reply = replyForJob(chat, job.requestId), body = article.querySelector('.message-body');
     if (!reply || !body) return;
     const follow = followingReply && nearReplyBottom() && !readingInteraction($('messages'));
-    renderText(body, reply.text || 'Le modèle prépare sa réponse sur le PC…');
+    renderText(body, reply.text || appT('app.modelPreparing'));
     if (follow) scrollBottom(); else updateReplyFollow();
   }, 40);
 }
@@ -1198,7 +1216,7 @@ async function generateDirectImage() {
   if ($('generate-image-direct').disabled) return;
   const prompt = $('prompt').value.trim();
   if (!prompt || prompt.length > 6000) {
-    error('Écris un prompt image de 1 à 6 000 caractères dans le message.');
+    errorLabel('app.beta24.imagePromptRequired');
     closeComposerFiles(); $('prompt').focus(); return;
   }
   saveDraft(); error('');
@@ -1224,7 +1242,7 @@ async function generateDirectImage() {
     accepted = true; bindJob(job, result.id); jobs.delete(requestId); rememberJobs();
     if (state.projectId === projectId && state.viewKey === job.viewKey) await openChat(result.id);
     await loadSessions();
-    toast('Image envoyée à ComfyUI. Le rendu continue sur le PC.');
+    toastLabel('app.beta24.imageSubmitted');
   } catch (failure) {
     if (epoch !== state.authEpoch || !state.authenticated) return;
     if (!accepted && failure.status >= 400 && failure.status < 500 && failure.status !== 409) {
@@ -1239,7 +1257,7 @@ async function generateDirectImage() {
       }
       rememberDrafts();
       error(failure.message);
-    } else error('Le PC n’a pas confirmé l’affichage de cette image. Le suivi reprend sans renvoyer le prompt. Vérifie la conversation avant un nouvel envoi.');
+    } else errorLabel('app.beta24.imageDisplayUnconfirmed');
   } finally {
     if (epoch === state.authEpoch && state.authenticated) { setSending(); renderSessions(); scheduleRecovery(); }
   }
@@ -1270,7 +1288,7 @@ async function send(event) {
       const j = await r.json(); rejected = r.status !== 409 || !/déjà.*reçu/i.test(j.error || '');
       if (rejected) jobs.delete(requestId);
       if (r.status === 401) hidePrivateViews();
-      throw new Error(j.error || 'Le modèle ne peut pas répondre.');
+      throw new Error(j.error || appT('app.modelCannotReply'));
     }
     const reader = r.body.getReader(), decoder = new TextDecoder(); let buffer = '';
     for (;;) {
@@ -1311,14 +1329,15 @@ async function send(event) {
           const reply = replyForJob(localChatForJob(job), requestId); if (reply && e.contextReceipt) reply.contextReceipt = e.contextReceipt;
           redrawJob(job, true);
         } else if (e.type === 'capability') {
-          capabilityNotices.set(JSON.stringify([job.projectId, requestId]), e.message);
+          const noticeKey = e.tools === 'unknown' && e.trial === true ? 'app.beta24.toolsTrialNotice' : null;
+          capabilityNotices.set(JSON.stringify([job.projectId, requestId]), noticeKey ? { key: noticeKey } : { message: e.message });
           if (capabilityNotices.size > 100) capabilityNotices.delete(capabilityNotices.keys().next().value);
           const current = localChatForJob(job), reply = replyForJob(current, requestId);
-          if (reply) reply.capabilityNotice = e.message;
-          if (jobIsVisible(job)) announce(e.message, 'capability:' + requestId);
+          if (reply) reply.capabilityNotice = noticeKey ? '' : e.message;
+          if (jobIsVisible(job)) announce(noticeKey ? appT(noticeKey) : e.message, 'capability:' + requestId);
           redrawJob(job, true);
         } else if (e.type === 'error') { if (jobIsVisible(job)) error(e.message); }
-        else if (e.type === 'done') { const reply=replyForJob(localChatForJob(job),requestId);if(reply)Object.assign(reply,{truncated:e.truncated,finishReason:e.finishReason,outputBudget:e.outputBudget,limited:e.limited});if(e.limited&&!e.truncated&&jobIsVisible(job))toast('Limite d’actions atteinte.');redrawJob(job,true); }
+        else if (e.type === 'done') { const reply=replyForJob(localChatForJob(job),requestId);if(reply)Object.assign(reply,{truncated:e.truncated,finishReason:e.finishReason,outputBudget:e.outputBudget,limited:e.limited});if(e.limited&&!e.truncated&&jobIsVisible(job))toast(appT('app.actionLimit'));redrawJob(job,true); }
       }
     }
   } catch (e) {
@@ -1330,7 +1349,7 @@ async function send(event) {
       else drafts.set(key, { ...current, failed: [...(current.failed || []), { ...data, attachments: originalDraft.attachments, status: 'error', local: true }] });
       if (jobIsVisible(job)) renderChat();
       rememberDrafts();
-    } else if (document.visibilityState !== 'hidden' && jobIsVisible(job)) error('Reconnexion au PC… Vérification de la réception du message, sans le renvoyer.');
+    } else if (document.visibilityState !== 'hidden' && jobIsVisible(job)) error(appT('app.reconnectChecking'));
   } finally {
     job.controller = null; rememberJobs();
     if (job.epoch === state.authEpoch && state.authenticated) { setSending(); await recoverReplies(); scheduleRecovery(); }
@@ -1360,7 +1379,7 @@ async function start() {
   if (last && state.sessions.some(chat => chat.id === last)) await openChat(last);
   else {
     const pending = [...jobs.values()].find(job => !job.id && job.viewKey === savedKey);
-    state.chat = pending ? { name: 'Envoi au PC…', source: 'web', messages: [] } : null;
+    state.chat = pending ? { name: appT('app.sendingPc'), source: 'web', messages: [] } : null;
     restoreDraft(pending ? savedKey : chatKey(state.projectId)); renderChat();
   }
   $('app').hidden = false;
@@ -1374,12 +1393,12 @@ function hidePrivateViews() {
   historyPagesLoading.clear(); $('history-controls').hidden = true; $('comfy-storage-warning').hidden = true;
   clearProjectAdoption(); $('project-management').open = false; $('local-project-name').value = '';
   projectManagementMessage('local-project-status'); projectManagementMessage('local-project-error');
-  pendingMessageText.clear(); responseModels.clear(); capabilityNotices.clear(); readingView = null; followingReply = true;
+  pendingMessageText.clear(); responseModels.clear(); capabilityNotices.clear(); appLabelBindings.clear(); readingView = null; followingReply = true;
   $('reply-follow-bar').hidden = true;
   companionSettings.reset();
   ++diagnosticsRevision; $('diagnostics-result').replaceChildren(); $('diagnostics-result').hidden = true; $('diagnostics-open').disabled = false;
   updatesPanel.stop();
-  try { textDraftStore.clear(); } catch { toast('Impossible d’effacer la copie locale du brouillon. Efface les données de ce site dans le navigateur.'); } $('draft-duration').value='0'; sessionSignature=''; observedGenerations.clear(); announcedEvents.clear();
+  try { textDraftStore.clear(); } catch { toast(appT('app.draftClearFailed')); } $('draft-duration').value='0'; sessionSignature=''; observedGenerations.clear(); announcedEvents.clear();
   closeConversationOptions();
   closeComposerFiles();
   state.authenticated = false; ++state.authEpoch; ++state.viewSeq; ++state.projectSeq; clearTimeout(recoveryTimer); clearTimeout(renderTimer);
@@ -1399,7 +1418,7 @@ $('login-form').addEventListener('submit', async event => {
   catch (e) { $('login-error').textContent = e.message; }
   finally { $('login-button').disabled = false; }
 });
-$('reveal').addEventListener('click', () => { const show = $('code').type === 'password'; $('code').type = show ? 'text' : 'password'; $('reveal').setAttribute('aria-pressed', String(show)); $('reveal').setAttribute('aria-label', show ? 'Masquer le code' : 'Afficher le code'); });
+$('reveal').addEventListener('click', () => { const show = $('code').type === 'password'; $('code').type = show ? 'text' : 'password'; $('reveal').setAttribute('aria-pressed', String(show)); $('reveal').setAttribute('aria-label', show ? appT('app.hideCode') : appT('app.showCode')); });
 $('project').addEventListener('change', async () => {
   try { await selectProject($('project').value, { clearSearch: true }); } catch (e) { error(e.message); }
 });
@@ -1408,25 +1427,25 @@ $('image-workflow').addEventListener('change',()=>{state.draftImageWorkflowId=$(
 for(const [id,key] of [['agent-web','draftWebAccess'],['agent-web-approval','draftWebApproval'],['agent-scripts','draftScriptAccess'],['agent-images','draftImageAccess']])$(id).addEventListener('change',()=>{state[key]=$(id).checked;saveDraft();setSending();});
 $('attach-file').addEventListener('click', () => closeComposerFiles());
 $('fork-chat').addEventListener('click',()=>forkChat());
-function choosePhoneImport(attach) { if (!state.loading&&!state.uploading&&state.projectId) { importWithAttachment=attach; closeComposerFiles(true); const free=4-fileBrowser.snapshot().length;setText($('import-help'),'Destination : Imports telephone/. '+(attach?'Les '+Math.max(0,free)+' premières places disponibles seront jointes (formats exploitables). Aucun envoi au modèle.':'Aucune pièce jointe ne sera ajoutée.'));$('phone-files').click(); } }
+function choosePhoneImport(attach) { if (!state.loading&&!state.uploading&&state.projectId) { importWithAttachment=attach; closeComposerFiles(true); const free=4-fileBrowser.snapshot().length;setAppLabel('import-help', 'app.importHelp', () => ({ attachments: attach ? appT('app.importAttachHelp', { count: Math.max(0, free) }) : appT('app.importWithoutAttachment') }));$('phone-files').click(); } }
 $('upload-file').addEventListener('click',()=>choosePhoneImport(false));$('upload-attach-file').addEventListener('click',()=>choosePhoneImport(true));
 $('phone-files').addEventListener('change', async () => {
   const selected = [...$('phone-files').files]; $('phone-files').value = '';
   if (!selected.length || state.loading || state.uploading || !state.projectId) return;
-  if (selected.length > 10) return error('Choisis au maximum dix fichiers par import.');
+  if (selected.length > 10) return error(appT('app.importLimit'));
   const projectId = state.projectId; state.uploading = true; setSending(false); error('');
   $('upload-status').hidden = false;
   let imported = 0, attached = 0; const failures = [];
   try {
     for (const file of selected) {
-      $('upload-status').textContent = 'Import dans le projet : ' + file.name + '…';
-      if (file.size > 20000000) { failures.push(file.name + ' dépasse 20 Mo.'); continue; }
+      setAppLabel('upload-status', 'app.importingFile', { name: file.name });
+      if (file.size > 20000000) { failures.push(appT('app.fileTooLarge', { name: file.name })); continue; }
       try {
         const result = await api('/api/file/upload?' + new URLSearchParams({ projectId, name: file.name }), { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
         imported++; if (importWithAttachment && fileBrowser.addImported(result)) attached++;
       } catch (e) { failures.push(file.name + ' : ' + e.message); if (e.status === 401) break; }
     }
-    $('upload-status').textContent = `${imported} fichier${imported > 1 ? 's' : ''} enregistré${imported > 1 ? 's' : ''} dans « Imports telephone » · ${attached} joint${attached > 1 ? 's' : ''} au prochain message.`;
+    setAppLabel('upload-status', 'app.importResult', () => ({ count: imported, attached: appT('app.attachedCount', { count: attached }) }));
     if (failures.length) error(failures.join(' '));
     if (imported) { $('app').classList.add('thread-open'); renderChat(); }
   } finally { state.uploading = false; saveDraft(); setSending(); }
@@ -1434,14 +1453,14 @@ $('phone-files').addEventListener('change', async () => {
 $('model').addEventListener('change', () => { saveDraft(); setEffort(); });
 $('effort').addEventListener('change', () => { state.draftReasoning[$('model').value] = $('effort').value; saveDraft(); });
 $('prompt').addEventListener('input', saveDraft);
-$('search').addEventListener('input', ()=>{renderSessions();clearTimeout(searchAnnouncementTimer);searchAnnouncementTimer=setTimeout(()=>announce($('session-count').textContent+' conversation(s) trouvée(s).','search:'+state.projectId+':'+$('search').value+':'+$('session-count').textContent),300);});
+$('search').addEventListener('input', ()=>{renderSessions();clearTimeout(searchAnnouncementTimer);searchAnnouncementTimer=setTimeout(()=>announce(appT('app.searchResultCount', { count: Number($('session-count').dataset.count || 0) }),'search:'+state.projectId+':'+$('search').value+':'+$('session-count').textContent),300);});
 $('new-chat').addEventListener('click', () => newChat());
 $('back').addEventListener('click', () => { $('app').classList.remove('thread-open'); $('project').focus(); });
-async function refreshConnection() { if (connectionRefreshing || state.uploading || conversationMove.busy) return; connectionRefreshing = true; $('refresh').disabled = true; $('refresh').setAttribute('aria-busy','true'); const epoch = state.authEpoch, revision = conversationMove.revision; saveDraft(); try { error(''); await Promise.all([checkStatus(), loadProjects()]); if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return; if (state.chat?.id) await openChat(state.chat.id); if (epoch === state.authEpoch && state.authenticated) toast('Projets et conversations actualisés.'); } catch (e) { if (epoch === state.authEpoch && state.authenticated) { error(e.message); toast(e.message); } } finally { connectionRefreshing = false; $('refresh').disabled = state.uploading || conversationMove.busy; $('refresh').setAttribute('aria-busy','false'); } }
+async function refreshConnection() { if (connectionRefreshing || state.uploading || conversationMove.busy) return; connectionRefreshing = true; $('refresh').disabled = true; $('refresh').setAttribute('aria-busy','true'); const epoch = state.authEpoch, revision = conversationMove.revision; saveDraft(); try { error(''); await Promise.all([checkStatus(), loadProjects()]); if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return; if (state.chat?.id) await openChat(state.chat.id); if (epoch === state.authEpoch && state.authenticated) toastLabel('app.beta24.connectionRefreshed'); } catch (e) { if (epoch === state.authEpoch && state.authenticated) { error(e.message); toast(e.message); } } finally { connectionRefreshing = false; $('refresh').disabled = state.uploading || conversationMove.busy; $('refresh').setAttribute('aria-busy','false'); } }
 $('refresh').addEventListener('click', refreshConnection);
 $('logout').addEventListener('click', async () => {
   if (state.uploading || conversationMove.busy) return;
-  if (companionSettings.hasUnsaved()) { toast('Enregistre ou annule les saisies des paramètres avant de te déconnecter.'); return; }
+  if (companionSettings.hasUnsaved()) { toast(appT('app.saveSettingsBeforeLogout')); return; }
   try { sessionStorage.removeItem(updateRecoveryKey); } catch {}
   hidePrivateViews(); $('code').focus();
   try { await api('/api/logout', { method: 'POST', body: '{}' }); } catch {}
@@ -1484,7 +1503,7 @@ $('stop').addEventListener('click', async () => {
   if (!target.id) return;
   try {
     await api('/api/cancel', { method: 'POST', body: JSON.stringify(target) }); await recoverReplies();
-  } catch { error('Impossible de joindre le PC pour arrêter la réponse. Réessaie après reconnexion.'); }
+  } catch { error(appT('app.stopFailed')); }
 });
 document.addEventListener('visibilitychange', resumeReply);
 window.addEventListener('pageshow', resumeReply);
@@ -1498,20 +1517,20 @@ $('diagnostics-shortcut').addEventListener('click',event=>companionSettings.open
 $('models-refresh').addEventListener('click', refreshLoadedModels);
 $('models-close').addEventListener('click', () => $('models-dialog').close());
 
-function focusReply(id) { const target=[...$('messages').querySelectorAll('.message')].find(x=>x.dataset.messageId===id);if(target){target.scrollIntoView({block:'center'});target.focus({preventScroll:true});}else toast('Le message ciblé n’est plus disponible dans la partie affichée.'); }
-async function visitSource(origin,button) { const previous={projectId:state.projectId,chat:state.chat,key:state.viewKey};const projectId=origin.projectId||state.projectId;button.disabled=true;try{if(!state.projects.some(p=>p.id===projectId))throw Error();const source=await api('/api/conversation?'+new URLSearchParams({projectId,id:origin.id}));saveDraft();state.projectId=projectId;$('project').value=projectId;state.chat=source;restoreDraft(chatKey(projectId,source.id));await loadSessions();renderChat();if(origin.messageId)focusReply(origin.messageId);}catch{state.projectId=previous.projectId;$('project').value=previous.projectId;state.chat=previous.chat;restoreDraft(previous.key);renderChat();toast('Source indisponible : déplacée, supprimée ou hors historique affiché. La branche reste consultable.');}finally{button.disabled=false;}}
-$('draft-duration').addEventListener('change',()=>{saveDraft();try{textDraftStore.setDuration($('draft-duration').value,drafts);setText($('draft-status'),textDraftStore.duration?'Messages non envoyés conservés sur cet appareil pour la durée choisie.':'Messages conservés uniquement dans cet onglet.');}catch{draftFailure();}});
+function focusReply(id) { const target=[...$('messages').querySelectorAll('.message')].find(x=>x.dataset.messageId===id);if(target){target.scrollIntoView({block:'center'});target.focus({preventScroll:true});}else toast(appT('app.messageUnavailable')); }
+async function visitSource(origin,button) { const previous={projectId:state.projectId,chat:state.chat,key:state.viewKey};const projectId=origin.projectId||state.projectId;button.disabled=true;try{if(!state.projects.some(p=>p.id===projectId))throw Error();const source=await api('/api/conversation?'+new URLSearchParams({projectId,id:origin.id}));saveDraft();state.projectId=projectId;$('project').value=projectId;state.chat=source;restoreDraft(chatKey(projectId,source.id));await loadSessions();renderChat();if(origin.messageId)focusReply(origin.messageId);}catch{state.projectId=previous.projectId;$('project').value=previous.projectId;state.chat=previous.chat;restoreDraft(previous.key);renderChat();toast(appT('app.sourceUnavailable'));}finally{button.disabled=false;}}
+$('draft-duration').addEventListener('change',()=>{saveDraft();try{textDraftStore.setDuration($('draft-duration').value,drafts);setAppLabel('draft-status', textDraftStore.duration ? 'app.draftRetained' : 'app.draftTabOnly');}catch{draftFailure();}});
 $('draft-download').addEventListener('click',downloadMessageDraft);
-$('draft-clear').addEventListener('click',()=>{try{textDraftStore.clear();for(const [key,draft]of drafts)drafts.set(key,{...draft,text:'',failed:[]});$('prompt').value='';$('draft-duration').value='0';rememberDrafts();renderChat();setText($('draft-status'),'Textes des brouillons effacés.');}catch{draftFailure();}});
+$('draft-clear').addEventListener('click',()=>{try{textDraftStore.clear();for(const [key,draft]of drafts)drafts.set(key,{...draft,text:'',failed:[]});$('prompt').value='';$('draft-duration').value='0';rememberDrafts();renderChat();setAppLabel('draft-status', 'app.draftsCleared');}catch{draftFailure();}});
 let diagnosticsRevision=0;
 $('diagnostics-open').addEventListener('click',async()=>{
   const button=$('diagnostics-open'),panel=$('diagnostics-result'),ticket=++diagnosticsRevision,epoch=state.authEpoch,revision=companionSettings.revision();
   const current=()=>ticket===diagnosticsRevision&&epoch===state.authEpoch&&state.authenticated&&companionSettings.isCurrent(revision);
-  button.disabled=true;panel.hidden=false;panel.textContent='Vérification…';
+  button.disabled=true;panel.hidden=false;panel.textContent=appT('app.checking');
   try{
     const result=await api('/api/diagnostics');if(!current())return;
-    panel.replaceChildren(node('p','','Diagnostic volontaire, sans message ni modèle exécuté.'),node('pre','',JSON.stringify(result,null,2)));
-    const download=node('button','file-action','Télécharger le diagnostic');download.type='button';
+    panel.replaceChildren(node('p','',appT('app.diagnosticsHelp')),node('pre','',JSON.stringify(result,null,2)));
+    const download=node('button','file-action',appT('app.downloadDiagnostic'));download.type='button';
     download.addEventListener('click',()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:'application/json'}));const a=node('a');a.href=url;a.download='diagnostic-bionic.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});panel.append(download);
   }catch(e){if(current())panel.textContent=e.message;}
   finally{if(ticket===diagnosticsRevision){button.disabled=false;if(!current()){panel.replaceChildren();panel.hidden=true;}}}
@@ -1528,6 +1547,30 @@ async function forkChat(messageId) {
   try{
     const fork=await api('/api/conversation/fork',{method:'POST',body:JSON.stringify({...source,...(messageId?{messageId}:{})})});
     if(state.projectId===source.projectId&&state.viewSeq===sequence){await loadSessions();await openChat(fork.id);$('prompt').focus();}
-    toast('Branche indépendante créée. Aucun message envoyé automatiquement.');
+    toast(appT('app.branchCreated'));
   }catch(e){error(e.message);}finally{forking=false;document.querySelectorAll('.message-fork').forEach(button=>button.disabled=false);setSending();}
 }
+
+// Language changes belong to the interface. Requests, drafts, attachments and message bodies
+// retain their original values; renderChat reconciles their DOM instead of replacing it.
+globalThis.BionicI18n.onChange(() => {
+  for (const [id, binding] of appLabelBindings) {
+    if ($(id).textContent === binding.value) setAppLabel(id, binding.key, binding.params);
+  }
+  newChatLabel.nodeValue = appT('app.newChat');
+  $('reveal').setAttribute('aria-label', appT($('code').type === 'password' ? 'app.showCode' : 'app.hideCode'));
+  if (!state.authenticated) return;
+  const model = $('model').value, effort = $('effort').value;
+  setModels();
+  if ([...$('model').options].some(option => option.value === model)) $('model').value = model;
+  setEffort();
+  if ([...$('effort').options].some(option => option.value === effort)) $('effort').value = effort;
+  if (state.loading) {
+    setText($('thread-title'), appT('app.openingConversation'));
+    const loading = $('messages').querySelector('.loading-label');
+    if (loading) setText(loading, appT('app.openingConversation'));
+    renderSessions(); setSending();
+  } else renderChat({ preserveComposer: true });
+  if ($('models-dialog').open) renderLoadedModels();
+  if ([...$('effort').options].some(option => option.value === effort)) $('effort').value = effort;
+});

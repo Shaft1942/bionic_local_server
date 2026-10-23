@@ -121,9 +121,9 @@
     if (!headers.length || headers.length > 128 || headers.length !== rules.length || !rules.every(rule => /^:?-{3,}:?$/.test(rule))) return null;
     return { headers, align: rules.map(rule => rule.startsWith(':') && rule.endsWith(':') ? 'center' : rule.endsWith(':') ? 'right' : 'left') };
   }
-  function copyControl(root, sourceText, { document = globalThis.document, code = false, index, label = code ? 'Copier le code' : 'Copier le texte' } = {}) {
+  function copyControl(root, sourceText, { document = globalThis.document, code = false, index, label } = {}) {
     const copy = element(document, 'button', code ? 'message-copy-icon message-code-copy' : 'message-copy-icon message-text-copy');
-    copy.type = 'button'; copy.setAttribute('aria-label', label); copy.title = label;
+    copy.type = 'button'; if (label) { copy.setAttribute('aria-label', label); copy.title = label; } else { for (const attribute of ['aria-label','title']) BionicI18n.bindAttribute(copy, attribute, code ? 'ui.copy.code' : 'ui.copy.text'); }
     copy.setAttribute('aria-busy','false');
     if (index !== undefined) copy.dataset.codeIndex = String(index);
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -158,15 +158,15 @@
         if (typeof globalThis.navigator?.clipboard?.writeText !== 'function') throw new Error('Clipboard unavailable');
         await globalThis.navigator.clipboard.writeText(source);
         if (!relevant()) return;
-        closeManual(false); status.textContent = code ? 'Code copié.' : 'Texte copié.';
+        closeManual(false); BionicI18n.bindText(status, code ? 'ui.copy.codeDone' : 'ui.copy.textDone');
       } catch {
         if (!relevant()) return;
-        status.textContent = code ? 'Copie automatique indisponible. Sélectionne et copie ce code.' : 'Copie automatique indisponible. Sélectionne et copie ce texte.';
+        BionicI18n.bindText(status, code ? 'ui.copy.codeManual' : 'ui.copy.textManual');
         if (!manual) {
           manual = element(document, 'div', 'message-code-manual');
           // A textarea normalizes CRLF. Keep the raw source in a selectable text node.
-          const field = element(document, 'pre', 'message-code-fallback', source); field.tabIndex = 0; field.setAttribute('role', 'textbox'); field.setAttribute('aria-readonly', 'true'); field.setAttribute('aria-multiline', 'true'); field.setAttribute('aria-label', code ? 'Code à copier manuellement' : 'Texte à copier manuellement');
-          const close = element(document, 'button', 'file-action message-code-fallback-close', 'Fermer la copie manuelle'); close.type = 'button'; close.addEventListener('click', () => closeManual());
+          const field = element(document, 'pre', 'message-code-fallback', source); field.tabIndex = 0; field.setAttribute('role', 'textbox'); field.setAttribute('aria-readonly', 'true'); field.setAttribute('aria-multiline', 'true'); BionicI18n.bindAttribute(field, 'aria-label', code ? 'ui.copy.codeField' : 'ui.copy.textField');
+          const close = BionicI18n.bindText(element(document, 'button', 'file-action message-code-fallback-close'), 'ui.copy.closeManual'); close.type = 'button'; close.addEventListener('click', () => closeManual());
           manual.append(field, close); manual.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeManual(); } }); card.append(manual);
         }
         const field = manual.querySelector('pre'); field.focus({ preventScroll: true });
@@ -179,10 +179,10 @@
     const { document } = state, index = state.codeIndex++;
     const card = element(document, 'div', 'message-code'); card.dataset.codeIndex = String(index); card.dataset.complete = String(complete);
     const toolbar = element(document, 'div', 'message-code-toolbar');
-    toolbar.append(element(document, 'span', 'message-code-kind', state.role === 'user' ? 'Code fourni' : state.role === 'assistant' ? 'Code proposé' : 'Code'));
+    toolbar.append(BionicI18n.bindText(element(document, 'span', 'message-code-kind'), state.role === 'user' ? 'ui.code.supplied' : state.role === 'assistant' ? 'ui.code.proposed' : 'ui.code.label'));
     const language = fence.info.split(/\s/)[0].slice(0, 100);
     if (language) toolbar.append(element(document, 'span', 'message-code-language', language));
-    if (!complete) toolbar.append(element(document, 'span', 'message-code-state', 'Bloc non fermé'));
+    if (!complete) toolbar.append(BionicI18n.bindText(element(document, 'span', 'message-code-state'), 'ui.code.unclosed'));
     toolbar.append(copyControl(card, source, { document, code: true, index }));
     const pre = element(document, 'pre'), code = element(document, 'code', '', source); pre.append(code);
     card.append(toolbar, pre); parent.append(card);
@@ -230,7 +230,7 @@
       }
       const table = tableOf(lines, i);
       if (table) {
-        const wrap = element(document, 'div', 'message-table-wrap'); wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', 'Tableau du message'); wrap.tabIndex = 0;
+        const wrap = element(document, 'div', 'message-table-wrap'); wrap.setAttribute('role', 'region'); BionicI18n.bindAttribute(wrap, 'aria-label', 'ui.table.label'); wrap.tabIndex = 0;
         const node = element(document, 'table'), head = element(document, 'thead'), row = element(document, 'tr'), body = element(document, 'tbody');
         table.headers.forEach((value, column) => { const cell = element(document, 'th', 'message-table-align-' + table.align[column]); cell.setAttribute('scope', 'col'); inline(cell, value, state); row.append(cell); }); state.blocks += table.headers.length; head.append(row); i += 2;
         while (i < lines.length && state.blocks + table.headers.length <= MAX_BLOCKS && lines[i].text.trim() && lines[i].text.includes('|')) {

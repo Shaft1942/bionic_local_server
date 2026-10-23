@@ -86,7 +86,7 @@ async function assertNoOverflow(page, label) {
 
 try {
   for (const width of [1280, 320]) for (const journey of ['navigation-search-draft', 'late-logout', 'rapid-navigation']) {
-    const context = await browser.newContext({ viewport: { width, height: 900 } });
+    const context = await browser.newContext({locale:'fr-FR', viewport: { width, height: 900 } });
     const page = await context.newPage(), api = fixture(), errors = [];
     page.setDefaultTimeout(6000);
     page.on('pageerror', error => errors.push(error.message));
@@ -98,7 +98,7 @@ try {
         return route.fulfill({ status: data.error ? 404 : 200, contentType: 'application/json', body: JSON.stringify(data) });
       }
       const file = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-      if (!/^[\w.-]+$/.test(file)) return route.abort();
+      if (!/^(?:locales\/(?:fr|en)\/(?:ui|app|settings|components)\.js|[\w.-]+)$/.test(file)) return route.abort();
       return route.fulfill({ contentType: file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.html') ? 'text/html' : file.endsWith('.svg') ? 'image/svg+xml' : 'application/json', body: await fs.readFile(path.join(root, 'public', file)) });
     });
     const started = performance.now();

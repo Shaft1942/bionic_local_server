@@ -12,7 +12,7 @@ if (captures) await fs.mkdir(captures, { recursive: true });
 const results = [];
 try {
   for (const width of [1280, 320]) {
-    const context = await browser.newContext({ viewport: { width, height: 900 } }), page = await context.newPage(), requests = [], errors = [];
+    const context = await browser.newContext({ locale: 'fr-FR', viewport: { width, height: 900 } }), page = await context.newPage(), requests = [], errors = [];
     page.setDefaultTimeout(5000); page.on('pageerror', failure => errors.push(failure.message));
     let chat, rejectImage = false, loseImageReply = false;
     const projects = [{ id: projectId, name: 'Projet synthétique bêta', sessionsCount: 0 }];
@@ -21,7 +21,7 @@ try {
       if (url.origin !== origin) return route.abort();
       if (!url.pathname.startsWith('/api/')) {
         const file = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-        if (!/^[a-z0-9.-]+$/i.test(file)) return route.abort();
+        if (!/^(?:locales\/(?:fr|en)\/(?:ui|app|settings|components)\.js|[a-z0-9.-]+)$/i.test(file)) return route.abort();
         return route.fulfill({ contentType: file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.svg') ? 'image/svg+xml' : 'text/html', body: await fs.readFile(path.join(root, 'public', file)) });
       }
       const input = request.postData() ? JSON.parse(request.postData()) : null;
@@ -75,6 +75,18 @@ try {
     assert.equal(await page.locator('#project-adoption-roots input:checked').count(), 0, 'no implicit root or write permission');
     await page.locator('input[data-root-id="root-writable"]').check();
     assert.equal(await page.locator('input[data-write-for="root-writable"]').isChecked(), false, 'selected root defaults to reading');
+    await page.locator('input[data-write-for="root-writable"]').check();
+    await page.locator('#local-project-name').fill('Brouillon de projet en français');
+    const writesBeforeLanguage = requests.filter(request => request.method === 'POST').length;
+    await page.evaluate(() => BionicI18n.setLanguage('en'));
+    assert.match(await page.locator('#project-adoption-title').textContent(), /^Adopt/);
+    assert.match(await page.locator('input[data-root-id="root-writable"]').locator('..').textContent(), /Allow reading/);
+    assert.equal(await page.locator('input[data-root-id="root-writable"]').isChecked(), true);
+    assert.equal(await page.locator('input[data-write-for="root-writable"]').isChecked(), true);
+    assert.equal(await page.locator('#local-project-name').inputValue(), 'Brouillon de projet en français');
+    assert.equal(requests.filter(request => request.method === 'POST').length, writesBeforeLanguage, 'language change never submits a form');
+    await page.evaluate(() => BionicI18n.setLanguage('fr'));
+    await page.locator('input[data-write-for="root-writable"]').uncheck();
     await page.locator('input[data-root-id="root-readonly"]').check();
     assert.equal(await page.locator('input[data-write-for="root-readonly"]').isDisabled(), true);
     await page.locator('input[data-root-id="root-readonly"]').uncheck();
@@ -85,7 +97,13 @@ try {
     await page.locator('#local-project-create').click(); await page.waitForFunction(() => document.querySelector('#project').value === 'local-synthetic-project');
     assert.deepEqual(requests.find(request => request.path === '/api/local-projects').input, { name: 'Projet autonome synthétique' });
     if (width === 320 && await page.locator('#back').isVisible()) await page.locator('#back').click();
-    await page.locator('#new-chat').click(); await page.locator('#prompt').fill('Une théière bleue, texte exact.');
+    await page.locator('#new-chat').click(); await page.locator('#files-menu-toggle').click(); await page.locator('#generate-image-direct').click();
+    await page.locator('#message-error').waitFor({ state: 'visible' });
+    await page.evaluate(() => BionicI18n.setLanguage('en'));
+    assert.match(await page.locator('#message-error').textContent(), /^Write an image prompt/);
+    assert.equal(await page.locator('#prompt').inputValue(), '');
+    await page.evaluate(() => BionicI18n.setLanguage('fr'));
+    await page.locator('#prompt').fill('Une théière bleue, texte exact.');
     await page.locator('#files-menu-toggle').click();
     await page.locator('#agent-images').click(); assert.equal(await page.locator('#composer-files').getAttribute('open'), '');
     await page.locator('#prompt').click(); assert.equal(await page.locator('#composer-files').getAttribute('open'), null);
@@ -104,6 +122,11 @@ try {
     assert.equal(requests.filter(request => request.path === '/api/comfy/generate').length, 1);
     assert.equal(requests.find(request => request.path === '/api/comfy/generate').input.prompt, 'Une théière bleue, texte exact.');
     assert.equal(requests.filter(request => request.path === '/api/chat').length, 0);
+    const imagePrompt = await page.locator('.generated-image-prompt p').textContent();
+    await page.evaluate(() => BionicI18n.setLanguage('en'));
+    assert.equal(await page.locator('.generated-image-status').textContent(), await page.evaluate(() => BionicI18n.t('components.images.queued')));
+    assert.equal(await page.locator('.generated-image-prompt p').textContent(), imagePrompt, 'image prompt is never translated');
+    await page.evaluate(() => BionicI18n.setLanguage('fr'));
     await page.locator('#prompt').fill('Prompt refusé conservé.'); rejectImage = true;
     await page.locator('#files-menu-toggle').click(); await page.locator('#generate-image-direct').click();
     await page.getByText('Génération refusée par la fixture.', { exact: true }).waitFor({ state: 'visible' });
@@ -115,7 +138,7 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no page overflow');
     assert.deepEqual(errors, []);
     if (captures) await page.screenshot({ path: path.join(captures, width + '-beta24-result.png') });
-    results.push({ width, passed: true, directRequests: 3, textRequests: 0, ambiguousReplyRecoveredWithoutResubmission: true, localProjectCreated: true, nativeAdoption: 'explicit read permission' }); await context.close();
+    results.push({ width, passed: true, directRequests: 3, textRequests: 0, ambiguousReplyRecoveredWithoutResubmission: true, localProjectCreated: true, nativeAdoption: 'explicit read permission', hotLanguages: ['fr', 'en'], formValuesAndImagePromptPreserved: true }); await context.close();
   }
   console.log(JSON.stringify({ mode: 'synthetic browser only', results, limits: ['No real model, GPU, phone, certificate import or PC connection.'] }, null, 2));
 } finally { await browser.close(); }

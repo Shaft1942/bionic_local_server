@@ -128,7 +128,7 @@ const results = [];
 
 try {
   for (const width of [320, 390, 1280]) {
-    const context = await browser.newContext({ viewport: { width, height: 900 }, acceptDownloads: true });
+    const context = await browser.newContext({locale:'fr-FR', viewport: { width, height: 900 }, acceptDownloads: true });
     const page = await context.newPage(), api = fixture(), errors = [], outbound = [];
     page.setDefaultTimeout(6000); page.on('pageerror', error => errors.push(error.message));
     await context.route('**/*', async route => {
@@ -142,7 +142,7 @@ try {
         } catch (error) { errors.push(error.message); return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: error.message }) }); }
       }
       const file = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-      if (!/^[a-z0-9.-]+$/i.test(file)) return route.abort();
+      if (!/^(?:locales\/(?:fr|en)\/(?:ui|app|settings|components)\.js|[a-z0-9.-]+)$/i.test(file)) return route.abort();
       return route.fulfill({ contentType: file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.html') ? 'text/html' : file.endsWith('.svg') ? 'image/svg+xml' : 'application/json', body: await fs.readFile(path.join(root, 'public', file)) });
     });
     const started = performance.now();
@@ -150,7 +150,9 @@ try {
       await page.goto(origin); await page.locator('#app').waitFor({ state: 'visible' }); await chooseChat(page, chatA);
       await page.locator('#prompt').fill('Brouillon à préserver pendant la reconnexion.');
       if(width<=760){assert.equal(await page.locator('.sidebar-bottom').isVisible(),false,'no sidebar bar below the mobile conversation');await page.locator('#back').click();}
-      const footerControls = [['settings-open-sidebar', 'Paramètres'], ['models-open-sidebar', 'Modèles chargés'], ['reconnect', 'Reconnexion au PC']];
+      const footerControls = [['settings-open-sidebar', 'Paramètres'], ['models-open-sidebar', 'Modèles chargés']];
+      assert.equal(await page.locator('#reconnect').count(), 0, 'the removed bottom reconnect action stays absent');
+      assert.equal(await page.locator('.brand-row #refresh').count(), 1, 'refresh and reconnect stay in the top bar');
       for (const [id, label] of footerControls) {
         const control = page.locator('#' + id);
         assert.equal(await control.count(), 1, 'one bottom action ' + label);
@@ -171,16 +173,16 @@ try {
       assert.equal(await page.evaluate(() => document.activeElement.id), 'models-open-sidebar');
       assert.equal(await page.locator('#prompt').inputValue(), 'Brouillon à préserver pendant la reconnexion.');
       const statusBeforeReconnect = api.calls.filter(call => call.route === '/api/status').length;
-      await page.locator('#reconnect').click();
-      await page.waitForFunction(() => !document.querySelector('#reconnect').disabled);
+      await page.locator('#refresh').click();
+      await page.waitForFunction(() => !document.querySelector('#refresh').disabled);
       assert(api.calls.filter(call => call.route === '/api/status').length > statusBeforeReconnect, 'reconnect checks the PC status');
       assert.equal(await page.locator('#prompt').inputValue(), 'Brouillon à préserver pendant la reconnexion.');
       assert.equal(api.calls.some(call => call.route === '/api/logout'), false, 'reconnect preserves authentication');
       // A reconnect started before opening settings cannot close or overwrite a dirty form.
-      if(!(await page.locator('#reconnect').isVisible())&&await page.locator('#back').isVisible())await page.locator('#back').click();
-      api.holdStatus(); await page.locator('#reconnect').click(); assert.equal(api.heldStatus, true);
+      if(!(await page.locator('#refresh').isVisible())&&await page.locator('#back').isVisible())await page.locator('#back').click();
+      api.holdStatus(); await page.locator('#refresh').click(); assert.equal(api.heldStatus, true);
       await openSettings(page, 'models'); await outputReady(page); await page.locator('#output-mode').selectOption('manual'); await page.locator('#output-tokens').fill('333');
-      api.releaseStatus(); await page.waitForFunction(() => !document.querySelector('#reconnect').disabled); await tick(page);
+      api.releaseStatus(); await page.waitForFunction(() => !document.querySelector('#refresh').disabled); await tick(page);
       assert.equal(await page.locator('#settings-view').isVisible(), true, 'late reconnect keeps settings open');
       assert.equal(await page.locator('#output-tokens').inputValue(), '333', 'late reconnect preserves unsaved settings');
       if(!(await page.locator('[data-settings-page="connection"]').isVisible()))await page.locator('#settings-back').click();

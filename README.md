@@ -4,7 +4,7 @@ Utilisez les modèles de votre PC, consultez vos projets Bionic et continuez une
 
 Ce projet communautaire est indépendant de Bionic. Bionic et ses modèles ne sont pas inclus. Le compagnon utilise l’API locale de Bionic et un adaptateur de lecture de ses fichiers internes.
 
-La branche de travail **2.4.0-beta.1** prépare les interactions des fenêtres, le guide certificats et les évolutions de fiabilité, ressources et stockage. Voir [le périmètre et ses limites](docs/beta-2.4.md). Cette préparation locale ne change pas la stable téléchargeable ci-dessous.
+La branche de travail **2.4.0-beta.1** prépare les interactions des fenêtres, le guide certificats, les évolutions de fiabilité/ressources/stockage et l'interface français/anglais. Le choix de langue dans les paramètres reste indépendant des réponses du modèle. Voir [le périmètre et ses limites](docs/beta-2.4.md). Cette préparation locale ne change pas la stable téléchargeable ci-dessous.
 
 La **2.1.0** avait apporté : certificats gérés depuis le navigateur du téléphone, contexte actualisé lors du changement de modèle et module de nettoyage ComfyUI distribué. Le curseur de tokens reste dans les paramètres, jusqu’à 5 millions. Voir la [validation 2.1](docs/v2.1-validation.md) et le [parcours certificats](docs/certificats-utilisation.md).
 

@@ -24,8 +24,8 @@ function createProjectTree({ container, node, icon, getView, fetchSessions, rend
     return [...(view.pending || []).filter(row => row.projectId === project.id), ...entry(project.id).sessions];
   }
   function matching(project, view) {
-    const search = view.search.trim().toLocaleLowerCase('fr');
-    return rows(project, view).filter(row => String(row.name || '').toLocaleLowerCase('fr').includes(search));
+    const search = view.search.trim().toLocaleLowerCase(BionicI18n.getLanguage());
+    return rows(project, view).filter(row => String(row.name || '').toLocaleLowerCase(BionicI18n.getLanguage()).includes(search));
   }
   async function ensure(id, retry = false) {
     const view = getView(), item = entry(id);
@@ -43,7 +43,7 @@ function createProjectTree({ container, node, icon, getView, fetchSessions, rend
       // Lazy expansion never changes its selected conversation or draft.
     } catch (error) {
       if (generation !== token || !getView().authenticated || epoch !== getView().authEpoch) return;
-      item.loading = false; item.error = error.message || 'Impossible de charger ce projet.'; signature = '';
+      item.loading = false; item.error = error.message || BionicI18n.t('components.projects.loadFailed'); signature = '';
     }
     if (generation === token) render();
   }
@@ -75,20 +75,20 @@ function createProjectTree({ container, node, icon, getView, fetchSessions, rend
       currentProject = view.projectId;
       if (!collapsed.has(currentProject)) expanded.add(currentProject);
     }
-    const search = view.search.trim().toLocaleLowerCase('fr');
+    const search = view.search.trim().toLocaleLowerCase(BionicI18n.getLanguage());
     if (search !== previousSearch) {
       pages.clear();
       if (search) for (const project of projects) if (entry(project.id).loaded && matching(project, view).length) expanded.add(project.id);
       previousSearch = search;
     }
     const model = projects.map(project => ({ project, item: entry(project.id), matches: matching(project, view), open: expanded.has(project.id) }));
-    const nextSignature = JSON.stringify({ search, active: view.projectId, current: view.currentId, draft: view.viewKey, disabled: view.disabled, groups: model.map(({ project, item, matches, open }) => [project.id, project.name, project.isUnassigned, open, pages.get(project.id) || 6, item.loading, item.loaded, item.error, item.partial, item.warnings, matches.map(row => [row.id, row.name, row.updatedAt, row.source, row.origin, row.generation, row.queueCount])]), jobs: view.jobs });
+    const nextSignature = JSON.stringify({ language: BionicI18n.getLanguage(), search, active: view.projectId, current: view.currentId, draft: view.viewKey, disabled: view.disabled, groups: model.map(({ project, item, matches, open }) => [project.id, project.name, project.isUnassigned, open, pages.get(project.id) || 6, item.loading, item.loaded, item.error, item.partial, item.warnings, matches.map(row => [row.id, row.name, row.updatedAt, row.source, row.origin, row.generation, row.queueCount])]), jobs: view.jobs });
     if (signature === nextSignature) return;
     signature = nextSignature;
     const focus = focusKey(document.activeElement), scroll = container.scrollTop;
     container.replaceChildren();
-    if (search) container.append(node('p', 'project-search-scope', 'Recherche dans les conversations chargées. Déplie les autres projets pour y chercher.'));
-    if (!projects.length) container.append(node('p', 'list-empty', 'Aucun projet Bionic trouvé. Crée un projet dans Bionic puis actualise.'));
+    if (search) container.append(node('p', 'project-search-scope', BionicI18n.t('components.projects.searchScope')));
+    if (!projects.length) container.append(node('p', 'list-empty', BionicI18n.t('components.projects.empty')));
     let count = 0, unloaded = 0;
     for (const { project, item, matches, open } of model) {
       count += matches.length; if (!item.loaded) unloaded++;
@@ -97,14 +97,14 @@ function createProjectTree({ container, node, icon, getView, fetchSessions, rend
       const heading = node('div', 'project-group-heading');
       const toggle = node('button', 'project-toggle'); toggle.type = 'button'; toggle.dataset.treeKey = 'toggle:' + project.id;
       toggle.disabled = view.disabled; toggle.setAttribute('aria-expanded', String(open));
-      toggle.setAttribute('aria-label', (open ? 'Replier' : 'Déplier') + ' les conversations de ' + project.name);
+      toggle.setAttribute('aria-label', BionicI18n.t(open ? 'components.projects.collapse' : 'components.projects.expand', { name: project.name }));
       const childrenId = 'project-chats-' + projects.indexOf(project); toggle.setAttribute('aria-controls', childrenId);
       const chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); chevron.setAttribute('viewBox', '0 0 24 24'); chevron.setAttribute('aria-hidden', 'true');
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'path'); line.setAttribute('d', 'm9 5 7 7-7 7'); chevron.append(line); toggle.append(chevron);
       const select = node('button', 'project-select'); select.type = 'button'; select.dataset.treeKey = 'project:' + project.id;
-      select.disabled = view.disabled; select.setAttribute('aria-current', String(project.id === view.projectId)); select.setAttribute('aria-label', 'Ouvrir le projet ' + project.name);
+      select.disabled = view.disabled; select.setAttribute('aria-current', String(project.id === view.projectId)); select.setAttribute('aria-label', BionicI18n.t('components.projects.open', { name: project.name }));
       select.append(icon('folder'), node('span', 'project-name', project.name));
-      if (item.loaded) select.append(node('span', 'project-conversation-count', String(search ? matches.length : rows(project, view).length)));
+      if (item.loaded) select.append(node('span', 'project-conversation-count', BionicI18n.number(search ? matches.length : rows(project, view).length)));
       select.addEventListener('click', () => { activate(project.id); onSelectProject(project.id); });
       const changeExpansion = (next = !open) => {
         if (view.disabled) return;
@@ -119,14 +119,14 @@ function createProjectTree({ container, node, icon, getView, fetchSessions, rend
       heading.append(toggle, select); section.append(heading);
       const children = node('div', 'project-conversations'); children.id = childrenId; children.hidden = !open;
       if (open) {
-        if (item.partial) children.append(node('p', 'partial-warning', item.warnings.map(warning => warning.message).join(' ') || 'Inventaire partiel : certaines conversations sont illisibles. Les autres restent accessibles.'));
-        if (item.loading && !item.loaded) children.append(node('p', 'project-group-state', 'Chargement des conversations…'));
+        if (item.partial) children.append(node('p', 'partial-warning', item.warnings.map(warning => warning.message).join(' ') || BionicI18n.t('components.projects.partial')));
+        if (item.loading && !item.loaded) children.append(node('p', 'project-group-state', BionicI18n.t('components.projects.loading')));
         else if (item.error) {
           children.append(node('p', 'project-group-state error', item.error));
-          const retry = node('button', 'project-more', 'Réessayer'); retry.type = 'button'; retry.dataset.treeKey = 'retry:' + project.id;
+          const retry = node('button', 'project-more', BionicI18n.t('components.projects.retry')); retry.type = 'button'; retry.dataset.treeKey = 'retry:' + project.id;
           retry.disabled = view.disabled; retry.addEventListener('click', () => ensure(project.id, true)); children.append(retry);
         }
-        else if (item.loaded && !matches.length) children.append(node('p', 'project-group-state', search ? 'Aucune conversation correspondante.' : 'Aucune conversation. Commence un nouveau chat dans ce projet.'));
+        else if (item.loaded && !matches.length) children.append(node('p', 'project-group-state', search ? BionicI18n.t('components.projects.noMatch') : BionicI18n.t('components.projects.noConversation')));
         const limit = pages.get(project.id) || 6, visible = matches.slice(0, limit);
         // A selected chat remains visible when it is older than the first page.
         const current = matches.find(row => project.id === view.projectId && row.id === view.currentId);
@@ -136,7 +136,7 @@ function createProjectTree({ container, node, icon, getView, fetchSessions, rend
           children.append(button);
         }
         if (matches.length > visible.length) {
-          const more = node('button', 'project-more', 'Afficher plus (' + (matches.length - visible.length) + ')'); more.type = 'button'; more.dataset.treeKey = 'more:' + project.id; more.disabled = view.disabled;
+          const more = node('button', 'project-more', BionicI18n.t('components.projects.more', { count: BionicI18n.number(matches.length - visible.length) })); more.type = 'button'; more.dataset.treeKey = 'more:' + project.id; more.disabled = view.disabled;
           more.addEventListener('click', () => {
             pages.set(project.id, limit + 6); signature = ''; render();
             const nextMore = [...container.querySelectorAll('[data-tree-key]')].find(element => element.dataset.treeKey === 'more:' + project.id);
@@ -157,5 +157,6 @@ function createProjectTree({ container, node, icon, getView, fetchSessions, rend
     container.replaceChildren(); onCount?.(0, 0, false);
     try { sessionStorage.removeItem(storageKey); } catch {}
   }
+  BionicI18n.onChange(() => { signature = ''; render(); });
   return { setProjects, setSessions, setLoading, setError, activate, render, reset };
 }

@@ -24,7 +24,8 @@
     "test:browser:tree": "node scripts/browser-project-tree.mjs",
     "test:browser:help": "node scripts/browser-help.mjs",
     "test:browser:beta24": "node scripts/browser-beta-24.mjs",
-    "test:browser:history": "node scripts/browser-history-pagination.mjs"
+    "test:browser:history": "node scripts/browser-history-pagination.mjs",
+    "test:browser:i18n": "node scripts/browser-i18n.mjs"
   },
   "engines": {
     "node": ">=24"

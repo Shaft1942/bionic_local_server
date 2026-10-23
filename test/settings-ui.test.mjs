@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 
-const source=(await Promise.all(['certificates.js','help.js','settings.js'].map(file=>fs.readFile(new URL('../public/'+file,import.meta.url),'utf8')))).join('\n');
+const source=(await Promise.all(['i18n.js','locales/fr/ui.js','locales/en/ui.js','locales/fr/settings.js','locales/en/settings.js','locales/fr/components.js','locales/en/components.js','certificates.js','help.js','settings.js'].map(file=>fs.readFile(new URL('../public/'+file,import.meta.url),'utf8')))).join('\n');
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const defaultComfy={enabled:false,url:'http://127.0.0.1:8188',workflowId:'krea2_turbo',activeJobs:0,workflows:[{id:'krea2_turbo',label:'Krea 2 Turbo'}]};
@@ -19,7 +19,7 @@ function fixture(intercept=()=>undefined) {
         get value(){return value;},set value(next){value=String(next);},
         focus(){document.activeElement=this;},scrollIntoView(){},setAttribute(name,next){this.attributes[name]=String(next);},
         closest(selector){if(selector!=='[hidden]')return null;const parents={'certificate-prepare':'certificate-setup-form','certificate-setup-form':'certificate-controls','certificate-device-name':'certificate-device-form','certificate-device-form':'certificate-controls'};let current=this;while(current){if(current.hidden)return current;current=parents[current.id]?element(parents[current.id]):null;}return null;},
-        replaceChildren(...children){this.children=children;},append(...children){this.children.push(...children);},
+        replaceChildren(...children){this.children=children;},append(...children){this.children.push(...children);},querySelectorAll(){return [];},contains(target){return this===target||this.children.includes(target);},
         addEventListener(type,callback){this.listeners[type]=callback;}
       });
     }
@@ -74,7 +74,7 @@ test('late LoRA catalog replies cannot overwrite a newer settings view or its se
   await f.open();f.settings.close();await f.open();await tick();
   assert.equal(f.element('comfy-lora-1').value,'new.safetensors');
   old.resolve({loras:['stale.safetensors']});await tick();
-  assert.equal(f.element('comfy-lora-1').value,'new.safetensors');assert.equal(f.element('comfy-loras-status').textContent,'1 LoRA disponible(s) dans ComfyUI.');
+  assert.equal(f.element('comfy-lora-1').value,'new.safetensors');assert.equal(f.element('comfy-loras-status').textContent,'1 LoRA disponible dans ComfyUI.');
 });
 
 test('image selection follows each conversation and its draft when the composer is refreshed',async()=>{

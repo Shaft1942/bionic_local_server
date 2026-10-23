@@ -33,14 +33,15 @@ try{
     const web={csrfToken:'N'.repeat(43),canConfigure:true,canIssueDevice:false,currentDeviceId:null,suggestedHosts:['127.0.0.1','bionic.local'],proofPort:8770,proofPortProvisioned:true};
     let metadata={mode:'http',epoch:1,server:null,authority:null,devices:[],web},unavailable=false;
     const errors=[],requests=[];
-    const context=await browser.newContext({viewport:{width,height:1100}}),page=await context.newPage();
+    const context=await browser.newContext({locale:'fr-FR',viewport:{width,height:1100}}),page=await context.newPage();
     page.on('pageerror',error=>errors.push(error.message));page.setDefaultTimeout(6000);
     await context.route('**/*',async route=>{
       const request=route.request(),url=new URL(request.url());
       if(url.origin!==origin)return route.abort();
       if(!url.pathname.startsWith('/api/')){
         const file=url.pathname==='/'?'index.html':url.pathname.slice(1);
-        if(!/^[\w.-]+$/.test(file))return route.abort();
+        const catalog=/^locales\/(?:fr|en)\/(?:ui|app|settings|components)\.js$/.test(file);
+        if(!/^[\w.-]+$/.test(file)&&!catalog)return route.abort();
         return route.fulfill({contentType:file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.html')?'text/html':'image/svg+xml',body:file==='app.js'?bootstrap:await fs.readFile(path.join(root,'public',file))});
       }
       requests.push({path:url.pathname,method:request.method()});

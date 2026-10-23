@@ -23,8 +23,8 @@ try{
   const preparation=await fetch(origin+'/api/security/actions',{method:'POST',headers:{...headers,'X-Bionic-CSRF':status.web.csrfToken},body:JSON.stringify({action:'prepare',mode:'https',hosts:['127.0.0.1','localhost']})});assert.equal(preparation.status,200);const prepared=await preparation.json();
   const certificate=new X509Certificate(await fs.readFile(path.join(app.certificateStore.directory,app.certificateStore.state.candidate.certFile)));
   const pin=createHash('sha256').update(certificate.publicKey.export({type:'spki',format:'der'})).digest('base64');
-  browser=await chromium.launch({headless:true,args:['--ignore-certificate-errors-spki-list='+pin]});
-  const context=await browser.newContext({viewport:{width:390,height:844}});
+  browser=await chromium.launch({headless:true,...(process.env.BIONIC_BROWSER_CHANNEL?{channel:process.env.BIONIC_BROWSER_CHANNEL}:{}),args:['--ignore-certificate-errors-spki-list='+pin]});
+  const context=await browser.newContext({locale:'fr-FR',viewport:{width:390,height:844}});
   await context.addCookies([{url:origin,name:cookie.slice(0,cookieSplit),value:cookie.slice(cookieSplit+1),httpOnly:true,sameSite:'Strict'}]);
   const page=await context.newPage(),requests=[],errors=[],headerReads=[];
   context.on('request',request=>{if(['/api/security/proof','/__certificates/start','/__certificates/confirm'].includes(new URL(request.url()).pathname))headerReads.push((async()=>{const headers=await request.allHeaders();requests.push({path:new URL(request.url()).pathname,method:request.method(),origin:headers.origin,site:headers['sec-fetch-site'],urlHasSecret:new URL(request.url()).search.length>0});})());});

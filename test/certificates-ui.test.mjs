@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 
-const source=await fs.readFile(new URL('../public/certificates.js',import.meta.url),'utf8');
+const componentSource=await fs.readFile(new URL('../public/certificates.js',import.meta.url),'utf8');
+const source = (await Promise.all(['i18n.js', 'locales/fr/components.js', 'locales/en/components.js'].map(file => fs.readFile(new URL('../public/'+file, import.meta.url), 'utf8')))).join('\n') + '\n' + componentSource;
 const html=await fs.readFile(new URL('../public/index.html',import.meta.url),'utf8');
 const settingsSource=await fs.readFile(new URL('../public/settings.js',import.meta.url),'utf8');
 const deferred=()=>{let resolve;const promise=new Promise(yes=>{resolve=yes;});return {promise,resolve};};
@@ -137,7 +138,7 @@ test('settings has an explicit close action, Escape dismissal and return of focu
   assert.match(settingsSource,/event\.key==='Escape'/);
   assert.match(settingsSource,/opener\.focus\(\{preventScroll:true\}\)/);
   assert.match(settingsSource,/function closeNow\(restore=true\)\{\s*certificates\.reset\(\)/);
-  assert.ok(html.indexOf('/certificates.js')<html.indexOf('/settings.js'));
+  assert.ok(html.indexOf('src="/certificates.js"')<html.indexOf('src="/settings.js"'));
   assert.ok(!source.includes('innerHTML'));
   assert.match(html,/Certificat perdu \? Retourne sur le PC serveur/);
 });

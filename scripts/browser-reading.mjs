@@ -133,7 +133,7 @@ async function checkScroll(page, before, label) {
 const results = [];
 try {
   for (const width of [320, 390, 1280]) {
-    const context = await browser.newContext({ viewport: { width, height: 900 } });
+    const context = await browser.newContext({locale:'fr-FR', viewport: { width, height: 900 } });
     const page = await context.newPage(), api = fixture(), errors = [], outbound = [];
     page.setDefaultTimeout(6000); page.on('pageerror', error => errors.push(error.message));
     await context.addInitScript(() => {
@@ -159,7 +159,7 @@ try {
         catch (error) { errors.push(error.message); return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: error.message }) }); }
       }
       const relative = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-      if (!/^[a-z0-9.-]+$/i.test(relative)) return route.abort();
+      if (!/^(?:locales\/(?:fr|en)\/(?:ui|app|settings|components)\.js|[a-z0-9.-]+)$/i.test(relative)) return route.abort();
       return route.fulfill({ contentType: relative.endsWith('.js') ? 'text/javascript' : relative.endsWith('.css') ? 'text/css' : relative.endsWith('.html') ? 'text/html' : relative.endsWith('.svg') ? 'image/svg+xml' : 'application/json', body: await fs.readFile(path.join(root, 'public', relative)) });
     });
     const started = performance.now();

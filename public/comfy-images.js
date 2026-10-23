@@ -1,21 +1,21 @@
 /* Generated images are server-owned assets, never arbitrary model-supplied URLs. */
 function createImageGenerationView({api,node,getState,redraw}) {
   let polling=false;
-  const labels={'waiting-resource':'Image en attente d’une ressource du PC…',submitting:'Envoi à ComfyUI…',queued:'Image en attente dans ComfyUI…',running:'ComfyUI génère ton image sur le PC…',succeeded:'Image générée',failed:'La génération a échoué',unknown:'Résultat de génération à vérifier'};
+  const labels=()=>({'waiting-resource':BionicI18n.t('components.images.waitingResource'),stopped:BionicI18n.t('components.images.stopped'),submitting:BionicI18n.t('components.images.submitting'),queued:BionicI18n.t('components.images.queued'),running:BionicI18n.t('components.images.running'),succeeded:BionicI18n.t('components.images.succeeded'),failed:BionicI18n.t('components.images.failed'),unknown:BionicI18n.t('components.images.unknown')});
   function url(job,chat,message,download=false){return '/api/comfy/image?'+new URLSearchParams({jobId:job.id,projectId:chat.projectId,chatId:chat.id,messageId:message.id,...(download?{download:'1'}:{})});}
   function card(job,chat,message){
     const figure=node('figure','generated-image');figure.dataset.imageJobId=job.id;
-    const status=node('p','generated-image-status',labels[job.status]||'Suivi de génération');status.setAttribute('role','status');figure.append(status);
+    const status=node('p','generated-image-status',labels()[job.status]||BionicI18n.t('components.images.tracking'));status.setAttribute('role','status');figure.append(status);
     if(job.status==='succeeded'&&job.image){
       const image=node('img','generated-image-result');image.src=url(job,chat,message);image.alt=job.prompt.slice(0,200);image.width=job.width;image.height=job.height;image.loading='lazy';
-      image.addEventListener('error',()=>{status.textContent='L’image est indisponible. Reconnecte-toi puis actualise la conversation.';});
+      image.addEventListener('error',()=>{status.textContent=BionicI18n.t('components.images.unavailable');});
       figure.append(image);
-      const download=node('a','file-action','Télécharger l’image');download.href=url(job,chat,message,true);download.download='ComfyUI-'+job.id+'.png';figure.append(download);
+      const download=node('a','file-action',BionicI18n.t('components.images.download'));download.href=url(job,chat,message,true);download.download='ComfyUI-'+job.id+'.png';figure.append(download);
     }
     if(job.error)figure.append(node('p','generated-image-error',job.error));
     figure.append(node('figcaption','generated-image-meta',(job.workflowLabel||(job.workflowId==='hassaku_illustrious'?'Hassaku XL Illustrious v34':'Krea2 Turbo'))+' · '+job.width+' × '+job.height+' · seed '+job.seed));
-    if(job.loras?.length)figure.append(node('p','generated-image-meta','LoRA : '+job.loras.map(lora=>lora.name+' ('+lora.strength+')').join(' · ')));
-    const details=node('details','generated-image-prompt');details.append(node('summary','','Prompt utilisé'),node('p','',job.prompt));figure.append(details);
+    if(job.loras?.length)figure.append(node('p','generated-image-meta',BionicI18n.t('components.images.loras', { loras: job.loras.map(lora=>lora.name+' ('+BionicI18n.number(lora.strength)+')').join(' · ') })));
+    const details=node('details','generated-image-prompt');details.append(node('summary','',BionicI18n.t('components.images.prompt')),node('p','',job.prompt));figure.append(details);
     return figure;
   }
   async function poll(){
