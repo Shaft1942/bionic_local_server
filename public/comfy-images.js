@@ -1,7 +1,7 @@
 /* Generated images are server-owned assets, never arbitrary model-supplied URLs. */
 function createImageGenerationView({api,node,getState,redraw}) {
   let polling=false;
-  const labels={submitting:'Envoi à ComfyUI…',queued:'Image en attente dans ComfyUI…',running:'ComfyUI génère ton image sur le PC…',succeeded:'Image générée',failed:'La génération a échoué',unknown:'Résultat de génération à vérifier'};
+  const labels={'waiting-resource':'Image en attente d’une ressource du PC…',submitting:'Envoi à ComfyUI…',queued:'Image en attente dans ComfyUI…',running:'ComfyUI génère ton image sur le PC…',succeeded:'Image générée',failed:'La génération a échoué',unknown:'Résultat de génération à vérifier'};
   function url(job,chat,message,download=false){return '/api/comfy/image?'+new URLSearchParams({jobId:job.id,projectId:chat.projectId,chatId:chat.id,messageId:message.id,...(download?{download:'1'}:{})});}
   function card(job,chat,message){
     const figure=node('figure','generated-image');figure.dataset.imageJobId=job.id;
@@ -21,7 +21,7 @@ function createImageGenerationView({api,node,getState,redraw}) {
   async function poll(){
     const state=getState();if(polling||!state.authenticated||document.hidden||!state.chat?.id)return;
     const chat=state.chat,epoch=state.authEpoch;
-    const pending=(chat.messages||[]).flatMap(message=>(message.imageGenerations||[]).filter(job=>['submitting','queued','running'].includes(job.status)).map(job=>({message,job})));
+    const pending=(chat.messages||[]).flatMap(message=>(message.imageGenerations||[]).filter(job=>['waiting-resource','submitting','queued','running'].includes(job.status)).map(job=>({message,job})));
     if(!pending.length)return;
     polling=true;let changed=false;
     try{

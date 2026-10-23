@@ -115,7 +115,10 @@ test('concurrent requests share a cold load and a cancelled waiter never consume
   await new Promise(resolve => setImmediate(resolve));
   controller.abort();
   await assert.rejects(first, { status: 409 });
+  let settled=false;const providerFinished=service.awaitPendingLoad('cold').then(()=>{settled=true;});
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(settled,false,'Cancelled waiter must not pretend the shared provider load has ended.');
   release();
   assert.equal((await second).contextLength, 16384);
+  await providerFinished;assert.equal(settled,true);
   assert.equal(requests.filter(request => request.options.method === 'POST').length, 1);
 });

@@ -1,13 +1,19 @@
 import http from 'node:http';
 import { promises as defaultFS } from 'node:fs';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { setTimeout as wait } from 'node:timers/promises';
 import { createInferenceGate } from './lib/inference-gate.mjs';
+import { createJobCoordinator } from './lib/job-coordinator.mjs';
+import { createCompanionLifecycle, withShutdownDeadline } from './lib/companion-lifecycle.mjs';
+import { createModelTransport } from './lib/model-transport.mjs';
+import { createNDJSONWriter } from './lib/ndjson-writer.mjs';
+import { promisify } from 'node:util';
 import { receiveBody } from './lib/request-body.mjs';
 import { runDiagnostics } from './lib/diagnostics.mjs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto';
 import { createBionicStore } from './lib/bionic-store.mjs';
 import { loadSettings } from './lib/config.mjs';
 import { createModelService } from './lib/model-service.mjs';
@@ -24,6 +30,8 @@ import { createContextReceipt, addToolRead, addExternalContext, markContextTrans
 import { buildToolMemory } from './lib/tool-memory.mjs';
 import { createWorkspaceFeatures } from './lib/workspace-features.mjs';
 import { createConversationOrganizer, conversationName } from './lib/conversation-organizer.mjs';
+import { createLocalProjects } from './lib/local-projects.mjs';
+import { createConversationRepository, pageItems, pageMessages, messageIds } from './lib/conversation-repository.mjs';
 import { createUpdateService } from './lib/update-service.mjs';
 import { prepareUpdate, launchUpdate } from './lib/update-installer.mjs';
 import { openCertificateStore } from './lib/certificate-store.mjs';
@@ -31,6 +39,17 @@ import { clientFingerprint, requireCertificateTransport, startCertificateTranspo
 import { createCertificateWeb } from './lib/certificate-web.mjs';
 
 const APP_VERSION = JSON.parse(await defaultFS.readFile(new URL('./package.json', import.meta.url), 'utf8')).version;
+const derivePassword = promisify(scrypt);
+const ACTIVE_IMAGE_STATUSES = new Set(['waiting-resource', 'submitting', 'queued', 'running']);
+function imageTurnStatus(jobs) {
+  if (jobs.some(job => job.status === 'unknown')) return 'Le résultat de la soumission à ComfyUI est incertain. Vérifie le suivi avant toute nouvelle demande ; aucune image n’a été relancée.';
+  if (jobs.every(job => job.status === 'stopped')) return 'La demande d’image a été arrêtée avant sa soumission.';
+  if (jobs.every(job => job.status === 'failed')) return 'La génération a échoué. Consulte le détail dans la carte de suivi de l’image.';
+  if (jobs.every(job => job.status === 'succeeded')) return 'L’image est disponible dans la conversation.';
+  if (jobs.some(job => job.status === 'waiting-resource')) return 'La demande d’image attend une ressource disponible. Son suivi apparaîtra automatiquement ici.';
+  if (jobs.some(job => job.status === 'submitting')) return 'La demande d’image est en cours d’envoi à ComfyUI. Son suivi apparaîtra automatiquement ici.';
+  return 'La génération est lancée dans ComfyUI. L’image apparaîtra automatiquement ici.';
+}
 
 export async function createCompanion(options = {}) {
 const fs = options.fs || defaultFS;
@@ -43,8 +62,13 @@ const DATA = path.join(ROOT, 'data');
 const RUNTIME = path.join(ROOT, 'runtime');
 const settings = options.settings || await loadSettings({ root: ROOT });
 const inferenceGate = createInferenceGate(settings.maxConcurrentInferences || 0);
+const lifecycle = createCompanionLifecycle();
+const coordinator = createJobCoordinator({ policy: settings.resourcePolicy || 'exclusive', maxText: settings.maxConcurrentInferences || 0 });
+const transportMetrics = { detachedClients: 0 };
+const checkpointMetrics = { writes: 0, failures: 0, totalMs: 0, maxMs: 0 };
 const nativeStore = options.nativeStore || createBionicStore({ root: settings.bionicRoot });
-const organizer = createConversationOrganizer({ filename: path.join(DATA, 'conversation-locations.json'), store: nativeStore, hasLocalUnassigned: async () => (await webChats('companion-unassigned')).length > 0 });
+const localProjects = createLocalProjects({ filename: path.join(DATA, 'local-projects.json'), nativeStore, nativeRoots: id => nativeProjectFiles.roots(id), fallbackProjects: async () => [...new Set((await chatSnapshot()).chats.map(chat => chat.projectId))].map(id => ({ id, name: 'Projet local · ' + id.slice(0, 40) })), fs });
+const organizer = createConversationOrganizer({ filename: path.join(DATA, 'conversation-locations.json'), store: localProjects, hasLocalUnassigned: async () => (await webChats('companion-unassigned')).length > 0 });
 const { listProjects, listSessions, getConversation } = organizer;
 const PORT = settings.port;
 const API = settings.apiUrl;
@@ -64,7 +88,7 @@ catch (e) {
   if (e.code !== 'ENOENT') throw e;
   const accessCode = randomBytes(12).toString('base64url');
   const salt = randomBytes(16).toString('hex');
-  config = { instanceId: randomUUID(), salt, passwordHash: scryptSync(accessCode, salt, 32).toString('hex'), adminToken: randomBytes(32).toString('hex') };
+  config = { instanceId: randomUUID(), salt, passwordHash: (await derivePassword(accessCode, salt, 32)).toString('hex'), adminToken: randomBytes(32).toString('hex') };
   await fs.writeFile(configPath, JSON.stringify(config, null, 2), { flag: 'wx', mode: 0o600 });
   await fs.writeFile(path.join(ROOT, 'ACCES-PRIVE.txt'), `BIONIC MOBILE — ACCÈS PERSONNEL\r\n\r\nSur le téléphone, connecté au Wi-Fi de la maison :\r\n${localIPs.map(ip => `http://${ip}:${PORT}`).join('\r\n')}\r\n\r\nCode d’accès : ${accessCode}\r\n\r\nSur ce PC : http://127.0.0.1:${PORT}\r\n\r\nCe code donne accès aux conversations. Ne partage pas ce fichier.\r\nLe serveur utilise HTTP sur le réseau de confiance de la maison.\r\nLes historiques Bionic sont lus sans modification ; les suites web restent dans ce compagnon.\r\n`, { mode: 0o600 });
 }
@@ -99,29 +123,49 @@ async function refreshSecurityAddresses() {
 }
 await refreshSecurityAddresses();
 const failures = new Map();
+let loginVerifications = 0;
 const busy = new Set();
 const active = new Map();
 const toolApprovals = createToolApprovals();
-const comfyImages = options.comfyService || await createComfyImages({directory:path.join(DATA,'comfy-generations'),settingsFile:path.join(DATA,'comfy-settings.json'),url:settings.comfyUrl,enabled:settings.comfyEnabled,workflowId:settings.comfyWorkflowId,fetchImpl:options.comfyFetchImpl||globalThis.fetch});
+const comfyImages = options.comfyService || await createComfyImages({directory:path.join(DATA,'comfy-generations'),settingsFile:path.join(DATA,'comfy-settings.json'),url:settings.comfyUrl,enabled:settings.comfyEnabled,workflowId:settings.comfyWorkflowId,fetchImpl:options.comfyFetchImpl||globalThis.fetch,coordinator});
 const chatRequests = new Map();
+function pruneChatRequests() {
+  for (const [id, request] of chatRequests) {
+    if (chatRequests.size <= 2000) break;
+    if (!['starting', 'running', 'queued'].includes(request.status)) chatRequests.delete(id);
+  }
+}
 const chatStates = new Map();
 const deletedChats = new Set();
 const acceptanceLocks = new Map();
 const nativeContinuations = new Map();
+const conversationRepository = createConversationRepository({ directory: path.join(DATA, 'chats'), fs, readChat: id => readWeb(id, { summaryOnly: true }), states: chatStates, measurements, isPinned: id => busy.has(id), maxCached: options.maxCachedConversations || 64 });
+async function withScanCycle(work) {
+  const cycle = { leases: new Map() };
+  try { return await scanCycles.run(cycle, work); }
+  finally { for (const state of cycle.leases.values()) state.readers--; conversationRepository.trim(); }
+}
+function cacheLease(id, state, summaryOnly) {
+  const cycle = scanCycles.getStore();
+  if (!summaryOnly && cycle?.leases && !cycle.leases.has(id)) { cycle.leases.set(id, state); state.readers = (state.readers || 0) + 1; }
+  return state.chat;
+}
 let modelManagementBusy = false;
 const updater = options.updateService || await createUpdateService({ root: ROOT, currentVersion: APP_VERSION, fetchImpl: options.updateFetchImpl || globalThis.fetch, ...options.updateServiceOptions });
 const installer = options.updateInstaller || { prepareUpdate, launchUpdate };
 const updatePlatform = options.updatePlatform || process.platform;
 let updatePreparing = false, updateMaintenance = false, inFlightMutations = 0;
 let installation = { status: 'idle', message: '' };
-function updateHasWork() {
-  return certificateWeb.busy || !!certificateTransport?.status().candidate || busy.size > 0 || active.size > 0 || modelManagementBusy || acceptanceLocks.size > 0 || comfyImages.getSettings?.()?.activeJobs > 0 ||
-    [...chatRequests.values()].some(request => ['starting', 'queued', 'running'].includes(request.status)) ||
-    [...chatStates.values()].some(({ chat }) => chat.generation?.status === 'running' || chat.queue?.some(item => item.status === 'queued'));
+function activeWork() {
+  return { security: Number(certificateWeb.busy || !!certificateTransport?.status().candidate), conversations: busy.size, generations: active.size,
+    modelManagement: Number(modelManagementBusy), admissions: acceptanceLocks.size, images: comfyImages.getSettings?.()?.activeJobs || 0,
+    requests: [...chatRequests.values()].filter(request => ['starting', 'queued', 'running'].includes(request.status)).length,
+    queued: [...chatStates.values()].reduce((n, { chat }) => n + Number(chat.generation?.status === 'running') + (chat.queue || []).filter(item => item.status === 'queued').length, 0) };
 }
+function updateHasWork() { return Object.values(activeWork()).some(Boolean); }
 async function updateStatus(ownMutation = false) {
   const checkout = await fs.lstat(path.join(ROOT, '.git')).then(() => true, error => { if (error.code === 'ENOENT') return false; throw error; });
-  const unavailableReason = updatePlatform !== 'win32' ? 'L’installation automatique est disponible sur Windows. Télécharge la Release pour une mise à jour manuelle.' :
+  const unavailableReason = lifecycle.status().stopping ? 'Le serveur est en cours d’arrêt.' : updatePlatform !== 'win32' ? 'L’installation automatique est disponible sur Windows. Télécharge la Release pour une mise à jour manuelle.' :
     checkout ? 'Ce dossier est un checkout Git. Mets-le à jour avec Git ; l’installateur automatique est réservé aux archives téléchargées.' :
     updateHasWork() || inFlightMutations > (ownMutation ? 1 : 0) ? 'Attends la fin des réponses, des accords et des opérations en cours avant d’installer.' : '';
   return { ...updater.status(), installation: { ...installation }, canInstall: !unavailableReason && !updatePreparing && !updateMaintenance, unavailableReason };
@@ -174,18 +218,19 @@ function validateChat(chat, id) {
 
 const webId = id => /^web-[a-f0-9-]{36}$/.test(id);
 function webPath(id) { if (!webId(id)) throw fail(400, 'Conversation invalide.'); return path.join(DATA, 'chats', id + '.json'); }
-async function readWeb(id) {
+async function readWeb(id, { summaryOnly = false } = {}) {
   try {
     if (deletedChats.has(id)) throw fail(404, 'Conversation introuvable.');
-    if (chatStates.has(id)) return chatStates.get(id).chat;
+    if (chatStates.has(id)) { const state = chatStates.get(id); chatStates.delete(id); chatStates.set(id, state); return cacheLease(id, state, summaryOnly); }
     measurements.chatDiskReads++;
     const serialized = await fs.readFile(webPath(id), 'utf8');
     // Another reader may have populated and started this chat while the disk read awaited.
     if (deletedChats.has(id)) throw fail(404, 'Conversation introuvable.');
-    if (chatStates.has(id)) return chatStates.get(id).chat;
+    if (chatStates.has(id)) return cacheLease(id, chatStates.get(id), summaryOnly);
     let chat;
     try { chat = JSON.parse(serialized); measurements.deserializations++; } catch { throw fail(422, 'Cette conversation est illisible (JSON). Les octets sont conservés. Sur le PC, garde une copie privée avant de consulter docs/sauvegarde-mise-a-jour.md.'); }
     validateChat(chat, id);
+    chat.messages = messageIds(chat.messages);
     let recovered = false;
     for (const message of chat.messages) for (const intent of message.mutationIntents || []) if (intent.status === 'pending') { intent.status = 'uncertain'; intent.message = 'Opération à vérifier : le PC a redémarré avant son reçu. Aucun succès n’est déduit et aucune action n’est rejouée.'; recovered = true; }
     for(const message of chat.messages || [])for(const approval of message.approvals || []){
@@ -203,7 +248,8 @@ async function readWeb(id) {
     for (const item of chat.queue || []) if (item.status === 'queued') {
       item.status = 'interrupted'; item.message = 'Le serveur du PC a redémarré. Ce message n’a pas été exécuté ; renvoie-le si nécessaire.'; recovered = true;
     }
-    chatStates.set(id, { chat, writes: Promise.resolve(), running: false });
+    chatStates.set(id, { chat, writes: Promise.resolve(), running: false, serializedBytes: Buffer.byteLength(serialized) });
+    cacheLease(id, chatStates.get(id), summaryOnly);
     if (recovered) await persistChat(chat);
     return chat;
   }
@@ -213,6 +259,7 @@ async function saveWeb(chat) {
   const file = webPath(chat.id), temp = file + '.' + randomUUID() + '.tmp';
   await fs.writeFile(temp, JSON.stringify(chat), { mode: 0o600 });
   await fs.rename(temp, file);
+  await conversationRepository.record(chat);
 }
 // Checkpoints and queue acceptance share one write chain: an older response snapshot
 // can never overwrite a newly accepted message or resurrect a cancelled queue entry.
@@ -222,10 +269,12 @@ function persistChat(chat) {
   let state = chatStates.get(chat.id);
   if (!state) { state = { chat, writes: Promise.resolve(), running: false }; chatStates.set(chat.id, state); }
   const snapshot = structuredClone(chat);
+  state.serializedBytes = Buffer.byteLength(JSON.stringify(snapshot));
+  state.pendingWrites = (state.pendingWrites || 0) + 1;
   state.writes = state.writes.catch(() => {}).then(() => {
     if (deletedChats.has(chat.id)) throw fail(404, 'Conversation introuvable.');
     return saveWeb(snapshot);
-  });
+  }).finally(() => { state.pendingWrites--; });
   return state.writes;
 }
 async function withAcceptanceLock(key, work) {
@@ -237,15 +286,7 @@ async function withAcceptanceLock(key, work) {
   finally { release(); if (acceptanceLocks.get(key) === current) acceptanceLocks.delete(key); }
 }
 async function scanWebChats() {
-  measurements.directoryScans++;
-  const chats = [], warnings = []; let invalid = 0;
-  for (const name of await fs.readdir(path.join(DATA, 'chats'))) {
-    if (!/^web-[a-f0-9-]{36}\.json$/.test(name)) continue;
-    try { chats.push(await readWeb(name.slice(0, -5))); }
-    catch (error) { if (error.status === 404) continue; if (error.status === 422) { invalid++; continue; } throw error; }
-  }
-  if (invalid) warnings.push({ code: 'CHAT_UNREADABLE', count: invalid, message: 'Inventaire partiel : ' + invalid + ' conversation(s) illisible(s). Les fichiers sont conservés sur le PC.' });
-  return { chats, warnings };
+  return conversationRepository.scan();
 }
 async function chatSnapshot() {
   const cycle = scanCycles.getStore();
@@ -261,12 +302,16 @@ async function readChat(projectId, id) {
   if (!(await listProjects()).some(project => project.id === projectId)) throw fail(404, 'Projet introuvable.');
   const chat = webId(id || '') ? await readWeb(id) : await getConversation(projectId, id);
   if (chat.projectId !== projectId) throw fail(404, 'Conversation introuvable dans ce projet.');
+  chat.messages = messageIds(chat.messages);
   return chat;
 }
 function apiHeaders() { return process.env.BIONIC_API_TOKEN ? { Authorization: `Bearer ${process.env.BIONIC_API_TOKEN}` } : {}; }
 const modelService = options.modelService || createModelService({ baseUrl: API, headers: apiHeaders, fetchImpl: fetch });
-const projectFiles = options.projectFiles || createProjectFiles({ backupDirectory: path.join(DATA, 'file-backups'), imageDirectory: path.join(DATA, 'image-attachments'), registryPath: settings.registryPath, extraRoots: settings.extraRoots, python: settings.python });
-const workspaceFeatures = createWorkspaceFeatures({ directory: path.join(DATA, 'workspace'), listProjects, listWebChats: webChats, readConversation: readChat, projectFiles });
+const modelTransport = options.modelTransport || createModelTransport({ baseUrl: API, headers: apiHeaders, fetchImpl: fetch });
+const projectFileOptions = { backupDirectory: path.join(DATA, 'file-backups'), imageDirectory: path.join(DATA, 'image-attachments'), registryPath: settings.registryPath, extraRoots: settings.extraRoots, python: settings.python };
+const nativeProjectFiles = options.projectFiles || createProjectFiles(projectFileOptions);
+const projectFiles = options.projectFiles || createProjectFiles({ ...projectFileOptions, rootsProvider: localProjects.rootsFor });
+const workspaceFeatures = createWorkspaceFeatures({ directory: path.join(DATA, 'workspace'), listProjects, listWebChats: webChats, readConversation: readChat, projectFiles, listActivity: async () => (await chatSnapshot()).chats });
 function managementInput(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw fail(400, 'Demande de modification invalide.');
   if (typeof input.id !== 'string' || !/^[\w-]{1,128}$/.test(input.id) || typeof input.projectId !== 'string' || !/^[\w-]{1,128}$/.test(input.projectId)) throw fail(400, 'Conversation ou projet invalide.');
@@ -431,13 +476,10 @@ const validRequestId = id => typeof id === 'string' && /^[a-zA-Z0-9-]{16,100}$/.
 async function findChatRequest(projectId, requestId) {
   const current = chatRequests.get(requestId);
   if (current) return current.status !== 'deleted' && current.projectId === projectId ? current : null;
-  for (const info of await webChats(projectId)) {
-    let stored;
-    try { stored = await readWeb(info.id); } catch (error) { if (error.status === 404) continue; throw error; }
-    const queued = stored.queue?.find(item => item.requestId === requestId);
-    if (queued) return { projectId, id: stored.id, status: queued.status, message: queued.message, position: queuePosition(stored, requestId) };
-    const message = stored.messages.find(message => message.requestId === requestId && message.role === 'user');
-    if (message) return { projectId, id: stored.id, status: message.requestStatus || (stored.generation?.requestId === requestId ? stored.generation.status : 'completed') };
+  for (const info of (await chatSnapshot()).chats) {
+    if (info.projectId !== projectId) continue;
+    const receipt = info.requests.find(item => item.requestId === requestId);
+    if (receipt) { const position = info.queue.filter(item => item.status === 'queued').findIndex(item => item.requestId === requestId); return { projectId, id: info.id, status: receipt.status, ...(receipt.message ? { message: receipt.message } : {}), ...(position >= 0 ? { position: position + 1 } : {}) }; }
   }
   return null;
 }
@@ -448,7 +490,89 @@ function queueReceipt(res, item, chat) {
   res.end(JSON.stringify({ type: 'queued', id: chat.id, requestId: item.requestId, position: queuePosition(chat, item.requestId), status: 'queued', name: chat.name }) + '\n');
 }
 function silentResponse() { return { destroyed: true, writableEnded: true, on() {}, end() {} }; }
+const directImageTasks = new Map();
+async function recoverDirectImage(chat, reply) {
+  if (!reply?.directImage || reply.imageGenerations?.length || !comfyImages.findForOwner) return false;
+  const job = comfyImages.findForOwner({ projectId: chat.projectId, chatId: chat.id, messageId: reply.id, requestId: reply.requestId });
+  if (!job) return false;
+  reply.imageGenerations = [job];
+  await persistChat(chat);
+  return true;
+}
+async function sendDirectImage(data) {
+  lifecycle.assertAdmission();
+  if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).some(key => !['requestId','projectId','sessionId','prompt','workflowId','negativePrompt','seed','format'].includes(key))) throw fail(400, 'Demande image invalide.');
+  const requestId = data.requestId;
+  if (!validRequestId(requestId)) throw fail(400, 'Identifiant de demande invalide.');
+  if (typeof data.prompt !== 'string' || !data.prompt.trim() || data.prompt.length > 6000) throw fail(400, 'Prompt image invalide (1 à 6 000 caractères).');
+  if (data.sessionId && !webId(data.sessionId)) throw fail(400, 'Choisis une conversation locale pour générer une image ici.');
+  if (directImageTasks.has(requestId)) {
+    const pending = directImageTasks.get(requestId);
+    if (pending.projectId !== data.projectId) throw fail(409, 'Cet identifiant appartient déjà à une autre demande.');
+    return pending.work;
+  }
+  if (chatRequests.has(requestId) && chatRequests.get(requestId).projectId !== data.projectId) throw fail(409, 'Cet identifiant appartient déjà à une autre demande.');
+  const work = (async () => {
+    const prior = await findChatRequest(data.projectId, requestId);
+    if (prior) {
+      if (!prior.id) throw fail(409, 'Cette demande est déjà reçue ; consulte son suivi.');
+      const chat = await readWeb(prior.id), user = chat.messages.find(message => message.role === 'user' && message.requestId === requestId);
+      if (!user?.directImage) throw fail(409, 'Cet identifiant appartient déjà à une autre demande.');
+      const reply = chat.messages.find(message => message.role === 'assistant' && message.requestId === requestId);
+      await recoverDirectImage(chat, reply);
+      return { id: chat.id, requestId, messageId: reply?.id, generation: reply?.imageGenerations?.[0], status: prior.status };
+    }
+    if (chatRequests.has(requestId)) throw fail(409, 'Cet identifiant appartient déjà à une autre demande.');
+    const controller = new AbortController();
+    const request = { projectId: data.projectId, status: 'starting', id: null, phase: 'image', controller };
+    chatRequests.set(requestId, request);
+    pruneChatRequests();
+    try {
+      const project = (await listProjects()).find(entry => entry.id === data.projectId);
+      if (!project) throw fail(404, 'Projet introuvable. Actualise la liste.');
+      if (comfyImages.getSettings?.().enabled === false) throw fail(409, 'ComfyUI est désactivé. Active-le dans les paramètres du compagnon.');
+      const selection = comfyImages.resolveSelection?.(data.workflowId);
+      let chat, reply;
+      await withAcceptanceLock(data.projectId + ':' + (data.sessionId || requestId), async () => {
+        lifecycle.assertAdmission();
+        chat = data.sessionId ? await readWeb(data.sessionId) : { id: 'web-' + randomUUID(), projectId: data.projectId, name: data.prompt.trim().slice(0,65), source: 'web', readOnly: false, messages: [], updatedAt: Date.now() };
+        if (chat.projectId !== data.projectId) throw fail(404, 'Conversation introuvable dans ce projet.');
+        if (busy.has(chat.id) || active.has(chat.id) || chat.queue?.some(item => item.status === 'queued')) throw fail(409, 'Attends la fin de la réponse avant de générer une image dans cette conversation.');
+        request.id = chat.id; request.status = 'running'; busy.add(chat.id);
+        chat.messages.push({ id: randomUUID(), role: 'user', text: data.prompt.trim(), createdAt: Date.now(), requestId, requestStatus: 'running', directImage: true });
+        reply = { id: randomUUID(), role: 'assistant', text: '', createdAt: Date.now(), requestId, directImage: true, imageGenerations: [] };
+        chat.messages.push(reply); chat.imageAccess = true; chat.imageWorkflowId = selection?.workflowId || data.workflowId;
+        chat.generation = { status: 'running', phase: 'waiting-image-resource', requestId, replyId: reply.id, startedAt: Date.now() };
+        await persistChat(chat);
+        chatStates.get(chat.id).directImage = true;
+      });
+      active.set(chat.id, { controller, chat, requestId });
+      if (lifecycle.status().stopping || request.cancelRequested) controller.abort();
+      try {
+        if (controller.signal.aborted) throw fail(409, 'Demande image arrêtée avant sa soumission.');
+        const args = Object.fromEntries(['prompt','workflowId','negativePrompt','seed','format'].filter(key => data[key] !== undefined).map(key => [key,data[key]]));
+        const generation = await comfyImages.submit(args, { projectId: data.projectId, chatId: chat.id, messageId: reply.id, requestId }, controller.signal, selection);
+        reply.imageGenerations = [generation]; reply.complete = true; reply.outcome = generation.status === 'stopped' ? 'stopped' : 'completed'; reply.finishedAt = Date.now();
+        chat.generation.status = reply.outcome; chat.generation.finishedAt = reply.finishedAt; request.status = reply.outcome;
+        chat.messages.find(message => message.role === 'user' && message.requestId === requestId).requestStatus = reply.outcome;
+        chat.updatedAt = Date.now(); await persistChat(chat);
+        return { id: chat.id, requestId, messageId: reply.id, generation };
+      } catch (error) {
+        request.status = controller.signal.aborted ? 'stopped' : 'error';
+        request.message = error.status ? error.message : 'La soumission image n’a pas été confirmée. Vérifie son suivi avant toute nouvelle demande.';
+        reply.interrupted = true; reply.outcome = request.status; reply.finishedAt = Date.now(); reply.text = request.message;
+        chat.generation = { ...chat.generation, status: request.status, finishedAt: reply.finishedAt, message: request.message };
+        chat.messages.find(message => message.role === 'user' && message.requestId === requestId).requestStatus = request.status;
+        await persistChat(chat); throw error;
+      } finally { const state = chatStates.get(chat.id); if (state) state.directImage = false; busy.delete(chat.id); active.delete(chat.id); }
+    } catch (error) { if (request.status !== 'stopped') request.status = 'error'; if (request.id) { busy.delete(request.id); const state = chatStates.get(request.id); if (state) state.directImage = false; } throw error; }
+  })();
+  directImageTasks.set(requestId, { projectId: data.projectId, work });
+  work.finally(() => { directImageTasks.delete(requestId); pruneChatRequests(); }).catch(() => {});
+  return lifecycle.track(work);
+}
 async function sendChat(req, res, data) {
+  lifecycle.assertAdmission();
   const requestId = data.requestId === undefined ? randomUUID() : data.requestId;
   if (!validRequestId(requestId)) throw fail(400, 'Identifiant de demande invalide.');
   if (await findChatRequest(data.projectId, requestId)) throw fail(409, 'Ce message a déjà été reçu. Rouvre sa conversation pour retrouver la réponse.');
@@ -456,7 +580,7 @@ async function sendChat(req, res, data) {
   const request = { projectId: data.projectId, status: 'starting', id: null };
   chatRequests.set(requestId, request);
   data = { ...data, requestId };
-  if (chatRequests.size > 2000) for (const [id, record] of chatRequests) { if (!['starting', 'running', 'queued'].includes(record.status)) { chatRequests.delete(id); break; } }
+  pruneChatRequests();
   try {
     if (modelManagementBusy) throw fail(409, 'Un modèle est en cours de déchargement. Attends la fin pour envoyer ton message.');
     const text = typeof data.text === 'string' ? data.text.trim() : '';
@@ -481,6 +605,7 @@ async function sendChat(req, res, data) {
     const key = data.sessionId ? data.projectId + ':' + data.sessionId : 'new:' + requestId;
     let execute;
     await withAcceptanceLock(key, async () => {
+      lifecycle.assertAdmission();
       if (modelManagementBusy) throw fail(409, 'Un modèle est en cours de déchargement. Attends la fin pour envoyer ton message.');
       let chat;
       if (data.sessionId && webId(data.sessionId)) {
@@ -497,6 +622,7 @@ async function sendChat(req, res, data) {
       }
       let state = chatStates.get(chat.id);
       if (!state) { state = { chat, writes: Promise.resolve(), running: false }; chatStates.set(chat.id, state); }
+      if (state.directImage) throw fail(409, 'Attends la confirmation de la demande image avant d’envoyer un message dans cette conversation.');
       chat.queue ||= [];
       if (chat.queue.filter(item => item.status === 'queued').length >= 10) throw fail(409, 'Dix messages sont déjà en attente dans cette conversation. Attends une réponse avant d’en ajouter.');
       if (request.cancelRequested) throw fail(409, 'Demande arrêtée avant son exécution.');
@@ -506,7 +632,7 @@ async function sendChat(req, res, data) {
         else modelPreferences.setSession(chat, data.model, submittedOutputPreference.maxOutputTokens);
       }
       const outputPreference = modelPreferences.resolve(data.model, chat);
-      const item = { requestId, projectId: data.projectId, text, model: data.model, reasoning: reasoning.choice, fileAccess, fileProfile, webAccess, webApproval, scriptAccess, imageAccess, imageSelection, attachments, attachmentReferences, selectedModel: structuredClone(selectedModel), outputPreference: structuredClone(outputPreference), reasoningPayload: structuredClone(reasoning.payload), queuedAt: Date.now(), status: 'queued' };
+      const item = { requestId, projectId: data.projectId, text, model: data.model, provider: structuredClone(modelTransport.identity), toolsCapability: selectedModel.toolsCapability ?? selectedModel.tools ?? 'unknown', reasoning: reasoning.choice, fileAccess, fileProfile, webAccess, webApproval, scriptAccess, imageAccess, imageSelection, attachments, attachmentReferences, selectedModel: structuredClone(selectedModel), outputPreference: structuredClone(outputPreference), reasoningPayload: structuredClone(reasoning.payload), queuedAt: Date.now(), status: 'queued' };
       chat.queue.push(item); chat.updatedAt = Date.now(); request.id = chat.id; request.status = 'queued';
       busy.add(chat.id);
       try { await persistChat(chat); }
@@ -514,7 +640,7 @@ async function sendChat(req, res, data) {
       if (state.running) { queueReceipt(res, item, chat); return; }
       // Claim execution before leaving the acceptance lock, including the async start.
       state.running = true;
-      execute = drainChat(state, item, res);
+      execute = lifecycle.track(drainChat(state, item, res));
     });
     if (execute) await execute;
   } catch (error) { request.status = 'error'; request.message = error.status ? error.message : 'Le PC n’a pas pu démarrer la réponse.'; throw error; }
@@ -523,6 +649,13 @@ async function drainChat(state, first, response) {
   try {
     let item = first;
     while (item) {
+      if (lifecycle.status().stopping) {
+        for (const pending of state.chat.queue) if (pending.status === 'queued') {
+          pending.status = 'interrupted'; pending.message = 'Le serveur s’arrête ; cette demande n’a pas été exécutée.';
+          const receipt = chatRequests.get(pending.requestId); if (receipt) receipt.status = 'interrupted';
+        }
+        await persistChat(state.chat); break;
+      }
       const request = chatRequests.get(item.requestId);
       if (item.status !== 'queued') { item = state.chat.queue.find(entry => entry.status === 'queued'); response = silentResponse(); continue; }
       state.chat.queue.splice(state.chat.queue.indexOf(item), 1);
@@ -571,22 +704,31 @@ async function generateChat(res, chat, item, request) {
   let releaseUpstream = () => {};
   let admitted = false;
   const admitModel = async () => {
-    const release = await inferenceGate.acquire(controller.signal);
+    if (request) request.phase = 'waiting-resource';
+    const releaseResource = await coordinator.acquire('text', controller.signal);
+    let release;
+    try { release = await inferenceGate.acquire(controller.signal); }
+    catch (error) { releaseResource(); throw error; }
     admitted = true;
-    releaseUpstream = () => { admitted = false; release(); };
+    releaseUpstream = () => { admitted = false; release(); releaseResource(); };
     try {
       // Refresh after admission, including queued turns and tool continuations.
       selectedModel = modelService.forInference ? await modelService.forInference(item.model, { signal: controller.signal }) : (await models()).find(model => model.id === item.model);
       if (!selectedModel) throw fail(400, 'Sélectionne un modèle local disponible.');
-    } catch (error) { releaseUpstream(); throw error; }
+    } catch (error) { try { await modelService.awaitPendingLoad?.(item.model); } finally { releaseUpstream(); } throw error; }
   };
   // A phone may suspend or close the HTTP stream. Only explicit Stop/timeout cancels the job.
   let detached = false;
   res.on('close', () => { detached = true; });
   res.on('error', () => { detached = true; });
   let responseStarted = false;
-  let checkpointTimer, dirty = false;
-  const persist = () => { dirty = false; return persistChat(chat); };
+  let checkpointTimer, dirty = false, checkpointInFlight = false;
+  const persist = async () => {
+    dirty = false;const started=performance.now();
+    try { await persistChat(chat);checkpointMetrics.writes++; }
+    catch(error){checkpointMetrics.failures++;throw error;}
+    finally { const ms=Math.round(performance.now()-started);checkpointMetrics.totalMs+=ms;checkpointMetrics.maxMs=Math.max(checkpointMetrics.maxMs,ms); }
+  };
   try {
     const userMessageId = randomUUID();
     const outputPreference = item.outputPreference || modelPreferences.resolve(item.model, chat);
@@ -599,12 +741,10 @@ async function generateChat(res, chat, item, request) {
       context.outputBudget = reply.outputBudget = context.receipt.outputBudget = budget;
       (context.receipt.outputBudgets ||= []).push({ ...budget, call: context.receipt.outputBudgets?.length + 1 || 1 });
       chat.generation.phase = 'model';
+      if (request) request.phase = 'model';
       let response;
-      try { response = await fetch(API + '/v1/chat/completions', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', ...apiHeaders() }, signal: controller.signal,
-        body: JSON.stringify({ model: selectedModel.inferenceId || data.model, messages: context.messages, stream: true, stream_options: { include_usage: true }, max_tokens: budget.maxOutputTokens, ...(availableTools.length ? { tools: availableTools, tool_choice: 'auto', parallel_tool_calls: false } : {}), ...reasoning.payload })
-      }); } catch (error) { releaseUpstream(); throw error; }
-      if (!response.ok) { releaseUpstream(); await response.body?.cancel(); throw fail(502, `Bionic ne peut pas répondre (HTTP ${response.status}). Vérifie le modèle, son contexte et les appels d’outils dans Bionic.`); }
+      try { response = await modelTransport.request({ model: selectedModel.inferenceId || data.model, messages: context.messages, tools: availableTools, maxTokens: budget.maxOutputTokens, reasoning: reasoning.payload, signal: controller.signal }); }
+      catch (error) { releaseUpstream(); throw error; }
       markContextTransmitted(context.receipt); dirty = true;
       emit({ type: 'context', outputBudget: budget, contextReceipt: context.receipt });
       return response;
@@ -622,12 +762,14 @@ async function generateChat(res, chat, item, request) {
     if (request) { request.id = chat.id; request.status = 'running'; }
     chat.updatedAt = Date.now();
     await persist();
-    checkpointTimer = setInterval(() => { if (dirty) persist().catch(() => {}); }, 1000);
+    checkpointTimer = setInterval(() => { if (dirty && !checkpointInFlight) { checkpointInFlight=true;persist().catch(() => {}).finally(()=>{checkpointInFlight=false;}); } }, 1000);
     checkpointTimer.unref();
     if (!detached && !res.destroyed) res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
     responseStarted = true;
-    const emit = x => { if (!detached && !res.destroyed && !res.writableEnded) { try { res.write(JSON.stringify(x) + '\n'); } catch { detached = true; } } };
+    const writer = createNDJSONWriter(res, { onDetach: () => { detached = true; transportMetrics.detachedClients++; } });
+    const emit = x => writer.emit(x);
     emit({ type: 'start', id: chat.id, requestId: data.requestId, replyId: reply.id, name: chat.name, contextOmitted: context.contextOmitted, outputBudget: reply.outputBudget, contextReceipt: context.receipt, source: 'web', reasoning: reasoning.choice, fileAccess, fileProfile, webAccess, webApproval, scriptAccess, imageAccess, imageWorkflowId:chat.imageWorkflowId });
+    if (availableTools.length && item.toolsCapability === 'unknown') emit({ type: 'capability', tools: 'unknown', trial: true, message: 'La capacité outils de ce modèle est inconnue. Les outils activés sont essayés pour cette demande.' });
     const updateApproval=async approval=>{const index=reply.approvals.findIndex(item=>item.id===approval.id);if(index<0)reply.approvals.push(approval);else reply.approvals[index]=approval;chat.generation.awaitingApproval=approval.status==='pending';chat.updatedAt=Date.now();await persist();emit({type:'approval',approval,replyId:reply.id});};
     const agent = createAgentTools({fileAccess,fileProfile,webAccess,webApproval,scriptAccess,imageAccess,imageSelection:item.imageSelection,comfyService:comfyImages,imageOwner:{projectId:chat.projectId,chatId:chat.id,messageId:reply.id,requestId:data.requestId},webService:options.webService,files:projectFiles,projectId:chat.projectId,privateDirectory:path.join(DATA,'tool-runs'),python:settings.python,readLimit:3000,readBudget:Math.min(12000,Math.max(1600,Math.floor(selectedModel.contextLength*0.6))),signal:controller.signal,userPrompt:text,initialReads:attachments,requestApproval:proposal=>toolApprovals.request({projectId:chat.projectId,chatId:chat.id,proposal,signal:controller.signal,onChange:updateApproval}),onState:updateApproval});
     const phases = [];
@@ -644,6 +786,7 @@ async function generateChat(res, chat, item, request) {
         if (!availableTools.length || response.finishReason === 'length') throw fail(502, 'Le modèle a produit un appel d’outil incomplet ou non autorisé. Cet appel n’a pas été exécuté.');
         if (round === 9 || actionCount + response.calls.length > 24) throw fail(409, 'Limite d’actions atteinte. Les opérations déjà réalisées sont conservées et visibles dans le chat.');
         context.messages.push({ role: 'assistant', content: response.text || null, tool_calls: response.calls });
+        const roundImages = [];
         for (const call of response.calls) {
           emit({ type: 'action-start', name: call.function.name });
           let intent;
@@ -658,12 +801,33 @@ async function generateChat(res, chat, item, request) {
           addToolRead(context.receipt, action, read);
           for(const excerpt of reads||[])addToolRead(context.receipt,action,excerpt);
           addExternalContext(context.receipt,action,external);
-          if(action.imageGeneration){const images=reply.imageGenerations||=[];const index=images.findIndex(job=>job.id===action.imageGeneration.id);if(index<0)images.push(action.imageGeneration);else images[index]=action.imageGeneration;}
+          if(action.imageGeneration){const images=reply.imageGenerations||=[];const index=images.findIndex(job=>job.id===action.imageGeneration.id);if(index<0)images.push(action.imageGeneration);else images[index]=action.imageGeneration;roundImages.push(action.imageGeneration);}
           reply.actions.push(action); chat.updatedAt = Date.now(); await persist();
           emit({ type: 'action', action, contextReceipt: context.receipt });
           context.messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
         }
+        if (controller.signal.aborted) throw fail(409, 'Demande arrêtée.');
         if (reply.text && !reply.text.endsWith('\n\n')) { reply.text += '\n\n'; emit({ type: 'delta', text: '\n\n' }); }
+        if (roundImages.length) {
+          let imageJobs = roundImages;
+          const imageOnly = roundImages.length === response.calls.length;
+          if (!imageOnly) {
+            // The image reservation is held by its service, never by this waiter.
+            // This ordering also applies when engines are explicitly independent.
+            chat.generation.phase = 'waiting-image'; if(request)request.phase='waiting-image';dirty = true;
+            while (imageJobs.some(job => ACTIVE_IMAGE_STATUSES.has(job.status)) && !imageJobs.some(job => job.status === 'unknown')) {
+              await wait(250, undefined, { signal: controller.signal });
+              imageJobs = roundImages.map(job => comfyImages.get(job.id));
+            }
+          }
+          if (imageOnly || imageJobs.some(job => job.status === 'unknown')) {
+            const message = imageTurnStatus(imageJobs);
+            reply.text += message; emit({ type: 'delta', text: message });
+            reply.finishReason = 'stop'; reply.completionSource = 'image-status';
+            done = true;
+            break;
+          }
+        }
         metrics = createGenerationMetrics(); upstream = await requestModel();
       }
       if (!done) throw fail(409, 'La demande a atteint sa limite d’étapes. Les actions réalisées restent visibles.');
@@ -682,7 +846,7 @@ async function generateChat(res, chat, item, request) {
       chat.messages.find(entry => entry.requestId === data.requestId && entry.role === 'user').requestStatus = chat.generation.status;
       chat.updatedAt = Date.now(); await persist();
       emit({ type: 'error', message, replyId: reply.id, finishedAt: reply.finishedAt, outcome: reply.outcome, contextReceipt: reply.contextReceipt });
-    } finally { if (request) { request.status = chat.generation.status; request.message = chat.generation.message; } if (!detached && !res.destroyed) res.end(); }
+    } finally { if (request) { request.status = chat.generation.status; request.message = chat.generation.message; } writer.finish(); }
   } finally {
     releaseUpstream(); clearInterval(checkpointTimer); await chatStates.get(chat.id).writes.catch(() => {});
     clearTimeout(timeout); active.delete(chat.id);
@@ -692,7 +856,7 @@ async function generateChat(res, chat, item, request) {
 
 const STATIC = { '/': 'index.html', '/app.js': 'app.js', '/message-text.js':'message-text.js', '/settings.js':'settings.js', '/help.js':'help.js', '/certificates.js':'certificates.js', '/project-tree.js':'project-tree.js', '/project-tree.css':'project-tree.css', '/comfy-images.js':'comfy-images.js', '/updates.js': 'updates.js', '/message-drafts.js': 'message-drafts.js', '/files.js': 'files.js', '/workspace.js': 'workspace.js', '/style.css': 'style.css', '/manifest.webmanifest': 'manifest.webmanifest', '/icon.svg': 'icon.svg' };
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml' };
-function handle(req, res) { return scanCycles.run({}, () => handleRequest(req, res)); }
+function handle(req, res) { return lifecycle.track(withScanCycle(() => handleRequest(req, res))); }
 async function handleRequest(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
@@ -707,6 +871,7 @@ async function handleRequest(req, res) {
     const host = new URL(protocol + '//' + (req.headers.host || '')).hostname;
     if (!allowedHosts.has(host) && !certificateStore.state.server?.hosts?.includes(host)) throw fail(403, 'Adresse du serveur non reconnue.');
     const url = new URL(req.url, protocol + '//' + req.headers.host);
+    if (!['GET','HEAD'].includes(req.method)) lifecycle.assertAdmission();
     if (req.companionMaintenance && !['/api/ping','/api/admin/stop','/api/admin/revoke-sessions','/api/admin/certificates/action'].includes(url.pathname)) throw fail(404, 'Page introuvable.');
     if (url.pathname.startsWith('/api/admin/') && certificateStore.state.mode !== 'http' && !req.companionMaintenance) throw fail(403, 'Utilise Certificats.cmd sur le PC.');
     if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -736,9 +901,15 @@ async function handleRequest(req, res) {
       if (f && Date.now() - f.first > 600000) { failures.delete(ip); f = null; }
       if (f?.count >= 8) throw fail(429, 'Trop d’essais. Réessaie dans dix minutes.');
       const d = await body(req, 1024);
-      const actual = scryptSync(String(d.code || '').slice(0, 256), config.salt, 32);
+      if (loginVerifications >= 4) throw fail(429, 'Plusieurs connexions sont en cours. Réessaie dans un instant.');
+      const attempts=failures.get(ip);
+      if (attempts?.count >= 8) throw fail(429, 'Trop d’essais. Réessaie dans dix minutes.');
+      failures.set(ip, { first: attempts?.first || Date.now(), count: (attempts?.count || 0) + 1 });
+      let actual;
+      loginVerifications++;
+      try { actual = await derivePassword(String(d.code || '').slice(0, 256), config.salt, 32); }
+      finally { loginVerifications--; }
       if (!timingSafeEqual(actual, Buffer.from(config.passwordHash, 'hex'))) {
-        failures.set(ip, { first: f?.first || Date.now(), count: (f?.count || 0) + 1 });
         throw fail(401, 'Code d’accès incorrect. Consulte ACCES-PRIVE.txt sur le PC.');
       }
       failures.delete(ip);
@@ -804,6 +975,7 @@ async function handleRequest(req, res) {
         json(res, 202, result); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/diagnostics') { json(res, 200, await runDiagnostics({ settings, nativeStore, fetchImpl: fetch, headers: apiHeaders,version:APP_VERSION })); return; }
+      if (req.method === 'GET' && url.pathname === '/api/runtime-status') { json(res,200,{ lifecycle:lifecycle.status(),work:activeWork(),resources:coordinator.status(),transport:{...transportMetrics},checkpoints:{...checkpointMetrics},storage:{...measurements} });return; }
       if (req.method === 'GET' && url.pathname === '/api/files/trash') { json(res, 200, { projectId: url.searchParams.get('projectId'), ...await projectFiles.listTrash(url.searchParams.get('projectId')) }); return; }
       if (req.method === 'GET' && ['/api/files/trash/download','/api/files/backup/download'].includes(url.pathname)) {
         const file = await projectFiles[url.pathname.includes('/trash/')?'downloadTrash':'downloadBackup'](url.searchParams.get('projectId'), url.searchParams.get('backupId'));
@@ -861,9 +1033,13 @@ async function handleRequest(req, res) {
         finally { modelManagementBusy = false; }
         return;
       }
-      if (req.method === 'GET' && url.pathname === '/api/projects') { json(res, 200, { projects: await listProjects() }); return; }
+      if (req.method === 'GET' && url.pathname === '/api/projects') { const projects = await listProjects(); json(res, 200, { projects, ...localProjects.status() }); return; }
+      if (req.method === 'POST' && url.pathname === '/api/local-projects') { json(res, 201, { project: await localProjects.create(await body(req, 4096)) }); return; }
+      if (req.method === 'GET' && url.pathname === '/api/local-projects/adoption') { json(res, 200, await localProjects.previewAdoption(url.searchParams.get('projectId'))); return; }
+      if (req.method === 'POST' && url.pathname === '/api/local-projects/adopt') { json(res, 201, { project: await localProjects.adopt(await body(req, 16384)) }); return; }
       if (req.method === 'GET' && url.pathname === '/api/activity') {
-        const result = await workspaceFeatures.activity(url.searchParams.get('projectId') || undefined), snapshot = await chatSnapshot(); json(res, 200, { ...result, warnings: snapshot.warnings, partial: snapshot.warnings.length > 0 }); return;
+        const page = url.searchParams.has('limit') ? { limit: Number(url.searchParams.get('limit')), before: url.searchParams.get('cursor') } : undefined;
+        const result = await workspaceFeatures.activity(url.searchParams.get('projectId') || undefined, page), snapshot = await chatSnapshot(); json(res, 200, { ...result, warnings: snapshot.warnings, partial: snapshot.warnings.length > 0 }); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/deliverables') {
         json(res, 200, await workspaceFeatures.listDeliverables(url.searchParams.get('projectId'))); return;
@@ -925,11 +1101,16 @@ async function handleRequest(req, res) {
         const projectId = url.searchParams.get('projectId');
         const originals = (await listSessions(projectId)).map(s => ({ ...s, source: 'bionic' }));
         const web = await webChats(projectId), snapshot = await chatSnapshot();
-        json(res, 200, { sessions: [...originals, ...web].sort((a, b) => b.updatedAt - a.updatedAt), warnings: snapshot.warnings, partial: snapshot.warnings.length > 0 }); return;
+        const sessions = [...originals, ...web].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0) || a.id.localeCompare(b.id));
+        const page = url.searchParams.has('limit') ? pageItems(sessions, { limit: Number(url.searchParams.get('limit')), before: url.searchParams.get('cursor') }) : null;
+        json(res, 200, { sessions: page ? page.items : sessions, ...(page ? { hasMore: page.hasMore, nextCursor: page.nextCursor, total: page.total } : {}), warnings: snapshot.warnings, partial: snapshot.warnings.length > 0 }); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/conversation') {
         const id = url.searchParams.get('id'), pid = url.searchParams.get('projectId');
-        const chat = await readChat(pid, id), dto = structuredClone(chat);
+        const chat = await readChat(pid, id);
+        for (const message of chat.messages) await recoverDirectImage(chat, message);
+        const page = url.searchParams.has('limit') ? pageMessages(chat.messages, { limit: Number(url.searchParams.get('limit')), before: url.searchParams.get('before') }) : null;
+        const dto = structuredClone(page ? { ...chat, messages: page.items, pagination: { hasMore: page.hasMore, nextCursor: page.nextCursor, total: page.total } } : chat);
         for (const message of dto.messages || []) for (const intent of message.mutationIntents || []) if (intent.status === 'uncertain' && intent.projectId === pid && intent.path && projectFiles.listMutationBackups) { try { intent.backupCandidates = await projectFiles.listMutationBackups(pid, { path: intent.path, since: intent.createdAt - 5000 }); } catch { intent.backupNotice='Recherche de copies indisponible : vérifie sur le PC.'; } }
         for(const message of dto.messages||[])for(let i=0;i<(message.imageGenerations||[]).length;i++){
           const card=message.imageGenerations[i];try{const owner=comfyImages.owner(card.id);if(owner.chatId===dto.id&&owner.messageId===message.id)message.imageGenerations[i]=comfyImages.get(card.id);}catch{message.imageGenerations[i]={...card,status:'failed',error:'Le suivi de cette image est indisponible.'};}
@@ -951,7 +1132,7 @@ async function handleRequest(req, res) {
         const record = await findChatRequest(projectId, requestId);
         if (!record) throw fail(404, 'Envoi non retrouvé sur le PC.');
         const chat = record.id ? chatStates.get(record.id)?.chat : undefined;
-        json(res, 200, { projectId: record.projectId, id: record.id, status: record.status, message: record.message, ...(chat ? { position: queuePosition(chat, requestId) } : {}) }); return;
+        json(res, 200, { projectId: record.projectId, id: record.id, status: record.status, phase: record.phase, message: record.message, ...(chat ? { position: queuePosition(chat, requestId) } : {}) }); return;
       }
       if(req.method==='GET'&&url.pathname==='/api/comfy/memory-module'){const module=await defaultFS.readFile(new URL('./comfyui/custom_nodes/free_memory_after_workflow.py',import.meta.url));res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Disposition':'attachment; filename="free_memory_after_workflow.py"','Cache-Control':'no-store'});res.end(module);return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/discover'){json(res,200,await comfyImages.discoverServers(await body(req,4096)));return;}
@@ -959,6 +1140,7 @@ async function handleRequest(req, res) {
       if(req.method==='GET'&&url.pathname==='/api/comfy/settings'){json(res,200,await comfyImages.getSettings());return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/settings'){json(res,200,await comfyImages.updateSettings(await body(req,4096)));return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/check'){json(res,200,await comfyImages.checkConnection(await body(req,4096)));return;}
+      if(req.method==='POST'&&url.pathname==='/api/comfy/generate'){json(res,200,await sendDirectImage(await body(req,20000)));return;}
       if(req.method==='GET'&&url.pathname==='/api/capabilities'){
         json(res,200,{version:APP_VERSION,items:[
           {name:'Modèles et réponses',description:'Modèles servis par Bionic. Plafond automatique de 8 192 tokens, adapté au contexte estimé à chaque appel ; réglage par modèle ou conversation.'},
@@ -982,6 +1164,7 @@ async function handleRequest(req, res) {
       if (req.method === 'POST' && url.pathname === '/api/cancel') {
         const d = await body(req);
         const request = d.requestId ? chatRequests.get(d.requestId) : null;
+        if (request?.phase === 'image' && ['starting', 'running'].includes(request.status)) { request.cancelRequested = true; request.controller?.abort(); }
         const id = request?.id || d.id;
         if (id) await withAcceptanceLock((request?.projectId || d.projectId || '') + ':' + id, async () => {
           const chat = await readWeb(id);
@@ -1016,13 +1199,42 @@ async function handleRequest(req, res) {
 const server = http.createServer(handle);
 server.requestTimeout = settings.requestTimeoutMs || 180000;
 server.headersTimeout = 15000;
-async function close() { certificateWeb.clear(); await certificateTransport?.close(); updater.stop(); await comfyImages.close(); for (const job of active.values()) job.controller.abort(); await Promise.allSettled([...chatStates.values()].map(state => state.writes)); if (server.listening) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); } }
+let closing;
+function close() {
+  if (closing) return closing;
+  lifecycle.beginStop(); coordinator.stop(); certificateWeb.clear(); updater.stop();
+  for (const request of chatRequests.values()) if (request.status === 'starting') { request.cancelRequested = true; request.controller?.abort(); }
+  for (const job of active.values()) job.controller.abort();
+  const finalize = (async () => {
+    await comfyImages.close();
+    await lifecycle.settle();
+    // Generators may enqueue their last checkpoint only after cancellation settles.
+    await Promise.all([...chatStates.values()].map(state => state.writes));
+    await localProjects.flush(); await conversationRepository.flush();
+    await certificateTransport?.close();
+    if (server.listening) { server.closeAllConnections(); await new Promise((resolve,reject) => server.close(error => error ? reject(error) : resolve())); }
+    lifecycle.finish();
+    return { stopped: true, terminalCheckpoints: true };
+  })();
+  closing = withShutdownDeadline(finalize, options.shutdownTimeoutMs || settings.shutdownTimeoutMs || 15000).catch(error => {
+    server.closeAllConnections(); if (server.listening) server.close(() => {});
+    console.error(JSON.stringify({ event: 'shutdown-unconfirmed', code: error.code || 'CHECKPOINT_FAILED' }));
+    throw error;
+  });
+  return closing;
+}
 if (options.enableUpdateScheduling) server.once('listening', () => updater.start());
-return { server, handle, close, config, settings, certificateStore, attachCertificateTransport: controller => { certificateTransport = controller; }, clearSecuritySessions: () => { certificateWeb.clear(); sessions.clear(); }, refreshSecurityAddresses, readWeb, webChats, chatSnapshot, conversationModelContext, sendChat, chatStates, persistChat, measurements, inferenceGate, updater, addresses:localIPs, withScanCycle: work => scanCycles.run({},work) };
+return { server, handle, close, config, settings, certificateStore, attachCertificateTransport: controller => { certificateTransport = controller; }, clearSecuritySessions: () => { certificateWeb.clear(); sessions.clear(); }, refreshSecurityAddresses, readWeb, webChats, chatSnapshot, conversationModelContext, sendChat, chatStates, persistChat, measurements, inferenceGate, coordinator, lifecycle, activeWork, updater, addresses:localIPs, withScanCycle };
 }
 
 if (process.argv[1] && (process.platform === 'win32' ? path.resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase() : path.resolve(process.argv[1]) === fileURLToPath(import.meta.url))) {
   const app = await createCompanion({ enableUpdateScheduling: true, exitOnUpdate: true });
+  let shutdownRequested = false;
+  for (const signal of ['SIGINT','SIGTERM','SIGBREAK']) process.on(signal, async () => {
+    if (shutdownRequested) return; shutdownRequested = true;
+    try { await app.close(); process.exitCode = 0; }
+    catch { process.exitCode = 1; }
+  });
   const root = path.dirname(fileURLToPath(import.meta.url));
   try {
     const transport = await startCertificateTransport({ app, root });

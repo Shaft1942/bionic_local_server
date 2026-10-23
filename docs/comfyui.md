@@ -6,6 +6,28 @@ puis demander une image en langage naturel. Un modèle compatible avec les appel
 d’outils est nécessaire. L’image et son bouton de téléchargement apparaissent dans
 le message de l’assistant. Le rendu continue lorsque le navigateur est fermé.
 
+Après un appel d’outil consacré à l’image, le compagnon affiche lui-même la
+confirmation et termine la réponse texte, sans rappeler le modèle de conversation
+pendant le rendu. Le suivi et l’affichage de l’image continuent automatiquement.
+Si le modèle renvoie un lot mêlant image et autres outils, la synthèse texte attend
+la fin du rendu, y compris une attente de ressource avant soumission. Une soumission
+au résultat incertain termine le tour avec un message de vérification, sans nouvel
+appel du modèle ni renvoi de l’image. Les erreurs de validation survenues avant la
+création d’un job restent expliquées par le parcours conversationnel habituel.
+
+Le profil de ressources `exclusive`, activé par défaut dans cette bêta, coordonne
+les phases texte et image des travaux suivis par ce compagnon. Le profil explicite
+`independent` permet aux moteurs de travailler simultanément ; il conserve cette
+attente du rendu avant la synthèse d’un lot mixte. Aucun des profils ne réserve le
+GPU face aux autres instances ou applications. Aucun déchargement automatique des
+modèles Bionic ou ComfyUI n’est ajouté par cette optimisation, et la taille du
+contexte Bionic reste celle confirmée par le fournisseur.
+
+Pour utiliser le prompt exact sans modèle de conversation, saisir le texte puis
+choisir **Outils → Générer ce prompt directement**. Ce parcours réutilise le modèle
+d’image, les LoRA, les droits et le suivi des jobs. Les fichiers joints ne sont pas
+utilisés ; depuis un historique Bionic, il crée une conversation web distincte.
+
 Dans **Outils → Modèle d’image**, choisir Krea 2 Turbo ou Hassaku XL pour le prochain
 message. Le choix est conservé avec le brouillon et la conversation. Dans
 **Paramètres → ComfyUI**, chaque modèle dispose de deux emplacements LoRA facultatifs

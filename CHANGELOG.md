@@ -1,5 +1,14 @@
 # Journal des versions
 
+## 2.4.0-beta.1 — préparation locale, 2026-10-23
+
+- Fermeture des fenêtres et menus au clic extérieur, clavier/focus conservés ; action d'actualisation/reconnexion en haut seulement.
+- Guide certificats et aide revus pour Android, iOS/iPadOS et Windows ; distinction autorité HTTPS et identité privée mTLS, diagnostic par adresse et code d'erreur.
+- Génération d'image directe sans appel texte, projets locaux et adoption explicite des dossiers/droits ; index de résumés, cache borné et pagination des historiques.
+- Fiabilité : jobs images illisibles isolés, admission/arrêt bornés, coordination configurable par phase texte/images, transport/adaptateur et capacités outils à trois états, clients lents détachés avec reprise.
+- Optimisation du diagnostic de génération intégrée : confirmation d'un lot image sans second appel texte ; attente d'un lot mixte avant synthèse, sans resoumission d'un résultat incertain.
+- Le lot français/anglais est suivi séparément avant intégration finale. La préparation locale n'est ni une publication ni une validation matérielle. Voir [le périmètre 2.4](docs/beta-2.4.md).
+
 ## 2.3.0 — 2026-10-23
 
 - Publication stable du contenu validé de 2.2.1-beta.4, sans changement fonctionnel supplémentaire. Les préversions restent disponibles dans l’historique GitHub.

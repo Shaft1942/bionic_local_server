@@ -31,3 +31,10 @@ test('certificate proof port is distinct, deterministic at the boundary and expl
   assert.equal((await loadSettings({root,env:{BIONIC_MOBILE_PORT:'65535'}})).certificateProofPort,65534);
   assert.equal((await loadSettings({root,env:{BIONIC_MOBILE_PORT:'4000',BIONIC_MOBILE_CERTIFICATE_PROOF_PORT:'4100'}})).certificateProofPort,4100);
 });
+
+test('resource sharing and graceful shutdown have explicit validated policies',async t=>{
+  const root=await fixture(t);
+  const defaults=await loadSettings({root,env:{}});assert.equal(defaults.resourcePolicy,'exclusive');assert.equal(defaults.shutdownTimeoutMs,15000);
+  const independent=await loadSettings({root,env:{BIONIC_MOBILE_RESOURCE_POLICY:'independent',BIONIC_MOBILE_SHUTDOWN_TIMEOUT_MS:'500'}});assert.equal(independent.resourcePolicy,'independent');assert.equal(independent.shutdownTimeoutMs,500);
+  for(const env of [{BIONIC_MOBILE_RESOURCE_POLICY:'automatic'},{BIONIC_MOBILE_SHUTDOWN_TIMEOUT_MS:'0'},{BIONIC_MOBILE_SHUTDOWN_TIMEOUT_MS:'120001'}])await assert.rejects(loadSettings({root,env}),/Configuration invalide/);
+});

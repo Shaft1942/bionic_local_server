@@ -12,7 +12,7 @@ Le PC héberge Bionic, ses modèles et ce compagnon. Le téléphone n’installe
 
 1. Vérifiez qu’une conversation fonctionne directement dans Bionic.
 2. Installez [Node.js](https://nodejs.org/en/download), version **24 minimum**. Sous Windows x64, choisissez **Windows Installer (.msi)** ; Docker n'est pas nécessaire. Laissez l'installateur ajouter Node.js au `PATH`, puis rouvrez les fenêtres de terminal déjà ouvertes. L'archive du compagnon n'inclut pas Node.js.
-3. Téléchargez **`bionic-mobile-v1.10.0.zip`** et `SHA256SUMS.txt` depuis la [Release 1.10.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.10.0). **Source code** et **Code → Download ZIP** fournissent les sources, qui peuvent différer du paquet construit par le workflow. La première installation depuis 1.8.0 reste manuelle ; depuis 1.9.0, les suivantes peuvent être proposées par le compagnon. Voir [Mises à jour](mises-a-jour.md).
+3. Téléchargez le paquet **`bionic-mobile-v….zip`** et `SHA256SUMS.txt` de la même version depuis les [Releases](https://github.com/Shaft1942/bionic_local_server/releases). Choisissez une version stable pour une première installation ; une version marquée bêta ou *pre-release* est en cours d’essai. **Source code** et **Code → Download ZIP** fournissent les sources, qui peuvent différer du paquet construit par le workflow. Depuis 1.9.0, les mises à jour suivantes peuvent être proposées par le compagnon. Voir [Mises à jour](mises-a-jour.md).
 4. Extrayez tous les fichiers dans un dossier utilisateur accessible en écriture. Ne lancez pas l’application depuis l’intérieur de l’archive ou depuis `Program Files`.
 5. Dans les paramètres de **Bionic → API des modèles locaux**, activez le serveur. Relevez l’URL affichée. Il n’est pas nécessaire d’activer CORS ni d’exposer cette API au réseau : le compagnon l’appelle depuis le PC.
 6. Copiez `config.example.json` en `config.local.json`. Si Bionic affiche par exemple `http://localhost:1234/v1`, utilisez `"apiUrl": "http://127.0.0.1:1234"`. Il faut l’adresse du serveur, **sans `/v1` final**. Le réglage doit correspondre à votre propre port Bionic.
@@ -35,13 +35,24 @@ Au premier démarrage, ouvrez **ACCES-PRIVE.txt** dans le dossier de l’applica
 
 1. Laissez le PC, Bionic et le compagnon allumés.
 2. Connectez le téléphone au même réseau local. Évitez le Wi-Fi invité, qui peut isoler les appareils.
-3. Ouvrez **l’adresse du téléphone inscrite dans ACCES-PRIVE.txt**. `localhost` sur le téléphone désigne le téléphone, pas le PC.
+3. Ouvrez **l’adresse du téléphone inscrite dans ACCES-PRIVE.txt**, avec son protocole et son port exacts. Au premier démarrage, elle utilise HTTP ; une installation déjà sécurisée conserve HTTPS. `localhost` sur le téléphone désigne le téléphone, pas le PC.
 4. Si le PC répond mais pas le téléphone, vérifiez que le réseau Windows est **privé**, puis lancez **Autoriser-reseau.cmd**. La demande Windows sert à créer une règle de pare-feu limitée au réseau privé et au sous-réseau local.
-5. Saisissez le code d’accès. Vous pouvez ajouter un favori dans le navigateur.
+5. Saisissez le code d’accès, puis préparez HTTPS depuis **Paramètres → Connexion et appareils** avant d’installer l’application sur l’écran d’accueil.
 
 Ne redirigez pas ce port vers Internet. L’accès fonctionne sur le réseau local de confiance ; il ne constitue pas un service public multi-utilisateur. Un redémarrage du serveur ferme les sessions de connexion : le même code permet de se reconnecter.
 
 Pour supprimer l’autorisation réseau, exécutez `Retirer-autorisation-reseau.ps1` depuis PowerShell avec les droits demandés. Le serveur peut aussi être utilisé uniquement sur le PC sans ajouter de règle de pare-feu.
+
+## Sécuriser le téléphone puis ajouter l’application
+
+Le [guide des certificats](certificats-utilisation.md) détaille les écrans Android, iPhone/iPad et Windows, la comparaison d’empreinte et les erreurs de connexion.
+
+1. Dans **Connexion et appareils**, choisissez **Préparer HTTPS** en conservant le nom ou l’IP réellement utilisé par le téléphone.
+2. Téléchargez **l’autorité du compagnon** (`bionic-autorite.crt`). Comparez son empreinte SHA-256 avec celle affichée sur le PC, puis installez-la comme autorité de confiance sur le téléphone. L’installation système est nécessaire ; un téléchargement seul ne suffit pas.
+3. Ouvrez **Vérifier la connexion sécurisée**, puis confirmez dans la page de preuve uniquement si le navigateur ne présente aucune alerte de certificat. Revenez à l’adresse HTTPS du compagnon et reconnectez-vous.
+4. Une fois l’adresse HTTPS ouverte sans alerte, utilisez le menu du navigateur pour installer l’application ou ajouter un raccourci. L’offre d’installation dépend du navigateur ; elle ne remplace pas le contrôle du certificat. Le PC et le compagnon doivent toujours rester allumés.
+
+Le **certificat appareil `.p12`**, avec son mot de passe, est une étape supplémentaire pour mTLS : il n’est pas nécessaire au simple passage en HTTPS. Il reste privé. N’envoyez jamais un `.p12`, son mot de passe ou la clé privée de l’autorité pour demander de l’aide.
 
 ## Python facultatif pour les documents
 

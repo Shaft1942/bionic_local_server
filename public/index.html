@@ -39,8 +39,17 @@
   </main>
   <div id="app" class="app" hidden>
     <aside id="sidebar" class="sidebar" aria-label="Projets et conversations">
-      <div class="brand-row"><div class="brand"><img src="/icon.svg" width="28" height="28" alt=""><span>Bionic <small>compagnon local</small></span></div><button id="refresh" class="icon-button" aria-label="Actualiser les projets et conversations"></button></div>
+      <div class="brand-row"><div class="brand"><img src="/icon.svg" width="28" height="28" alt=""><span>Bionic <small>compagnon local</small></span></div><button id="refresh" class="icon-button" type="button" aria-label="Actualiser et se reconnecter au PC" title="Actualiser et se reconnecter au PC"></button></div>
       <div class="project-field"><label for="project">Projet courant</label><select id="project"></select></div>
+      <details id="project-management" class="project-management">
+        <summary>Gérer les projets</summary>
+        <div class="project-management-content">
+          <form id="local-project-form"><label for="local-project-name">Nouveau projet local</label><input id="local-project-name" type="text" maxlength="120" autocomplete="off" required><p>Crée un projet dans le compagnon, sans dossier ni accès aux fichiers.</p><button id="local-project-create" class="file-action" type="submit">Créer le projet</button></form>
+          <div id="project-adoption"><button id="project-adoption-preview" class="file-action" type="button">Adopter le projet Bionic courant</button><p>Garde son identifiant et choisis les dossiers autorisés après aperçu.</p></div>
+          <form id="project-adoption-form" hidden><h2 id="project-adoption-title" tabindex="-1">Dossiers du projet</h2><p id="project-adoption-notice"></p><div id="project-adoption-roots"></div><p>Seuls les dossiers cochés seront autorisés. La modification doit être choisie explicitement ; elle reste limitée aux droits affichés.</p><button id="project-adoption-confirm" class="file-action" type="submit">Confirmer l’adoption locale</button><button id="project-adoption-cancel" class="file-action" type="button">Annuler</button></form>
+          <p id="local-project-status" role="status" hidden></p><p id="local-project-error" class="error" role="alert" hidden></p>
+        </div>
+      </details>
       <button id="new-chat" class="new-chat"></button>
       <button id="files-open-sidebar" class="files-open" type="button">Fichiers du projet</button>
       <div class="workspace-shortcuts"><button id="activity-open-sidebar" class="workspace-shortcut" type="button">Depuis votre départ <span id="activity-count" class="activity-count" hidden></span></button><button id="deliverables-open-sidebar" class="workspace-shortcut" type="button">Livrables</button></div>
@@ -48,7 +57,7 @@
       <div class="list-heading"><h2>Projets et conversations</h2><span id="session-count"></span></div>
       <p id="sessions-warning" class="listing-warning" hidden></p>
       <nav id="sessions" class="sessions" aria-label="Projets et conversations"></nav>
-      <footer class="sidebar-bottom" aria-label="Connexion et réglages du compagnon"><span id="status" class="status" role="status">Connexion…</span><div class="sidebar-system-actions" role="group" aria-label="Actions du compagnon"><button id="settings-open-sidebar" class="icon-button" type="button" aria-label="Paramètres" title="Paramètres" aria-controls="settings-view"></button><button id="models-open-sidebar" class="icon-button" type="button" aria-label="Modèles chargés" title="Modèles chargés" aria-controls="models-dialog"></button><button id="reconnect" class="icon-button" type="button" aria-label="Reconnexion au PC" title="Reconnexion au PC"></button></div></footer>
+      <footer class="sidebar-bottom" aria-label="Connexion et réglages du compagnon"><span id="status" class="status" role="status">Connexion…</span><div class="sidebar-system-actions" role="group" aria-label="Actions du compagnon"><button id="settings-open-sidebar" class="icon-button" type="button" aria-label="Paramètres" title="Paramètres" aria-controls="settings-view"></button><button id="models-open-sidebar" class="icon-button" type="button" aria-label="Modèles chargés" title="Modèles chargés" aria-controls="models-dialog"></button></div></footer>
     </aside>
     <main class="thread" id="thread">
       <header class="thread-header"><button id="back" class="icon-button back" aria-label="Retour aux conversations"></button><div class="thread-titles"><h1 id="thread-title">Tes conversations, ici.</h1><p id="thread-subtitle">Choisis un projet et un fil pour commencer.</p></div><button id="activity-open-thread" class="icon-button activity-thread" aria-label="Depuis votre départ"></button><button id="conversation-options-toggle" class="icon-button" type="button" aria-label="Options de la conversation" aria-expanded="false" aria-controls="conversation-options"></button></header>
@@ -61,6 +70,7 @@
         <button id="diagnostics-shortcut" class="conversation-help" type="button">Diagnostic de connexion</button>
       </section>
       <div id="banner" class="banner" hidden></div>
+      <div id="history-controls" class="history-controls" hidden><button id="history-load" class="file-action" type="button" aria-controls="messages">Charger les messages précédents</button><span id="history-count" role="status" tabindex="-1"></span></div>
       <div id="messages" class="messages" tabindex="0" aria-label="Messages de la conversation"><div class="welcome"><img src="/icon.svg" width="48" height="48" alt=""><h2>Le fil de tes idées.</h2><p>Ouvre une conversation Bionic ou commence un nouveau chat dans le projet de ton choix.</p><p class="welcome-detail">Les originaux restent dans Bionic.<br>Les suites web restent sur ce PC.</p></div></div>
       <div id="reply-follow-bar" class="reply-follow-bar" hidden><button id="reply-follow" class="file-action" type="button" aria-controls="messages">Revenir à la réponse</button></div>
       <div id="message-error" class="message-error" role="alert" hidden></div>
@@ -69,6 +79,8 @@
         <details id="composer-files" class="composer-files">
           <summary id="files-menu-toggle" aria-controls="composer-files-options"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l8-8"></path></svg><span>Outils</span><span id="files-permission-state" class="files-permission-state">Fichiers modifiables</span><svg class="files-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"></path></svg></summary>
           <div id="composer-files-options" class="composer-files-menu">
+            <button id="generate-image-direct" class="attach-file" type="button" aria-describedby="direct-image-help">Générer ce prompt directement</button>
+            <p id="direct-image-help" class="tools-help">Texte exact du message, sans appel au modèle de conversation. 6 000 caractères maximum. Modèle d’image et LoRA : réglages ci-dessous. Les fichiers joints ne sont pas utilisés. Depuis Bionic, crée un nouveau chat web.</p>
             <div class="attachment-tools"><button id="attach-file" class="attach-file" type="button">Fichier du projet</button><button id="upload-file" class="attach-file" type="button">Importer dans le projet</button><button id="upload-attach-file" class="attach-file" type="button">Importer puis joindre</button><input id="phone-files" class="sr-only" type="file" multiple tabindex="-1" aria-label="Fichiers de cet appareil à importer dans le projet"></div>
             <p id="import-help" class="tools-help">Importer conserve les fichiers sur le PC ; joindre les ajoute au prochain message, sans l’envoyer.</p>
             <button id="fork-chat" class="attach-file" type="button">Créer une branche du chat</button>
@@ -89,6 +101,7 @@
           <div class="composer-bottom"><label class="model-field"><span class="sr-only">Modèle local</span><select id="model" aria-label="Modèle local"></select></label><label class="effort-field" for="effort"><span>Effort</span><select id="effort" aria-describedby="effort-help"><option value="default">Par défaut</option></select></label></div>
           <div class="composer-actions"><button id="stop" class="stop-button" type="button" aria-label="Arrêter la réponse de ce chat" title="Arrêter la réponse de ce chat" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"></rect></svg><span>Arrêter</span></button><button id="send" class="send-button" type="submit" aria-label="Envoyer le message"><span id="send-label"></span></button></div>
           <p id="effort-help" class="effort-help" aria-live="polite"></p>
+          <p id="model-tools-help" class="effort-help" role="status" hidden></p>
         </div>
         <p id="composer-note">Le modèle reçoit les messages et les fichiers que tu joins.</p>
       </form>
@@ -203,6 +216,7 @@
             <a href="https://docs.comfy.org/basic-concepts/models" target="_blank" rel="noopener noreferrer">Guide officiel pour ajouter des modèles</a>
           </div>
           <p id="comfy-result" role="status"></p><p id="comfy-error" class="error" role="alert" hidden></p>
+          <p id="comfy-storage-warning" class="listing-warning" role="status" hidden></p>
         </form>
       </section>
 </section>
@@ -244,6 +258,18 @@
           <ul id="certificate-devices" class="certificate-devices"></ul>
         </div>
         <p id="settings-connection-availability" class="certificate-local-help">Les actions apparaissent selon la connexion et les capacités annoncées par le serveur. Créer un certificat d’appareil exige HTTPS. Si une action manque, actualise l’état ou reprends depuis le PC. Le niveau supérieur devient actif après vérification de la connexion.</p>
+<details id="certificate-install-guide" class="certificate-technical">
+  <summary>Installer l’autorité sur cet appareil</summary>
+  <p>Pour HTTPS, installe <strong>bionic-autorite.crt</strong> comme autorité de confiance. Compare son empreinte SHA-256 complète avec celle affichée sur le PC. Le téléchargement seul ne suffit pas.</p>
+  <ul>
+    <li><strong>Android :</strong> dans les réglages de sécurité, recherche Certificat, puis Installer un certificat → Certificat CA. Choisis le .crt ; le menu Wi-Fi sert à un autre usage. Les libellés varient selon le fabricant.</li>
+    <li><strong>iPhone / iPad :</strong> installe le profil téléchargé dans Réglages, puis active sa confiance totale dans Général → Informations → Réglages des certificats.</li>
+    <li><strong>Windows :</strong> dans certmgr.msc du compte du navigateur, importe le .crt sous Autorités de certification racines de confiance → Certificats.</li>
+  </ul>
+  <p>Ouvre ensuite la vérification sécurisée. Confirme seulement sans alerte, puis reviens à l’adresse HTTPS habituelle du compagnon avant d’ajouter l’application à l’écran d’accueil.</p>
+  <p>Si une alerte persiste, relève l’adresse exacte et le code NET::ERR_CERT_… sans partager les tickets d’une URL de preuve. Vérifie la bonne autorité, le nom ou l’IP couvert et les dates. Après import correct sur Android, rouvrir Chrome puis, au besoin, redémarrer le téléphone est une piste observée, sans garantie de résolution.</p>
+  <p>Le <strong>.p12 et son mot de passe</strong> sont une identité privée facultative pour mTLS ; ils ne sont pas nécessaires à HTTPS seul. Ne les joins jamais à une demande d’aide. La clé privée de l’autorité reste sur le PC.</p>
+</details>
         <p>Certificat perdu ? Retourne sur le PC serveur et ouvre <strong>Certificats.cmd</strong> pour rétablir l’accès. La récupération conserve les conversations et les fichiers.</p>
         <h3>Session de cet appareil</h3><p>Déconnecte cet appareil du compagnon sans arrêter le serveur sur le PC.</p><button id="logout" class="file-action" type="button" aria-label="Déconnecter">Déconnecter cet appareil</button>
       </section>

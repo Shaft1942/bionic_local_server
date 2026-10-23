@@ -27,3 +27,10 @@ test('offline or terminal states do not trigger another request or fabricate an 
   const card=f.view.card(f.state.chat.messages[0].imageGenerations[0],f.state.chat,{id:'reply'});assert.equal(card.children.some(n=>n.tag==='img'),false);
   f.state.authenticated=false;f.state.chat.messages[0].imageGenerations[0].status='queued';await f.view.poll();assert.equal(f.requests.length,0);
 });
+
+test('resource waiting is visible and continues polling without resubmitting an image',async()=>{
+  const f=fixture();f.state.chat.messages.push({id:'waiting-message',imageGenerations:[{...job,status:'waiting-resource'}]});
+  const card=f.view.card(f.state.chat.messages[0].imageGenerations[0],f.state.chat,f.state.chat.messages[0]);
+  assert.match(card.children[0].text,/attente.*ressource/);
+  await f.view.poll();assert.equal(f.requests.length,1);assert.match(f.requests[0],/^\/api\/comfy\/generation\?/);assert.equal(f.redrawn,1);
+});

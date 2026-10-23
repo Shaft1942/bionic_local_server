@@ -92,6 +92,8 @@ test('script approval routes integrate with persisted conversation jobs without 
       assert(begin?.id); assert.equal(event.approval.code, codeFor(name)); assert.equal(event.approval.runtime, 'node'); assert.equal(event.approval.cwd, expectedDirectory);
       await assert.rejects(fs.stat(path.join(expectedDirectory, name + '.txt')), { code: 'ENOENT' });
       assert.equal((await readStored(begin.id)).generation.awaitingApproval, true);
+      assert.deepEqual(first.coordinator.status().active, {text:0,image:0}, 'A human approval must not retain an inference resource.');
+      const imageReservation = await first.coordinator.acquire('image'); imageReservation();
       return { response, job, id: begin.id, approval: event.approval };
     };
 

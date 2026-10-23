@@ -16,7 +16,7 @@ Un lancement dans un terminal avec `npm start` permet de lire l’erreur directe
 
 ## La page fonctionne sur le PC mais expire sur le téléphone
 
-- Utilisez l’adresse LAN inscrite dans `ACCES-PRIVE.txt`, avec **`http://`** et le bon port. `localhost` ne convient pas sur le téléphone.
+- Utilisez l’adresse LAN inscrite dans `ACCES-PRIVE.txt`, avec son protocole exact (**`http://` au départ, `https://` après sécurisation**) et le bon port. `localhost` ne convient pas sur le téléphone. Ne revenez pas à HTTP pour contourner une erreur HTTPS.
 - Vérifiez que le téléphone et le PC sont sur le même réseau, et non sur un Wi-Fi invité isolé. Un VPN peut modifier ce trajet.
 - Sous Windows, vérifiez que le réseau domestique est classé **privé**, puis exécutez `Autoriser-reseau.cmd` et acceptez la demande Windows. Ne désactivez pas tout le pare-feu.
 - Relancez le compagnon après un changement d’adresse IP et relisez `ACCES-PRIVE.txt`.
@@ -24,6 +24,24 @@ Un lancement dans un terminal avec `npm start` permet de lire l’erreur directe
 - Lancez le serveur depuis les fichiers Windows du dossier installé. Un lancement depuis un environnement isolé de développement peut répondre sur le PC tout en restant inaccessible depuis le réseau.
 
 Si un autre serveur de ce PC fonctionne sur le téléphone, cela confirme une partie du trajet réseau, mais pas l’autorisation du port de ce compagnon.
+
+## HTTPS affiche une alerte de certificat
+
+Relevez d’abord **l’adresse exacte ouverte**, protocole et port compris, et **le code complet de l’erreur** (`NET::ERR_CERT_…` dans Chrome). Pour une demande d’aide, retirez les paramètres, tickets et autres secrets des URL de preuve. Ne franchissez pas l’alerte : la page de preuve doit s’ouvrir sans exception de sécurité avant confirmation. Suivez le [guide des certificats](certificats-utilisation.md#installer-lautorité-sur-son-appareil) pour le bon système.
+
+| Symptôme | Vérification et suite |
+| --- | --- |
+| `NET::ERR_CERT_AUTHORITY_INVALID` | Vérifiez que **l’autorité de cette installation** est installée comme CA, avec la même empreinte SHA-256 que sur le PC. Télécharger le fichier ou importer un `.p12` seul ne suffit pas. Sur iPhone/iPad, activez aussi la confiance totale de cette autorité. |
+| `NET::ERR_CERT_COMMON_NAME_INVALID` / nom invalide | Comparez le nom ou l’IP de l’URL avec les **Adresses couvertes** dans les détails des certificats. Un nom DNS et son IP sont deux entrées différentes. Après un changement d’IP, préparez un renouvellement avec les bonnes adresses et refaites la preuve ; réinstaller la CA ne corrige pas le nom. |
+| `NET::ERR_CERT_DATE_INVALID` | Vérifiez la date et l’heure du PC et du téléphone, puis les dates d’expiration de l’autorité et du serveur. Si le serveur est expiré, reprenez le renouvellement local avec `Certificats.cmd`. |
+| Certificat client demandé ou refusé en mTLS | Vérifiez l’import de l’identité `.p12` propre à cet appareil et sa sélection dans le navigateur, puis son état dans les appareils enregistrés. Une CA publique seule ne donne pas l’identité client ; le code d’accès ne remplace pas ce certificat. |
+| La preuve expire ou n’ouvre aucune page | Vérifiez la préparation active et son port de preuve, puis le réseau privé et le pare-feu. Le port temporaire diffère du port habituel. Recommencez la préparation si les dix minutes sont écoulées ; l’accès déjà confirmé reste conservé. |
+
+Après une installation de CA correcte sur Android, fermez et rouvrez Chrome, puis réessayez l’adresse exacte. Si l’alerte persiste, un **redémarrage du téléphone** est une piste de reprise : un retour utilisateur a confirmé que Chrome reconnaissait ensuite la bonne autorité et proposait l’application. Ce résultat ne garantit pas la même solution sur un autre appareil et ne corrige ni un nom invalide, ni un certificat expiré.
+
+Une ancienne icône HTTP peut continuer à ouvrir l’ancienne adresse. Vérifiez d’abord l’adresse HTTPS dans le navigateur sans alerte, puis recréez le raccourci si nécessaire. Un ajout à l’écran d’accueil ne prouve pas à lui seul que TLS est valide.
+
+Pour diagnostiquer, les versions OS/navigateur, le code d’erreur, le nom ou l’IP utilisé et les empreintes publiques suffisent généralement. Ne transmettez ni clé privée, ni `.p12`, ni mot de passe, ni dossier `data/security/`. Les [références système](certificats-utilisation.md#références-système) décrivent les étapes et limites par plateforme.
 
 ## Le code est refusé ou la session a expiré
 

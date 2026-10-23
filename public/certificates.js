@@ -33,14 +33,14 @@ function createCompanionCertificates({api,getState,node}) {
     el('certificate-setup-form').hidden=!canConfigure||!!pending&&!expired;
     text('certificate-setup-title',data.mode==='http'?'Chiffrer les connexions':'Renouveler le certificat du serveur');
     text('certificate-prepare',data.mode==='http'?'Préparer HTTPS':'Préparer le renouvellement');
-    text('certificate-setup-help',data.mode==='http'?'Prépare HTTPS, installe l’autorité sur ton appareil puis vérifie la connexion. L’accès actuel reste disponible jusqu’à ta confirmation.':'Prépare le nouveau certificat pour les adresses ci-dessous. Le niveau de sécurité actuel est conservé et le remplacement attend ta vérification.');
+    text('certificate-setup-help',data.mode==='http'?'Prépare HTTPS pour le nom ou l’IP réellement utilisé sur ton téléphone. Installe ensuite l’autorité publique .crt comme certificat CA, puis vérifie la connexion sans alerte. L’accès actuel reste disponible jusqu’à ta confirmation.':'Prépare le nouveau certificat pour les noms et IP réellement utilisés ci-dessous. Une nouvelle adresse doit être couverte par ce certificat. Le niveau actuel reste actif jusqu’à ta vérification.');
     if(canConfigure&&!el('certificate-hosts').value)el('certificate-hosts').value=(web.suggestedHosts||data.server?.hosts||[]).join(', ');
     const proof=web?.proofRequest;
     el('certificate-preparation').hidden=!pending||expired||!canConfigure;
     el('certificate-proof-form').hidden=!proof;
     el('certificate-proof-id').value=proof?.id||'';el('certificate-proof-csrf').value=web?.csrfToken||'';
     text('certificate-ca-fingerprint',data.authority?.fingerprint||'Actualise les paramètres.');
-    text('certificate-proof-help',proof?'La vérification ouvre un nouvel onglet. Confirme uniquement si le navigateur n’affiche aucun avertissement de certificat.':'Cette préparation a été ouverte dans une autre connexion. Recommence-la ici pour obtenir une vérification liée à cet appareil.');
+    text('certificate-proof-help',proof?'La vérification ouvre un nouvel onglet sur un port temporaire. Confirme uniquement sans avertissement de certificat, puis reviens à l’adresse HTTPS habituelle du compagnon. En cas d’alerte, relève l’adresse et le code NET::ERR_CERT_… ; consulte le guide ci-dessous.':'Cette préparation a été ouverte dans une autre connexion. Recommence-la ici pour obtenir une vérification liée à cet appareil.');
     el('certificate-device-form').hidden=!web?.canIssueDevice;
     el('certificate-mtls').hidden=!canConfigure||data.mode!=='https'||!data.devices.some(device=>!device.revokedAt&&Date.parse(device.expiresAt)>Date.now());
     el('certificate-devices').replaceChildren();
@@ -70,12 +70,12 @@ function createCompanionCertificates({api,getState,node}) {
   }
   async function action(input){if(!metadata?.web?.csrfToken)throw Error('Actualise les paramètres pour reprendre la configuration.');return api('/api/security/actions',{method:'POST',headers:{'X-Bionic-CSRF':metadata.web.csrfToken},body:JSON.stringify(input)});}
   function hosts(){return el('certificate-hosts').value.split(/[,\s]+/).map(value=>value.trim()).filter(Boolean);}
-  function prepare(mode){return run(async valid=>{const data=await action({action:'prepare',mode,hosts:hosts()});if(valid()){render(data.status);actionMessage('Préparation prête. Installe l’autorité, puis ouvre la vérification sécurisée.','');el('certificate-ca-download').focus();}});}
+  function prepare(mode){return run(async valid=>{const data=await action({action:'prepare',mode,hosts:hosts()});if(valid()){render(data.status);actionMessage('Préparation prête. Vérifie l’empreinte de l’autorité avec le PC, installe le .crt comme CA, puis ouvre la vérification sécurisée.','');el('certificate-ca-download').focus();}});}
   function issueDevice(input){return run(async valid=>{
     actionMessage('Création du certificat…','');const issued=await action({action:'issue-device',...input});if(!valid())return;
     clearExport();exportData=issued;text('certificate-export-password',issued.passphrase);el('certificate-download').hidden=false;
     text('certificate-export-title',issued.previousId?'Certificat de remplacement prêt':'Certificat prêt à télécharger');
-    text('certificate-export-help',issued.previousId?'L’ancien certificat reste actif. Importe et vérifie ce remplacement avant de retirer l’ancien appareil.':'Lors de l’import système, saisis le mot de passe ci-dessus. Après import, ferme puis rouvre le compagnon si le navigateur le demande.');
+    text('certificate-export-help',issued.previousId?'L’ancien certificat reste actif. Importe et vérifie ce remplacement avant de retirer l’ancien appareil. Garde le .p12 et son mot de passe privés ; ne les envoie jamais pour demander de l’aide.':'Ce .p12 est une identité client privée pour mTLS, distincte de l’autorité .crt. Importe-le comme certificat utilisateur avec le mot de passe ci-dessus. Garde-les privés et supprime la copie de transfert après import. Le navigateur peut ensuite demander de sélectionner cette identité.');
     el('certificate-export').hidden=false;exportTimer=setTimeout(clearExport,Math.max(1,Date.parse(issued.expiresAt)-Date.now()));
     const data=await api('/api/security/status');if(valid()){render(data);actionMessage('Certificat créé. Télécharge-le et importe-le sur cet appareil.','');el('certificate-download').focus();}
   });}
@@ -88,7 +88,7 @@ function createCompanionCertificates({api,getState,node}) {
     if(!exportData)throw Error('Le téléchargement a expiré. Crée un nouveau certificat.');
     const response=await fetch('/api/security/device-download',{method:'POST',headers:{'Content-Type':'application/json','X-Bionic-CSRF':metadata.web.csrfToken},body:JSON.stringify({exportId:exportData.exportId})});
     if(!response.ok){const error=await response.json().catch(()=>({}));throw Error(error.error||'Téléchargement impossible. Actualise les paramètres puis réessaie.');}
-    const blob=await response.blob();if(!valid())return;const url=URL.createObjectURL(blob),link=node('a','','');link.href=url;link.download='bionic-appareil.p12';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);el('certificate-download').hidden=true;actionMessage('Certificat téléchargé. Importe bionic-appareil.p12 avec le mot de passe affiché ci-dessus.','');
+    const blob=await response.blob();if(!valid())return;const url=URL.createObjectURL(blob),link=node('a','','');link.href=url;link.download='bionic-appareil.p12';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);el('certificate-download').hidden=true;actionMessage('Identité privée téléchargée. Importe bionic-appareil.p12 avec le mot de passe ci-dessus ; ne les joins jamais à une demande d’aide.','');
   }));
   el('certificate-export-clear').addEventListener('click',clearExport);
   el('certificate-revoke-no').addEventListener('click',()=>{revokeTarget=null;el('certificate-revoke-confirm').hidden=true;});

@@ -80,8 +80,22 @@ function renderCompanionHelp({ container, node, navigate }) {
 
   const connection = section('help-connection', 'Connexion du téléphone et sécurité');
   connection.append(paragraph('Utilise le compagnon sur un réseau local de confiance. En HTTP, le code, les messages et les fichiers ne sont pas chiffrés pendant leur transport. Le parcours Connexion et appareils permet de préparer HTTPS puis un certificat par appareil avec mTLS.'));
-  connection.append(paragraph('La confiance de l’autorité et l’import d’un certificat demandent des actions dans le système de ton appareil. Compare l’empreinte avec celle affichée sur le PC, puis vérifie la connexion avant de confirmer le nouveau niveau. Ne contourne pas un avertissement de certificat.'));
-  connection.append(paragraph('Les appareils autorisés partagent le même périmètre : il n’y a pas de comptes ni de rôles séparés. Conserve privés le code d’accès, les certificats, leurs mots de passe et les données du compagnon. N’expose pas directement son serveur sur Internet.'));
+  connection.append(node('h3', '', 'Activer HTTPS en trois étapes'));
+  list(connection, [
+    'Prépare HTTPS pour le nom ou l’IP utilisé sur ton téléphone. Télécharge l’autorité publique bionic-autorite.crt et compare son empreinte SHA-256 complète avec celle affichée sur le PC.',
+    'Installe cette autorité comme certificat CA dans le système de ton appareil. Télécharger le fichier seul ne suffit pas. Le navigateur ne peut pas confirmer cet import à ta place.',
+    'Ouvre la vérification sécurisée et confirme seulement sans alerte de certificat. Reviens ensuite à l’adresse HTTPS habituelle du compagnon et reconnecte-toi. Ajoute alors l’application à l’écran d’accueil depuis le menu du navigateur si souhaité.'
+  ], true);
+  connection.append(node('h3', '', 'Où installer l’autorité publique ?'));
+  list(connection, [
+    'Android : dans les réglages de sécurité, recherche Certificat, puis Installer un certificat → Certificat CA. Choisis le .crt, pas un certificat Wi-Fi. Les libellés varient selon le fabricant.',
+    'iPhone/iPad : installe le profil téléchargé dans Réglages, puis active sa confiance totale dans Général → Informations → Réglages des certificats.',
+    'Windows : dans certmgr.msc du compte du navigateur, importe le .crt sous Autorités de certification racines de confiance → Certificats.'
+  ]);
+  connection.append(paragraph('En cas d’alerte, relève l’adresse exacte et le code NET::ERR_CERT_… sans partager les tickets d’une URL de preuve. Vérifie la bonne autorité, le nom/IP couvert et les dates. Après import correct sur Android, fermer puis rouvrir Chrome, puis au besoin redémarrer le téléphone, est une piste de reprise observée ; cela ne garantit pas de corriger toute erreur. Ne contourne pas l’alerte.'));
+  connection.append(node('h3', '', 'Le certificat appareil est une étape distincte'));
+  connection.append(paragraph('HTTPS seul ne demande pas de .p12. Pour rendre le certificat client obligatoire avec mTLS, crée puis importe une identité .p12 propre à cet appareil avec le mot de passe affiché, avant d’exiger et vérifier mTLS. Cette identité et son mot de passe restent privés : ne les joins jamais à une demande d’aide. La clé privée de l’autorité reste sur le PC.'));
+  connection.append(paragraph('Les appareils autorisés partagent le même périmètre : il n’y a pas de comptes ni de rôles séparés. Conserve privés le code d’accès et les données du compagnon. N’expose pas directement son serveur sur Internet.'));
   shortcut(connection, 'Ouvrir Connexion et appareils', 'connection', 'certificate-title');
 
   const troubleshooting = section('help-troubleshooting', 'Résoudre un problème');

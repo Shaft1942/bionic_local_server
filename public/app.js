@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const composerFiles = $('composer-files'), composerFilesToggle = $('files-menu-toggle');
 const mobileComposer = matchMedia('(max-width:760px)');
 const conversationMove = { busy: false, action: null, revision: 0 };
+const projectManagement = { busy: false, preview: null, revision: 0 };
 let connectionRefreshing = false;
 function closeComposerFiles(restoreFocus = false) {
   if (!composerFiles.open) return;
@@ -22,10 +23,45 @@ composerFiles.addEventListener('keydown', event => {
 composerFiles.addEventListener('focusout', event => {
   if (event.relatedTarget && !composerFiles.contains(event.relatedTarget)) closeComposerFiles();
 });
-document.addEventListener('pointerdown', event => {
-  if (!composerFiles.contains(event.target)) closeComposerFiles();
-  for (const details of document.querySelectorAll('.message.user .message-extras[open]')) if (!details.contains(event.target)) details.open = false;
-});
+// A dismissal is a complete click outside, never the end of a selection/drag
+// that began inside. Native dialog backdrop events target the dialog itself.
+function installOutsideDismissals(root = document) {
+  let startedOutside = [];
+  function outside(surface, event) {
+    if (surface.matches('dialog')) {
+      const rect = surface.getBoundingClientRect();
+      return event.target === surface && (event.clientX < rect.left || event.clientX >= rect.right || event.clientY < rect.top || event.clientY >= rect.bottom);
+    }
+    if (surface.contains(event.target)) return false;
+    return surface.id !== 'conversation-options' || !root.getElementById('conversation-options-toggle').contains(event.target);
+  }
+  function surfaces() {
+    return [...root.querySelectorAll('dialog[open], #composer-files[open], #conversation-options:not([hidden]), .message.user .message-extras[open]')];
+  }
+  root.addEventListener('pointerdown', event => {
+    startedOutside = event.isPrimary !== false && event.button === 0 ? surfaces().filter(surface => outside(surface, event)) : [];
+  }, true);
+  root.addEventListener('pointercancel', () => { startedOutside = []; }, true);
+  root.addEventListener('click', event => {
+    const candidates = startedOutside; startedOutside = [];
+    for (const surface of candidates) {
+      if (!surface.isConnected || !surfaces().includes(surface) || !outside(surface, event)) continue;
+      const hadFocus = surface.contains(root.activeElement);
+      if (surface.matches('dialog')) surface.close();
+      else if (surface.id === 'conversation-options') {
+        surface.hidden = true;
+        const opener = root.getElementById('conversation-options-toggle');
+        opener.setAttribute('aria-expanded', 'false');
+        if (hadFocus) opener.focus({ preventScroll: true });
+      } else {
+        surface.open = false;
+        if (hadFocus) surface.querySelector('summary')?.focus({ preventScroll: true });
+      }
+    }
+  }, true);
+  window.addEventListener('blur', () => { startedOutside = []; });
+}
+installOutsideDismissals();
 const icons = {
   settings: '<path d="M10 3h4l.5 2 2 1 2-.5 2 3L19 10v4l1.5 1.5-2 3-2-.5-2 1-.5 2h-4l-.5-2-2-1-2 .5-2-3L5 14v-4L3.5 8.5l2-3 2 .5 2-1Z"/><circle cx="12" cy="12" r="3"/>',
   branch: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M6 7v10m12-10v2a5 5 0 0 1-5 5H6"/>',
@@ -46,7 +82,7 @@ const icons = {
 };
 function icon(name) { const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); el.setAttribute('viewBox', '0 0 24 24'); el.setAttribute('aria-hidden', 'true'); el.innerHTML = icons[name]; return el; }
 for (const [id, name] of [['refresh', 'refresh'], ['search-icon', 'search'], ['back', 'back'], ['send', 'send'], ['info-button', 'info'], ['reveal', 'eye']]) $(id).append(icon(name));
-for (const [id, name] of [['settings-open-sidebar','settings'], ['reconnect','refresh'], ['models-close','close'], ['models-refresh','refresh']]) $(id).append(icon(name));
+for (const [id, name] of [['settings-open-sidebar','settings'], ['models-close','close'], ['models-refresh','refresh']]) $(id).append(icon(name));
 $('models-open-sidebar').prepend(icon('models'));
 $('conversation-options-toggle').append(icon('more'));
 $('new-chat').append(icon('plus'), document.createTextNode('Nouveau chat web'));
@@ -311,11 +347,16 @@ async function deleteCurrentConversation() {
 }
 function node(tag, className, text) { const el = document.createElement(tag); if (className) el.className = className; if (text !== undefined) el.textContent = text; return el; }
 async function api(route, options = {}) {
+  const epoch = state.authEpoch;
   const r = await fetch(route, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
   const j = await r.json().catch(() => ({ error: 'Réponse du serveur illisible.' }));
   if (route === '/api/updates/install' && !r.ok) { try { sessionStorage.removeItem(updateRecoveryKey); } catch {} }
   if (r.status === 401 && !updatesPanel.isRestarting()) hidePrivateViews();
   if (!r.ok) throw Object.assign(new Error(j.error || `Le serveur ne répond pas (HTTP ${r.status}).`), { status: r.status });
+  if (route === '/api/comfy/settings' && epoch === state.authEpoch && state.authenticated) {
+    $('comfy-storage-warning').hidden = j.degraded !== true;
+    $('comfy-storage-warning').textContent = j.degraded === true ? 'Certains suivis d’image sont illisibles et ont été isolés. Leurs fichiers sont conservés sur le PC ; les autres images restent accessibles. Consulte le dépannage avant toute récupération.' : '';
+  }
   return j;
 }
 function shortDate(time) { if (!time) return ''; return new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(time)); }
@@ -329,7 +370,7 @@ function setModels() {
   $('model').replaceChildren();
   const list = state.status?.models || [];
   if (!list.length) $('model').append(new Option('Aucun modèle local disponible', ''));
-  for (const m of list) $('model').append(new Option(`${m.loaded ? 'Chargé · ' : ''}${m.name}${m.vision ? ' · Vision' : ''}`, m.id));
+  for (const m of list) $('model').append(new Option(`${m.loaded ? 'Chargé · ' : ''}${m.name}${m.vision ? ' · Vision' : ''}${m.toolsCapability === 'unknown' || m.tools === null ? ' · outils non confirmés (essai)' : ''}`, m.id));
   $('model').value = list.find(m => m.id === draftForView().model)?.id || list.find(m => m.id === previous)?.id || list.find(m => m.id === state.chat?.model)?.id || list.find(m => m.loaded)?.id || list[0]?.id || '';
   setEffort();
   setSending(state.sending);
@@ -346,6 +387,9 @@ function setEffort() {
   $('effort').disabled = !choices.length || state.loading || !!modelPanel.unloading;
   const binary = choices.length && choices.every(choice => choice === 'on' || choice === 'off');
   setText($('effort-help'), !valid ? 'Le niveau précédemment choisi n’est plus disponible. Le réglage par défaut sera utilisé.' : !choices.length ? 'Ce modèle ne propose pas de réglage d’effort par l’API.' : binary ? 'Ce modèle permet d’activer ou de désactiver le raisonnement, sans niveaux intermédiaires.' : 'Niveau de raisonnement appliqué au prochain message.');
+  const unknownTools = model?.toolsCapability === 'unknown' || model?.tools === null;
+  $('model-tools-help').hidden = !unknownTools;
+  setText($('model-tools-help'), unknownTools ? 'Outils non confirmés pour ce modèle. Les outils que tu actives sont essayés pour le prochain envoi.' : '');
 }
 async function checkStatus() {
   state.status = await api('/api/status');
@@ -415,7 +459,7 @@ async function loadProjects() {
   for (const p of j.projects) $('project').append(new Option(p.name, p.id));
   projectTree.setProjects(j.projects);
   if (state.projectId) { $('project').value = state.projectId; await loadSessions(); }
-  else $('sessions').replaceChildren(node('p', 'list-empty', 'Aucun projet Bionic trouvé. Crée un projet dans Bionic puis actualise.'));
+  else $('sessions').replaceChildren(node('p', 'list-empty', 'Aucun projet disponible. Crée un projet local dans « Gérer les projets ».'));
   setSending(false);
 }
 async function loadSessions() {
@@ -442,7 +486,8 @@ function renderSessionRow(s, projectId) {
     const active = [...jobs.values()].filter(job => job.projectId === projectId && job.id === s.id);
     const queued = Math.max(s.queueCount || s.queue?.filter(item => item.status === 'queued').length || 0, active.filter(job => job.status === 'queued').length);
     const running = s.generation?.status === 'running' || active.some(job => job.status !== 'queued');
-    const label = s.generation?.awaitingApproval ? 'À valider' + (queued ? ' · '+queued+' en attente' : '') : running ? 'Réponse en cours' + (queued ? ` · ${queued} en attente` : '') : queued ? `${queued} en attente` : s.source === 'web' ? (s.origin?.kind==='fork' ? 'Branche' : s.origin ? 'Suite web' : 'Chat web') : 'Bionic';
+    const waitingResource = ['waiting-model','waiting-resource','waiting-image-resource'].includes(s.generation?.phase);
+    const label = s.generation?.awaitingApproval ? 'À valider' + (queued ? ' · '+queued+' en attente' : '') : running ? (waitingResource ? 'En attente de ressource' : 'Réponse en cours') + (queued ? ` · ${queued} en attente` : '') : queued ? `${queued} en attente` : s.source === 'web' ? (s.origin?.kind==='fork' ? 'Branche' : s.origin ? 'Suite web' : 'Chat web') : 'Bionic';
     button.classList.toggle('session-active', running || queued > 0);
     const meta = node('span', 'session-meta'); meta.append(node('span', s.source === 'web' ? 'web-label' : '', label), node('span', '', shortDate(s.updatedAt)));
     button.append(meta); button.addEventListener('click', async () => {
@@ -477,7 +522,7 @@ async function selectProject(projectId, { clearSearch = false } = {}) {
   renderSessions(); scheduleRecovery();
   return true;
 }
-const renderedMessageText = new WeakMap(), pendingMessageText = new Map(), responseModels = new Map();
+const renderedMessageText = new WeakMap(), pendingMessageText = new Map(), responseModels = new Map(), capabilityNotices = new Map();
 let readingView = null, followingReply = true;
 function readingInteraction(container) {
   const active = document.activeElement;
@@ -621,6 +666,8 @@ function addMessage(message, parent = $('messages'), renderBody = true) {
   const content = node('div', 'message-body'); content.dataset.messageRole = message.role;
   if (renderBody) renderText(content, message.text || '');
   article.append(role, content);
+  const capabilityNotice = message.capabilityNotice || capabilityNotices.get(JSON.stringify([state.projectId, message.requestId || message.localRequestId]));
+  if (message.role === 'assistant' && capabilityNotice) article.append(node('p', 'message-capability-notice', capabilityNotice));
   if (message.text && (message.role==='user'||message.role==='assistant')) {
     const copy=messageCopyControl(message.role==='user'?'Copier mon prompt':'Copier la réponse');copy.dataset.workspaceFocus='message-copy:'+article.dataset.messageKey;actions.append(copy);
   }
@@ -850,22 +897,24 @@ function renderChat() {
   const selectedModel = draftForView().model;
   $('model').value = (state.status?.models || []).some(model => model.id === selectedModel) ? selectedModel : modelForChat();
   setEffort();
+  updateHistoryControls();
   if (follow) scrollBottom(); else { $('messages').scrollTop = sameView ? oldScroll : 0; followingReply = false; updateReplyFollow(); }
   renderSessions();
   setSending();
 }
 async function openChat(id) {
   if (state.uploading || conversationMove.busy) return;
-  readingView = null;
+  const sameTarget = state.chat?.id === id && state.chat?.projectId === state.projectId;
+  if (!sameTarget) readingView = null;
   closeConversationOptions();
   saveDraft();
   const seq = ++state.viewSeq, pid = state.projectId;
   state.loading = true; state.chat = chats.get(chatKey(pid, id)) || null; restoreDraft(chatKey(pid, id)); setSending();
   error(''); $('app').classList.add('thread-open');
   $('thread-title').textContent = 'Ouverture de la conversation…';
-  $('messages').replaceChildren(node('p', 'loading-label', 'Ouverture de la conversation…'));
+  if (!sameTarget) $('messages').replaceChildren(node('p', 'loading-label', 'Ouverture de la conversation…'));
   try {
-    const chat = await api(`/api/conversation?projectId=${encodeURIComponent(pid)}&id=${encodeURIComponent(id)}`);
+    const chat = await fetchConversationPage(pid, id);
     if (seq !== state.viewSeq || pid !== state.projectId) return;
     cacheChat(chat, pid); state.chat = chat; adoptJobs(chat, pid); rememberChat(); renderChat();
   } catch (e) { if (seq === state.viewSeq) { renderChat(); throw e; } }
@@ -888,7 +937,9 @@ function setSending() {
   $('send').classList.toggle('queue-send', state.sending);
   $('send-label').textContent = state.sending ? 'Ajouter à la file' : '';
   for (const id of ['project', 'new-chat']) $(id).disabled = state.uploading || conversationMove.busy;
-  for (const id of ['refresh', 'reconnect']) $(id).disabled = connectionRefreshing || state.uploading || conversationMove.busy;
+  $('refresh').disabled = connectionRefreshing || state.uploading || conversationMove.busy;
+  syncProjectManagement();
+  $('generate-image-direct').disabled = locked || unresolved || !state.projectId || !companionSettings.enabled();
   $('model').disabled = locked;
   for (const id of ['files-open-sidebar', 'attach-file', 'upload-file','upload-attach-file']) $(id).disabled = locked || !state.projectId || unassignedProject();
   $('agent-files').disabled = locked || unassignedProject();
@@ -905,7 +956,7 @@ function setSending() {
   const queued = Math.max(state.chat?.queue?.filter(item => item.status === 'queued').length || 0, active.filter(job => job.status === 'queued').length);
   $('composer-activity').hidden = !state.sending;
   const activityText = state.chat?.generation?.awaitingApproval ? 'Un outil attend ta validation dans ce chat. Tu peux continuer à écrire.' : unresolved ? 'Envoi au PC… Tu peux préparer ton prochain message.' : (running ? 'Réponse en cours sur le PC.' : '') + (queued ? ` ${queued} message${queued > 1 ? 's' : ''} en attente.` : '') + ' Tu peux écrire ou ouvrir un autre chat.';
-  setText($('composer-activity'), activityText);
+  setText($('composer-activity'), ['waiting-model','waiting-resource','waiting-image-resource'].includes(state.chat?.generation?.phase) ? 'En attente d’une ressource du PC pour continuer. Tu peux écrire ou ouvrir un autre chat.' : activityText);
   $('composer-note').textContent = state.sending ? 'Les messages de ce chat seront traités dans l’ordre. Les réponses continuent si tu quittes le navigateur.' : unassignedProject() ? 'Sans projet : les outils de fichiers sont désactivés.' : currentFileProfile()==='write' ? 'Prochain envoi : lecture ciblée et modifications directes autorisées, avec sauvegardes.' : currentFileProfile()==='read' ? 'Prochain envoi : outils fichiers en lecture seule.' : 'Prochain envoi : outils fichiers désactivés.';
   if(companionSettings.enabled()&&$('agent-images').checked) $('composer-note').textContent += ' ComfyUI peut générer une image ; son rendu continue après la réponse.';
   if($('agent-scripts').checked) $('composer-note').textContent += ' Un script validé peut modifier le PC, y compris hors projet.';
@@ -913,9 +964,129 @@ function setSending() {
   updateConversationOptions();
   fileBrowser.refresh();
 }
+function syncProjectManagement() {
+  const project = state.projects.find(item => item.id === state.projectId);
+  const locked = projectManagement.busy || state.loading || state.uploading || conversationMove.busy;
+  for (const id of ['local-project-create', 'project-adoption-preview', 'project-adoption-confirm', 'project-adoption-cancel']) $(id).disabled = locked;
+  $('local-project-name').disabled = locked;
+  $('project-adoption').hidden = !project || !!project.isUnassigned || !!project.locallyOwned || !!project.localOnly;
+  if (projectManagement.preview && projectManagement.preview.id !== state.projectId) clearProjectAdoption();
+}
+function clearProjectAdoption() {
+  projectManagement.preview = null; ++projectManagement.revision;
+  $('project-adoption-form').hidden = true; $('project-adoption-roots').replaceChildren();
+}
+function projectManagementMessage(id, text = '') { $(id).textContent = text; $(id).hidden = !text; }
+async function createLocalProject(event) {
+  event.preventDefault(); if (projectManagement.busy || $('local-project-create').disabled) return;
+  const name = $('local-project-name').value.trim(); if (!name) return;
+  const epoch = state.authEpoch; projectManagement.busy = true; setSending();
+  projectManagementMessage('local-project-error'); projectManagementMessage('local-project-status', 'Création du projet…');
+  try {
+    const { project } = await api('/api/local-projects', { method: 'POST', body: JSON.stringify({ name }) });
+    if (epoch !== state.authEpoch || !state.authenticated) return;
+    await loadProjects(); await selectProject(project.id);
+    if (epoch !== state.authEpoch || !state.authenticated) return;
+    $('local-project-name').value = ''; $('project-management').open = false;
+    toast('Projet local créé, sans accès aux fichiers.'); $('project').focus();
+  } catch (failure) { if (epoch === state.authEpoch && state.authenticated) projectManagementMessage('local-project-error', failure.message); }
+  finally { projectManagement.busy = false; if (epoch === state.authEpoch && state.authenticated) { projectManagementMessage('local-project-status'); setSending(); } }
+}
+async function previewProjectAdoption() {
+  if ($('project-adoption-preview').disabled) return;
+  clearProjectAdoption(); const revision = projectManagement.revision, epoch = state.authEpoch, projectId = state.projectId;
+  projectManagement.busy = true; setSending(); projectManagementMessage('local-project-error'); projectManagementMessage('local-project-status', 'Lecture des dossiers et de leurs droits…');
+  try {
+    const preview = await api('/api/local-projects/adoption?' + new URLSearchParams({ projectId }));
+    if (revision !== projectManagement.revision || epoch !== state.authEpoch || projectId !== state.projectId || !state.authenticated) return;
+    projectManagement.preview = preview;
+    $('project-adoption-title').textContent = 'Adopter « ' + preview.name + ' »';
+    $('project-adoption-notice').textContent = preview.notice;
+    for (const root of preview.roots) {
+      const row = node('fieldset', 'project-adoption-root'), legend = node('legend', '', root.name), includeLabel = node('label'), include = node('input');
+      include.type = 'checkbox'; include.dataset.rootId = root.id; includeLabel.append(include, document.createTextNode(' Autoriser ce dossier en lecture'));
+      const writeLabel = node('label'), write = node('input'); write.type = 'checkbox'; write.dataset.writeFor = root.id; write.disabled = true;
+      include.addEventListener('change', () => { write.disabled = !include.checked || !root.writable; if (write.disabled) write.checked = false; });
+      writeLabel.append(write, document.createTextNode(root.writable ? ' Autoriser aussi les modifications' : ' Modifications interdites par la source'));
+      row.append(legend, node('p', 'project-root-path', root.path), includeLabel, writeLabel); $('project-adoption-roots').append(row);
+    }
+    if (!preview.roots.length) $('project-adoption-roots').append(node('p', '', 'Aucun dossier partagé. Le projet sera créé sans accès aux fichiers.'));
+    $('project-adoption-form').hidden = false; $('project-adoption-title').focus({ preventScroll: true });
+  } catch (failure) { if (revision === projectManagement.revision && epoch === state.authEpoch && state.authenticated) projectManagementMessage('local-project-error', failure.message); }
+  finally { projectManagement.busy = false; if (epoch === state.authEpoch && state.authenticated) { projectManagementMessage('local-project-status'); setSending(); } }
+}
+async function adoptProject(event) {
+  event.preventDefault(); const preview = projectManagement.preview;
+  if (!preview || $('project-adoption-confirm').disabled || preview.id !== state.projectId) return;
+  const roots = [...$('project-adoption-roots').querySelectorAll('input[data-root-id]')].filter(input => input.checked).map(input => {
+    const write = [...$('project-adoption-roots').querySelectorAll('input[data-write-for]')].find(control => control.dataset.writeFor === input.dataset.rootId);
+    return { id: input.dataset.rootId, writable: !!write?.checked && !write.disabled };
+  });
+  const epoch = state.authEpoch; projectManagement.busy = true; setSending(); projectManagementMessage('local-project-error');
+  try {
+    await api('/api/local-projects/adopt', { method: 'POST', body: JSON.stringify({ projectId: preview.id, fingerprint: preview.fingerprint, roots }) });
+    if (epoch !== state.authEpoch || !state.authenticated) return;
+    clearProjectAdoption(); await loadProjects(); $('project-management').open = false;
+    toast('Projet adopté avec les seuls dossiers et droits choisis.'); $('project').focus();
+  } catch (failure) { if (epoch === state.authEpoch && state.authenticated) projectManagementMessage('local-project-error', failure.message); }
+  finally { projectManagement.busy = false; if (epoch === state.authEpoch && state.authenticated) setSending(); }
+}
 function scheduleRecovery() {
   clearTimeout(recoveryTimer);
   if (state.authenticated) recoveryTimer = setTimeout(recoverReplies, jobs.size ? 1500 : 6000);
+}
+function mergeConversationPage(previous, incoming, older = false) {
+  if (!previous || previous.id !== incoming.id || previous.projectId !== incoming.projectId || !incoming.pagination) return incoming;
+  const currentMessages = previous.messages || [], received = incoming.messages || [];
+  if (older) {
+    const existingIds = new Set(currentMessages.map(message => message.id));
+    return { ...incoming, ...previous, messages: [...received.filter(message => !existingIds.has(message.id)), ...currentMessages], pagination: { ...incoming.pagination, total: Math.max(incoming.pagination.total || 0, previous.pagination?.total || 0) } };
+  }
+  const positions = new Map(currentMessages.map((message, index) => [message.id, index]));
+  const overlap = received.findIndex(message => positions.has(message.id));
+  if (overlap < 0) return { ...incoming, historyWindowReset: currentMessages.length > 0 && received.length > 0 };
+  const prefix = currentMessages.slice(0, positions.get(received[overlap].id));
+  return { ...incoming, messages: [...prefix, ...received], pagination: prefix.length ? { ...incoming.pagination, hasMore: previous.pagination?.hasMore === true, nextCursor: previous.pagination?.nextCursor || null } : incoming.pagination };
+}
+async function fetchConversationPage(projectId, id) {
+  const incoming = await api('/api/conversation?' + new URLSearchParams({ projectId, id, limit: '100' }));
+  return mergeConversationPage(chats.get(chatKey(projectId, id)), incoming);
+}
+const historyPagesLoading = new Set();
+function updateHistoryControls() {
+  const chat = state.chat, page = chat?.pagination, busy = historyPagesLoading.has(chatKey(state.projectId, chat?.id));
+  $('history-controls').hidden = !page;
+  $('history-load').hidden = !page?.hasMore;
+  $('history-load').disabled = busy || state.loading;
+  setText($('history-load'), busy ? 'Chargement des messages…' : 'Charger les messages précédents');
+  setText($('history-count'), page ? (chat.historyWindowReset ? 'Historique récent rechargé ; les messages précédents restent accessibles. ' : '') + chat.messages.length + ' sur ' + page.total + ' messages' : '');
+}
+async function loadOlderMessages() {
+  const chat = state.chat, projectId = state.projectId, epoch = state.authEpoch, seq = state.viewSeq;
+  if (!chat?.pagination?.hasMore || !chat.pagination.nextCursor || $('history-load').disabled) return;
+  const key = chatKey(projectId, chat.id), container = $('messages'), viewport = container.getBoundingClientRect();
+  const anchor = [...container.querySelectorAll(':scope > .message')].find(message => message.getBoundingClientRect().bottom > viewport.top);
+  const anchorId = anchor?.dataset.messageId, offset = anchor?.getBoundingClientRect().top;
+  let loaded = false;
+  historyPagesLoading.add(key); updateHistoryControls();
+  try {
+    const page = await api('/api/conversation?' + new URLSearchParams({ projectId, id: chat.id, limit: '100', before: chat.pagination.nextCursor }));
+    if (epoch !== state.authEpoch || !state.authenticated) return;
+    const merged = mergeConversationPage(chats.get(key) || chat, page, true); cacheChat(merged, projectId);
+    if (seq !== state.viewSeq || state.projectId !== projectId || state.chat?.id !== chat.id) return;
+    state.chat = merged; followingReply = false; renderChat();
+    const restoredAnchor = [...container.querySelectorAll(':scope > .message')].find(message => message.dataset.messageId === anchorId);
+    if (restoredAnchor && offset !== undefined) container.scrollTop += restoredAnchor.getBoundingClientRect().top - offset;
+    announce('Messages précédents chargés. ' + merged.messages.length + ' messages affichés.', 'history:' + key + ':' + merged.messages[0]?.id);
+    loaded = true;
+  } catch (failure) { if (epoch === state.authEpoch && seq === state.viewSeq && state.chat?.id === chat.id) error(failure.message); }
+  finally {
+    historyPagesLoading.delete(key);
+    if (epoch === state.authEpoch && state.authenticated) {
+      updateHistoryControls();
+      if (loaded && seq === state.viewSeq && state.chat?.id === chat.id && (document.activeElement === document.body || document.activeElement === $('history-load'))) (state.chat.pagination.hasMore ? $('history-load') : $('history-count')).focus({ preventScroll: true });
+    }
+  }
 }
 function cacheChat(chat, projectId) {
   observeGeneration(chat, projectId);
@@ -969,7 +1140,7 @@ async function recoverReplies() {
     for (const session of state.sessions) if (session.generation?.status === 'running' || session.queue?.some(item => item.status === 'queued')) snapshots.set(chatKey(state.projectId, session.id), { projectId: state.projectId, id: session.id });
     await Promise.all([...snapshots.values()].map(async target => {
       try {
-        const chat = await api('/api/conversation?' + new URLSearchParams(target));
+        const chat = await fetchConversationPage(target.projectId, target.id);
         if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return;
         adoptJobs(chat, target.projectId); showChatUpdate(chat, target.projectId);
       } catch (e) { if (revision === conversationMove.revision && e.status !== 401 && target.projectId === state.projectId && target.id === state.chat?.id) error(e.message); }
@@ -1022,6 +1193,56 @@ function redrawJob(job, full = false) {
     renderText(body, reply.text || 'Le modèle prépare sa réponse sur le PC…');
     if (follow) scrollBottom(); else updateReplyFollow();
   }, 40);
+}
+async function generateDirectImage() {
+  if ($('generate-image-direct').disabled) return;
+  const prompt = $('prompt').value.trim();
+  if (!prompt || prompt.length > 6000) {
+    error('Écris un prompt image de 1 à 6 000 caractères dans le message.');
+    closeComposerFiles(); $('prompt').focus(); return;
+  }
+  saveDraft(); error('');
+  // getRandomValues also works on the local HTTP bootstrap origin.
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128;
+  const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
+  const requestId = [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join('-'), epoch = state.authEpoch, projectId = state.projectId;
+  const originalKey = state.viewKey, originalDraft = { ...draftForView() }, originalChat = state.chat;
+  const sessionId = state.chat?.source === 'web' ? state.chat.id : null;
+  const viewKey = sessionId ? originalKey : chatKey(projectId, 'pending:' + requestId);
+  const job = { requestId, projectId, id: sessionId, viewKey, createdAt: Date.now(), status: 'submitting' };
+  const payload = { requestId, projectId, sessionId, prompt, workflowId: $('image-workflow').value };
+  jobs.set(requestId, job); rememberJobs();
+  drafts.set(originalKey, { ...originalDraft, text: '' });
+  drafts.set(viewKey, { ...originalDraft, text: '' });
+  if (!sessionId) state.chat = { projectId, name: prompt.slice(0, 70), source: 'web', messages: [] };
+  restoreDraft(viewKey); rememberDrafts(); closeComposerFiles(); renderChat(); $('prompt').focus(); scheduleRecovery();
+  let accepted = false;
+  try {
+    const result = await api('/api/comfy/generate', { method: 'POST', body: JSON.stringify(payload) });
+    if (epoch !== state.authEpoch || !state.authenticated) return;
+    accepted = true; bindJob(job, result.id); jobs.delete(requestId); rememberJobs();
+    if (state.projectId === projectId && state.viewKey === job.viewKey) await openChat(result.id);
+    await loadSessions();
+    toast('Image envoyée à ComfyUI. Le rendu continue sur le PC.');
+  } catch (failure) {
+    if (epoch !== state.authEpoch || !state.authenticated) return;
+    if (!accepted && failure.status >= 400 && failure.status < 500 && failure.status !== 409) {
+      jobs.delete(requestId); rememberJobs();
+      const current = drafts.get(viewKey) || {};
+      // Preserve a newer message typed while the PC answered.
+      const restored = { ...current, text: current.text || originalDraft.text };
+      drafts.set(viewKey, restored);
+      if (state.viewKey === viewKey) {
+        if (!sessionId) { state.chat = originalChat; drafts.set(originalKey, restored); drafts.delete(viewKey); restoreDraft(originalKey); renderChat(); }
+        else restoreDraft(viewKey);
+      }
+      rememberDrafts();
+      error(failure.message);
+    } else error('Le PC n’a pas confirmé l’affichage de cette image. Le suivi reprend sans renvoyer le prompt. Vérifie la conversation avant un nouvel envoi.');
+  } finally {
+    if (epoch === state.authEpoch && state.authenticated) { setSending(); renderSessions(); scheduleRecovery(); }
+  }
 }
 async function send(event) {
   event.preventDefault();
@@ -1089,6 +1310,13 @@ async function send(event) {
         } else if (e.type === 'context') {
           const reply = replyForJob(localChatForJob(job), requestId); if (reply && e.contextReceipt) reply.contextReceipt = e.contextReceipt;
           redrawJob(job, true);
+        } else if (e.type === 'capability') {
+          capabilityNotices.set(JSON.stringify([job.projectId, requestId]), e.message);
+          if (capabilityNotices.size > 100) capabilityNotices.delete(capabilityNotices.keys().next().value);
+          const current = localChatForJob(job), reply = replyForJob(current, requestId);
+          if (reply) reply.capabilityNotice = e.message;
+          if (jobIsVisible(job)) announce(e.message, 'capability:' + requestId);
+          redrawJob(job, true);
         } else if (e.type === 'error') { if (jobIsVisible(job)) error(e.message); }
         else if (e.type === 'done') { const reply=replyForJob(localChatForJob(job),requestId);if(reply)Object.assign(reply,{truncated:e.truncated,finishReason:e.finishReason,outputBudget:e.outputBudget,limited:e.limited});if(e.limited&&!e.truncated&&jobIsVisible(job))toast('Limite d’actions atteinte.');redrawJob(job,true); }
       }
@@ -1143,7 +1371,10 @@ async function start() {
   }
 }
 function hidePrivateViews() {
-  pendingMessageText.clear(); responseModels.clear(); readingView = null; followingReply = true;
+  historyPagesLoading.clear(); $('history-controls').hidden = true; $('comfy-storage-warning').hidden = true;
+  clearProjectAdoption(); $('project-management').open = false; $('local-project-name').value = '';
+  projectManagementMessage('local-project-status'); projectManagementMessage('local-project-error');
+  pendingMessageText.clear(); responseModels.clear(); capabilityNotices.clear(); readingView = null; followingReply = true;
   $('reply-follow-bar').hidden = true;
   companionSettings.reset();
   ++diagnosticsRevision; $('diagnostics-result').replaceChildren(); $('diagnostics-result').hidden = true; $('diagnostics-open').disabled = false;
@@ -1206,9 +1437,8 @@ $('prompt').addEventListener('input', saveDraft);
 $('search').addEventListener('input', ()=>{renderSessions();clearTimeout(searchAnnouncementTimer);searchAnnouncementTimer=setTimeout(()=>announce($('session-count').textContent+' conversation(s) trouvée(s).','search:'+state.projectId+':'+$('search').value+':'+$('session-count').textContent),300);});
 $('new-chat').addEventListener('click', () => newChat());
 $('back').addEventListener('click', () => { $('app').classList.remove('thread-open'); $('project').focus(); });
-async function refreshConnection() { if (connectionRefreshing || state.uploading || conversationMove.busy) return; connectionRefreshing = true; $('reconnect').disabled = true; $('reconnect').setAttribute('aria-busy','true'); const epoch = state.authEpoch, revision = conversationMove.revision; saveDraft(); $('refresh').disabled = true; try { error(''); await Promise.all([checkStatus(), loadProjects()]); if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return; if (state.chat?.id) await openChat(state.chat.id); if (epoch === state.authEpoch && state.authenticated) toast('Projets et conversations actualisés.'); } catch (e) { if (epoch === state.authEpoch && state.authenticated) { error(e.message); toast(e.message); } } finally { connectionRefreshing = false; $('refresh').disabled = $('reconnect').disabled = state.uploading || conversationMove.busy; $('reconnect').setAttribute('aria-busy','false'); } }
+async function refreshConnection() { if (connectionRefreshing || state.uploading || conversationMove.busy) return; connectionRefreshing = true; $('refresh').disabled = true; $('refresh').setAttribute('aria-busy','true'); const epoch = state.authEpoch, revision = conversationMove.revision; saveDraft(); try { error(''); await Promise.all([checkStatus(), loadProjects()]); if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return; if (state.chat?.id) await openChat(state.chat.id); if (epoch === state.authEpoch && state.authenticated) toast('Projets et conversations actualisés.'); } catch (e) { if (epoch === state.authEpoch && state.authenticated) { error(e.message); toast(e.message); } } finally { connectionRefreshing = false; $('refresh').disabled = state.uploading || conversationMove.busy; $('refresh').setAttribute('aria-busy','false'); } }
 $('refresh').addEventListener('click', refreshConnection);
-$('reconnect').addEventListener('click', refreshConnection);
 $('logout').addEventListener('click', async () => {
   if (state.uploading || conversationMove.busy) return;
   if (companionSettings.hasUnsaved()) { toast('Enregistre ou annule les saisies des paramètres avant de te déconnecter.'); return; }
@@ -1218,7 +1448,6 @@ $('logout').addEventListener('click', async () => {
 });
 $('conversation-options-toggle').addEventListener('click', () => { const show = $('conversation-options').hidden; $('conversation-options').hidden = !show; $('conversation-options-toggle').setAttribute('aria-expanded', String(show)); if (show) { for (const action of ['rename', 'move', 'delete']) $(action + '-error').hidden = true; updateConversationOptions(); ($('conversation-name').disabled ? $('info-button') : $('conversation-name')).focus(); } });
 $('conversation-options').addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeConversationOptions(true); } });
-document.addEventListener('pointerdown', event => { if (!$('conversation-options').contains(event.target) && !$('conversation-options-toggle').contains(event.target)) closeConversationOptions(); });
 $('move-project').addEventListener('change', updateConversationOptions);
 $('move-conversation-form').addEventListener('submit', moveCurrentConversation);
 $('conversation-name').addEventListener('input', updateConversationOptions);
@@ -1229,6 +1458,12 @@ $('info-button').addEventListener('click', () => {
   companionSettings.openPage({currentTarget:$('conversation-options-toggle')},'help','settings-heading-help');
 });
 $('composer').addEventListener('submit', send);
+$('generate-image-direct').addEventListener('click', generateDirectImage);
+$('history-load').addEventListener('click', loadOlderMessages);
+$('local-project-form').addEventListener('submit', createLocalProject);
+$('project-adoption-preview').addEventListener('click', previewProjectAdoption);
+$('project-adoption-form').addEventListener('submit', adoptProject);
+$('project-adoption-cancel').addEventListener('click', () => { clearProjectAdoption(); $('project-adoption-preview').focus(); });
 let messageFlushTimer;
 function scheduleMessageTextFlush() {
   if (!pendingMessageText.size) return;
