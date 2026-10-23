@@ -243,6 +243,12 @@
     "README.en.md",
     "docs/README.md",
     "docs/en/guide.md",
-    "scripts/check-docs.mjs"
+    "scripts/check-docs.mjs",
+    "docs/llamacpp.md",
+    "lib/llamacpp-model-service.mjs",
+    "lib/llamacpp-launch.mjs",
+    "scripts/llamacpp.mjs",
+    "test/llamacpp.test.mjs",
+    "test/llamacpp-http.test.mjs"
   ]
 }

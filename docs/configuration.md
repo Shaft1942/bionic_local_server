@@ -1,5 +1,7 @@
 # Configuration
 
+Le moteur texte peut être choisi par `inferenceProvider` : `bionic` (défaut) ou `llamacpp`. Pour ce dernier, `llamaUrl` désigne un serveur direct en boucle locale, sans suffixe `/v1`, sur un port distinct des autres services ; défaut `http://127.0.0.1:1236`. Variables : `BIONIC_MOBILE_INFERENCE_PROVIDER`, `BIONIC_LLAMA_URL`, et `BIONIC_LLAMA_API_TOKEN` facultatif pour le jeton serveur. Le jeton Bionic reste propre à Bionic. Voir [llama.cpp : lancement, limites et cohabitation](llamacpp.md). Le choix ne lance ni n'arrête de moteur ; le changement s'applique après redémarrage de cette seule instance du compagnon.
+
 [Documentation](README.md) · [Installation](installation.md) · [Dépannage](depannage.md)
 
 Les réglages courants se font dans **Paramètres** : plafonds de réponse, images/ComfyUI, sécurité et maintenance. Le [guide d’utilisation](utilisation.md) explique leur portée. La langue de l’interface se choisit par navigateur ; elle ne règle ni celle des réponses ni celle des prompts.

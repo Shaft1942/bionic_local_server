@@ -18,6 +18,7 @@ import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto';
 import { createBionicStore } from './lib/bionic-store.mjs';
 import { loadSettings } from './lib/config.mjs';
 import { createModelService } from './lib/model-service.mjs';
+import { createLlamaCppModelService } from './lib/llamacpp-model-service.mjs';
 import { createLocalServiceSupervisor } from './lib/local-service-supervisor.mjs';
 import { createModelPreferences, validateModelId, validateOutputPreferences, outputBudget, estimateRequestTokens, CONTEXT_RESERVE_TOKENS } from './lib/model-preferences.mjs';
 import { reasoningRequest } from './lib/reasoning.mjs';
@@ -75,7 +76,8 @@ const localProjects = createLocalProjects({ filename: path.join(DATA, 'local-pro
 const organizer = createConversationOrganizer({ filename: path.join(DATA, 'conversation-locations.json'), store: localProjects, hasLocalUnassigned: async () => (await webChats('companion-unassigned')).length > 0 });
 const { listProjects, listSessions, getConversation } = organizer;
 const PORT = settings.port;
-const API = settings.apiUrl;
+const inferenceProvider = settings.inferenceProvider || 'bionic';
+const API = inferenceProvider === 'llamacpp' ? settings.llamaUrl : settings.apiUrl;
 const apiUrl = new URL(API);
 if (!['127.0.0.1', 'localhost', '[::1]'].includes(apiUrl.hostname)) throw new Error('L’API Bionic doit rester locale.');
 const configPath = path.join(DATA, 'config.json');
@@ -131,7 +133,7 @@ let loginVerifications = 0;
 const busy = new Set();
 const active = new Map();
 const toolApprovals = createToolApprovals();
-const modelService = options.modelService || createModelService({ baseUrl: API, headers: apiHeaders, fetchImpl: fetch });
+const modelService = options.modelService || (inferenceProvider === 'llamacpp' ? createLlamaCppModelService : createModelService)({ baseUrl: API, headers: inferenceHeaders, fetchImpl: fetch });
 const gpuScheduler = options.gpuScheduler || createGpuScheduler({modelService});
 const comfyImages = options.comfyService || await createComfyImages({directory:path.join(DATA,'comfy-generations'),settingsFile:path.join(DATA,'comfy-settings.json'),url:settings.comfyUrl,enabled:settings.comfyEnabled,workflowId:settings.comfyWorkflowId,gpuScheduler,coordinator,fetchImpl:options.comfyFetchImpl||globalThis.fetch});
 comfyImages.setGpuScheduler?.(gpuScheduler);
@@ -330,7 +332,8 @@ async function readChat(projectId, id) {
   return chat;
 }
 function apiHeaders() { return process.env.BIONIC_API_TOKEN ? { Authorization: `Bearer ${process.env.BIONIC_API_TOKEN}` } : {}; }
-const modelTransport = options.modelTransport || createModelTransport({ baseUrl: API, headers: apiHeaders, fetchImpl: fetch });
+function inferenceHeaders() { return inferenceProvider === 'llamacpp' ? (process.env.BIONIC_LLAMA_API_TOKEN ? { Authorization: `Bearer ${process.env.BIONIC_LLAMA_API_TOKEN}` } : {}) : apiHeaders(); }
+const modelTransport = options.modelTransport || createModelTransport({ baseUrl: API, headers: inferenceHeaders, fetchImpl: fetch, provider: inferenceProvider });
 const projectFileOptions = { backupDirectory: path.join(DATA, 'file-backups'), imageDirectory: path.join(DATA, 'image-attachments'), registryPath: settings.registryPath, extraRoots: settings.extraRoots, python: settings.python, protectedPaths: () => [path.join(ROOT, 'config.launchers.local.json'), path.join(RUNTIME, 'local-services'), path.join(RUNTIME, 'local-service-hosts'), path.join(ROOT, 'scripts', 'local-service-host.py'), ...localServices?.protectedPaths?.() || []] };
 const nativeProjectFiles = options.projectFiles || createProjectFiles(projectFileOptions);
 const projectFiles = options.projectFiles || createProjectFiles({ ...projectFileOptions, rootsProvider: localProjects.rootsFor });
@@ -845,7 +848,7 @@ async function generateChat(res, chat, item, request) {
     chat.fileAccess = fileAccess; chat.fileProfile = fileProfile; chat.webApproval = webApproval;
     chat.webAccess=webAccess;chat.scriptAccess=scriptAccess;chat.imageAccess=imageAccess;chat.imageCount=imageCount;chat.imageModelPolicy=item.imageModelPolicy??null;chat.imageWorkflowId=item.imageSelection?.workflowId??chat.imageWorkflowId;
     chat.messages.push({ id: userMessageId, role: 'user', text, createdAt: Date.now(), requestId: data.requestId, requestStatus: 'running', ...(attachments.length ? { attachments } : {}) });
-    const reply = { id: randomUUID(), role: 'assistant', text: '', createdAt: Date.now(), reasoning: reasoning.choice, requestId: data.requestId, actions: [], approvals: [], outputBudget: context.outputBudget, contextReceipt: context.receipt };
+    const reply = { id: randomUUID(), role: 'assistant', text: '', createdAt: Date.now(), provider: item.provider, reasoning: reasoning.choice, requestId: data.requestId, actions: [], approvals: [], outputBudget: context.outputBudget, contextReceipt: context.receipt };
     chat.messages.push(reply);
     chat.generation = { status: 'running', requestId: data.requestId, startedAt: Date.now(), replyId: reply.id };
     if (request) { request.id = chat.id; request.status = 'running'; }
@@ -1092,7 +1095,7 @@ async function handleRequest(req, res) {
         }, 150); timer.unref?.();
         json(res, 202, result); return;
       }
-      if (req.method === 'GET' && url.pathname === '/api/diagnostics') { json(res, 200, await runDiagnostics({ settings, nativeStore, fetchImpl: fetch, headers: apiHeaders,version:APP_VERSION })); return; }
+      if (req.method === 'GET' && url.pathname === '/api/diagnostics') { json(res, 200, await runDiagnostics({ settings, nativeStore, fetchImpl: fetch, headers: inferenceHeaders,version:APP_VERSION })); return; }
       if (req.method === 'GET' && url.pathname === '/api/runtime-status') { json(res,200,{ lifecycle:lifecycle.status(),work:activeWork(),resources:coordinator.status(),transport:{...transportMetrics},checkpoints:{...checkpointMetrics},storage:{...measurements} });return; }
       if (req.method === 'GET' && url.pathname === '/api/files/trash') { json(res, 200, { projectId: url.searchParams.get('projectId'), ...await projectFiles.listTrash(url.searchParams.get('projectId')) }); return; }
       if (req.method === 'GET' && ['/api/files/trash/download','/api/files/backup/download'].includes(url.pathname)) {
@@ -1129,7 +1132,7 @@ async function handleRequest(req, res) {
       }
       if (req.method === 'GET' && url.pathname === '/api/status') {
         let modelList = [], apiError = null;
-        try { modelList = await models(); } catch { apiError = 'API Bionic injoignable. Ouvre Bionic, active son API locale et vérifie apiUrl dans config.local.json.'; }
+        try { modelList = await models(); } catch { apiError = inferenceProvider === 'llamacpp' ? 'API llama.cpp injoignable. Démarre le serveur local et vérifie llamaUrl.' : 'API Bionic injoignable. Ouvre Bionic, active son API locale et vérifie apiUrl dans config.local.json.'; }
         json(res, 200, { ok: !apiError, apiError, models: modelList, addresses: connectionUrls(), capabilities: { nativeProjects: 'read-only', nativeSessions: 'read-only', reply: 'web-branch', nativeAgentTools: false, projectFiles: 'read-write-text' } }); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/model-preferences') {
@@ -1361,7 +1364,7 @@ async function handleRequest(req, res) {
     if (!e.status) console.error(JSON.stringify({ time: new Date().toISOString(), requestId, error: e.code || e.name || 'Error' }));
   } finally { if (countedMutation) inFlightMutations--; }
 }
-localServices = options.localServiceSupervisor || await (options.localServiceSupervisorFactory || createLocalServiceSupervisor)({ root: ROOT, platform: options.localServicePlatform || process.platform, connections: () => ({ bionicUrl: API, comfyUrl: comfyImages.getSettings?.().url || settings.comfyUrl }), fetchImpl: options.localServiceFetchImpl || fetch, bionicHeaders: apiHeaders, reserve: reserveLocalService });
+localServices = options.localServiceSupervisor || await (options.localServiceSupervisorFactory || createLocalServiceSupervisor)({ root: ROOT, platform: options.localServicePlatform || process.platform, connections: () => ({ bionicUrl: settings.apiUrl, comfyUrl: comfyImages.getSettings?.().url || settings.comfyUrl }), fetchImpl: options.localServiceFetchImpl || fetch, bionicHeaders: apiHeaders, reserve: reserveLocalService });
 const server = http.createServer(handle);
 server.requestTimeout = settings.requestTimeoutMs || 180000;
 server.headersTimeout = 15000;

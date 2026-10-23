@@ -1,6 +1,57 @@
 # Qualification de llama.cpp comme premier moteur alternatif
 
-Décision utilisateur du 24 octobre 2026. Statut : cadrage, connecteur non implémenté et aucun essai réel effectué.
+Décision utilisateur du 24 octobre 2026. Statut : premier connecteur implémenté et testé sur fixtures ; aucun essai de modèle réel effectué.
+
+## Utiliser ce premier connecteur
+
+Ce lot prend en charge un **llama-server direct, un modèle texte**, démarré explicitement. Le serveur doit exposer `/v1/models` et `/props` avec `default_generation_settings.n_ctx` (contexte d'un slot). Le maximum théorique `n_ctx_train` ne sert pas de contexte chargé. Le routeur, la vision et le réglage d'effort restent hors qualification. Les outils sont indiqués « inconnus » jusqu'à un essai avec le modèle/template retenu ; seuls les outils activés dans le compagnon sont proposés.
+
+Installer séparément une distribution officielle de [llama.cpp](https://github.com/ggml-org/llama.cpp/releases), adaptée au système et au backend retenu. Conserver l'exécutable et ses bibliothèques ensemble. Aucun téléchargement ou installation n'est effectué par le connecteur.
+
+Depuis un terminal PowerShell dans ce checkout, préparer le lancement avec un GGUF déjà présent (chemins fictifs à remplacer) :
+
+```powershell
+node scripts/llamacpp.mjs --server "D:\Moteurs\llama.cpp\llama-server.exe" --model "D:\Modeles\conversation.gguf"
+```
+
+Sans `--start`, la commande vérifie les fichiers et affiche le plan, sans lancer de processus. Elle lit seulement l'en-tête GGUF, ce qui ne confirme pas la compatibilité de l'architecture. Sélectionner un modèle de conversation, pas un fichier `mmproj` seul. Aucun poids n'est déplacé, copié, converti ou téléchargé.
+
+Ajouter `--start` pour exécuter explicitement le serveur. Les valeurs initiales sont : boucle locale, port 1236, alias `companion-llama`, contexte 4096, un slot et **zéro couche GPU**. Un port occupé provoque un échec, sans arrêter son occupant. Les options `--port`, `--context`, `--gpu-layers` permettent une configuration explicite. Le script retire les variables ambiantes `LLAMA_*` du processus enfant pour éviter des options de téléchargement/chargement implicites. Aucun lancement automatique au démarrage du compagnon, aucun arrêt d'une instance externe.
+
+Pour connecter un compagnon de test, utiliser une installation et ses ports distincts des instances actives. Dans la configuration privée de cette seule installation :
+
+```json
+{
+  "port": 8876,
+  "certificateProofPort": 8877,
+  "inferenceProvider": "llamacpp",
+  "llamaUrl": "http://127.0.0.1:1236",
+  "comfyEnabled": false
+}
+```
+
+Équivalents d'environnement : `BIONIC_MOBILE_INFERENCE_PROVIDER=llamacpp`, `BIONIC_LLAMA_URL`. Si nécessaire, fournir `BIONIC_LLAMA_API_TOKEN` au processus ; le jeton Bionic n'est jamais envoyé à llama.cpp. `apiUrl` et les profils de lancement Bionic gardent leur sens Bionic. Le choix du moteur est fixe pour cette instance du compagnon et demande son redémarrage pour changer ; le mode par défaut reste `bionic`.
+
+Les identifiants de modèle llama.cpp sont séparés par moteur/endpoint/alias ; l'alias natif est utilisé seulement pour la requête d'inférence. Les préférences et efforts Bionic ne sont pas réutilisés par simple égalité de nom. La provenance est enregistrée sur les réponses. Une panne ne redirige jamais la requête vers Bionic.
+
+## Mémoire et cohabitation
+
+Ce premier connecteur **ne charge, ne décharge et n'arrête aucun modèle distant**. Il exige un modèle déjà chargé et un contexte connu avant tout envoi. Un modèle en veille ou en chargement est refusé avec un message explicite. Les fonctions de gestion du routeur demanderont une qualification distincte ; les routes de gestion Bionic ne sont jamais utilisées pour llama.cpp.
+
+La politique images « décharger » est donc refusée avant rendu si un modèle llama.cpp est chargé. Le bouton de déchargement du catalogue est désactivé. Ne pas la remplacer par « conserver » pour contourner un manque de mémoire : la coordination du compagnon ne régule pas les autres applications. Commencer avec un essai CPU et ComfyUI désactivé dans la copie de test ; ne qualifier la cohabitation GPU qu'avec une allocation explicite et une mesure mémoire. Le lot ne prétend pas encore libérer automatiquement la VRAM avant Krea2.
+
+Le fichier GGUF est partagé sur disque, pas l'allocation mémoire : charger les mêmes poids dans Bionic et llama.cpp peut doubler leur consommation. Les modèles image Krea2 et leurs encodeurs/VAE restent sous le contrôle de ComfyUI.
+
+## Vérifications reproductibles
+
+```powershell
+node --test test/llamacpp.test.mjs test/llamacpp-http.test.mjs
+npm run check
+npm test
+npm run check:export
+```
+
+Les tests utilisent des réponses HTTP, outils, poids et authentifiants synthétiques. Ils ne valident ni le GPU ni les GGUF de l'utilisateur. Les versions de serveur et poids réels restent à qualifier et à noter lors du premier essai.
 
 ## Branche et intégration
 

@@ -436,7 +436,7 @@ function renderLoadedModels() {
     details.append(node('p', 'loaded-model-meta', detail));
     if (instance.model.loadedInstances.length > 1) details.append(node('p', 'loaded-model-id', instance.id));
     const button = node('button', 'unload-button', modelPanel.unloading === instance.id ? appT('app.unloading') : appT('app.unload'));
-    button.type = 'button'; button.disabled = locked || anyGeneration() || modelPanel.generationActive;
+    button.type = 'button'; button.disabled = instance.model.modelManagement === false || locked || anyGeneration() || modelPanel.generationActive;
     button.setAttribute('aria-label', appT('app.unloadNamed', { name: instance.model.name, instance: instance.model.loadedInstances.length > 1 ? ' — ' + instance.id : '' }));
     button.addEventListener('click', () => unloadModel(instance.id));
     row.append(details, button); $('models-list').append(row);
