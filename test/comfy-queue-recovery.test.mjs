@@ -129,6 +129,8 @@ test('explicit queue recovery refuses a busy engine, then closes uncertainty and
   f.completed.add(f.posts[0].id);
   const resumed = await f.service.resumeQueue();
   assert.equal(resumed.queuePaused, false);
+  // Recovery closes the unknown job while the pump can still persist sibling failures.
+  await until(() => first.every(job => f.service.get(job.id).status === 'failed'), 'the abandoned series must settle as failed');
   assert(first.every(job => f.service.get(job.id).status === 'failed'));
   for (const job of next) await f.finish(job);
   assert.equal(f.posts.length, 4, 'only the already accepted ambiguous graph and three new images were sent');
