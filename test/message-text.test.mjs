@@ -11,10 +11,11 @@ function fixture({ clipboard = async () => {} } = {}) {
   const select = (node, start = 0, end = node.textContent.length) => { selected = node.textContent.slice(start, end); Object.assign(selection, { anchorNode: node, focusNode: node, anchorOffset: start, focusOffset: end, rangeCount: 1 }); };
   const selection = { anchorNode: null, focusNode: null, anchorOffset: 0, focusOffset: 0, rangeCount: 0,
     removeAllRanges() { selected = ''; Object.assign(this, { anchorNode: null, focusNode: null, anchorOffset: 0, focusOffset: 0, rangeCount: 0 }); }, addRange(range) { select(range.node); } };
-  const document = { activeElement: null, createElement: tag => new Node(tag), createTextNode: text => new Node('#text', text), createRange: () => ({ selectNodeContents(node) { this.node = node; } }), defaultView: { getSelection: () => selection } };
+  const document = { activeElement: null, createElement: tag => new Node(tag), createElementNS: (_ns,tag) => new Node(tag), createTextNode: text => new Node('#text', text), createRange: () => ({ selectNodeContents(node) { this.node = node; } }), defaultView: { getSelection: () => selection } };
   class Node {
     constructor(tag, text = '') { this.tag = tag; this.ownText = text; this.children = []; this.dataset = {}; this.attributes = {}; this.events = {}; this.ownerDocument = document; }
     get isConnected() { return this.connectedRoot === true || this.parent?.isConnected === true; }
+    get parentNode() { return this.parent; }
     get textContent() { return this.ownText + this.children.map(child => child.textContent).join(''); }
     set textContent(text) { this.ownText = String(text); for (const child of this.children) child.parent = null; this.children = []; }
     append(...children) { for (const child of children) { child.parent = this; this.children.push(child); } }
@@ -28,12 +29,21 @@ function fixture({ clipboard = async () => {} } = {}) {
   const copied = [], context = vm.createContext({ document, URL, navigator: clipboard ? { clipboard: { writeText: async value => { copied.push(value); return clipboard(value); } } } : {} });
   vm.runInContext(source, context);
   const container = document.createElement('div'); container.connectedRoot = true;
-  return { document, container, copied, select, get selected() { return selected; }, render: (text, role = 'assistant') => context.BionicMessageText.render(container, text, { role }) };
+  return { document, container, copied, select, get selected() { return selected; }, copyText: source => { const copy=context.BionicMessageText.copyControl(container,source,{document,label:'Copier la réponse'});container.append(copy);return copy; }, render: (text, role = 'assistant') => context.BionicMessageText.render(container, text, { role }) };
 }
 const descendants = node => node.children.flatMap(child => [child, ...descendants(child)]);
 const tags = (node, tag) => descendants(node).filter(child => child.tag === tag);
 const byClass = (node, name) => descendants(node).filter(child => child.className?.split(' ').includes(name));
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
+
+test('message copy uses the current raw text, keeps an accessible icon and shares exact manual fallback',async()=>{
+  let text='  # Réponse\r\n\ttexte  \r\n';const f=fixture(),copy=f.copyText(()=>text);
+  assert.equal(copy.attributes['aria-label'],'Copier la réponse');assert.equal(copy.textContent,'');assert.equal(tags(copy,'svg').length,1);
+  await copy.events.click();text+='suite';await copy.events.click();assert.deepEqual(f.copied,['  # Réponse\r\n\ttexte  \r\n',text]);
+  const refused=fixture({clipboard:null}),fallback=refused.copyText(()=>text);await fallback.events.click();
+  assert.equal(byClass(refused.container,'message-code-fallback')[0].textContent,text);
+  assert.equal(byClass(refused.container,'message-code-fallback')[0].attributes['aria-label'],'Texte à copier manuellement');
+});
 
 test('common Markdown becomes passive semantic DOM with nested lists and tables', () => {
   const f = fixture();

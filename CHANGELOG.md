@@ -2,6 +2,7 @@
 
 ## À venir
 
+- Durée, tokens générés et débit visibles à droite de « Détails du tour » replié. Copie des prompts, réponses et blocs de code par icône accessible, avec texte source exact et repli manuel.
 - Paramètres regroupés par tâche, avec recherche locale des réglages et indications de portée. Brouillons, diagnostic, certificats, modèles et mises à jour restent accessibles depuis leurs destinations et raccourcis.
 - Les formulaires de plafond et de ComfyUI proposent une annulation et signalent les saisies non enregistrées. La fermeture permet de poursuivre, d'abandonner ou de conserver ces saisies dans l'onglet, sans conserver les secrets de certificat.
 - Lecture des réponses : titres, listes ordonnées et imbriquées, citations et tableaux Markdown ; blocs de code avec langage, copie exacte et sélection manuelle si le presse-papiers est indisponible. Le code affiché reste passif.

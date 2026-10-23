@@ -573,6 +573,10 @@ function addToolApproval(article,approval,chat) {
   article.append(panel);
 }
 
+function messageCopyControl(label) {
+  const copy=BionicMessageText.copyControl(()=>copy.closest('.message')?.querySelector('.message-body'),()=>renderedMessageText.get(copy.closest('.message')?.querySelector('.message-body'))||'',{label});
+  return copy;
+}
 function groupMessageExtras(article, message, role) {
   const auxiliary = [...article.children].filter(child => child.matches('.actions-log,.message-fork,.message-metrics,.context-receipt,.pin-control,.message-effort,.message-budget:not(.message-budget-adjusted)'));
   const failed = (message.actions || []).some(action => action.ok === false);
@@ -587,7 +591,19 @@ function groupMessageExtras(article, message, role) {
   const details = node('details', 'message-extras'); details.dataset.disclosureKey = 'message-extras';
   const summary = node('summary'); summary.dataset.workspaceFocus = 'message-extras:' + (message.id || message.localRequestId || message.requestId || '');
   if (message.role === 'user') { summary.append(icon('more'), node('span','sr-only','Actions de ce message')); summary.title = 'Actions de ce message'; }
-  else summary.append(document.createTextNode('Détails du tour'));
+  else {
+    summary.append(node('span','message-extras-label','Détails du tour'));
+    if(message.metrics){
+      const m=message.metrics,format=value=>new Intl.NumberFormat('fr-FR',{maximumFractionDigits:1}).format(value);
+      const duration=Number.isFinite(m.responseSeconds)&&m.responseSeconds>=0?format(m.responseSeconds)+' s':'— s';
+      const tokens=Number.isSafeInteger(m.outputTokens)&&m.outputTokens>=0?format(m.outputTokens)+' tokens':'— tokens';
+      const rate=Number.isFinite(m.tokensPerSecond)&&m.tokensPerSecond>0?(m.rateSource==='observed'?'≈ ':'')+format(m.tokensPerSecond)+' tok/s':'— tok/s';
+      const measures=node('span','message-turn-measures'),time=node('span','message-turn-duration',duration),throughput=node('span','message-turn-throughput',tokens+' · '+rate);
+      time.title='Durée totale de la réponse'+(duration.startsWith('—')?' indisponible':'');
+      throughput.title='Tokens générés et débit'+(m.rateSource==='observed'?' estimé sur le flux reçu':'');
+      measures.append(time,throughput);summary.append(measures);
+    }
+  }
   const content = node('div','message-extras-content');
   for (const child of grouped) { if (!child.dataset.disclosureKey) child.dataset.disclosureKey = child.classList[0]; content.append(child); }
   details.append(summary, content);
@@ -606,6 +622,9 @@ function addMessage(message, parent = $('messages'), renderBody = true) {
   const content = node('div', 'message-body'); content.dataset.messageRole = message.role;
   if (renderBody) renderText(content, message.text || '');
   article.append(role, content);
+  if (message.text && (message.role==='user'||message.role==='assistant')) {
+    const copy=messageCopyControl(message.role==='user'?'Copier mon prompt':'Copier la réponse');copy.dataset.workspaceFocus='message-copy:'+article.dataset.messageKey;role.append(copy);
+  }
   if (message.attachments?.length) {
     const files = node('div', 'message-attachments');
     for (const file of message.attachments) {
@@ -639,9 +658,9 @@ function addMessage(message, parent = $('messages'), renderBody = true) {
     const summary = [];
     if (rate) summary.push((m.rateSource === 'observed' ? '≈ ' : '') + number(m.tokensPerSecond) + ' tokens/s');
     if (Number.isSafeInteger(m.outputTokens)) summary.push(number(m.outputTokens) + ' tokens générés');
-    if (summary.length) {
+    if (summary.length || Number.isFinite(m.responseSeconds)) {
       const details = node('details', 'message-metrics');
-      details.append(node('summary', '', summary.join(' · ')));
+      details.append(node('summary', '', summary.join(' · ') || 'Mesures du tour'));
       const explanations = [];
       if (rate) explanations.push(m.rateSource === 'observed' ? 'Débit approché sur le flux reçu, hors attente initiale. Il inclut le raisonnement transmis.' : 'Débit de génération communiqué par Bionic.');
       if (Number.isFinite(m.firstFragmentSeconds)) explanations.push('Premier fragment reçu après ' + number(m.firstFragmentSeconds) + ' s.');
@@ -671,8 +690,9 @@ function renderQueue(chat, parent = $('messages')) {
     const article = node('article', 'message queued-message');
     article.dataset.messageKey = 'queue:' + item.requestId;
     const interrupted = item.status === 'interrupted' || item.status === 'error', submitting = item.status === 'submitting';
-    article.append(node('div', 'message-role', interrupted ? 'Message non exécuté · à reprendre' : submitting ? 'Envoi au PC…' : 'Message en attente'));
+    const role=node('div', 'message-role', interrupted ? 'Message non exécuté · à reprendre' : submitting ? 'Envoi au PC…' : 'Message en attente');article.append(role);
     const content = node('div', 'message-body'); content.dataset.messageRole = 'user'; renderText(content, item.text || ''); article.append(content);
+    if(item.text){const copy=messageCopyControl('Copier mon prompt');copy.dataset.workspaceFocus='message-copy:'+article.dataset.messageKey;role.append(copy);}
     if (item.attachments?.length) article.append(node('p', 'message-footer', item.attachments.length + ' fichier' + (item.attachments.length > 1 ? 's joints' : ' joint')));
     const actions = node('div', 'queue-actions');
     if (interrupted) {

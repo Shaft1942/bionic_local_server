@@ -54,6 +54,8 @@ La suppression ne touche ni les fichiers du projet, ni les imports, ni les copie
 
 Le renommage et la suppression sont indisponibles pendant une réponse ou tant que ce chat a des messages en attente. Attendez leur fin ou arrêtez la réponse et retirez les attentes avant de recommencer. Les autres chats peuvent continuer à répondre.
 
+L'icône de deux feuilles permet de copier le texte seul d'un prompt (y compris en attente), d'une réponse ou d'un bloc de code. Les pièces jointes et détails techniques ne sont pas ajoutés à cette copie. Le texte source conserve sa mise en forme Markdown et ses sauts de ligne. Si le presse-papiers est indisponible, une sélection manuelle est proposée. À droite de **Détails du tour**, deux zones affichent la durée totale puis les tokens générés et le débit ; **≈** signale un débit estimé. Une valeur absente reste indiquée par un tiret.
+
 ## Retrouver les paramètres
 
 **Paramètres** regroupe six rubriques : Conversations et affichage, Modèles et réponses, Outils et autorisations, Images et ComfyUI, Connexion et appareils, Maintenance et aide. Sur téléphone, **Rubriques** revient à la liste. **Fermer** et Échap ramènent au déclencheur. La recherche locale comprend aussi des synonymes comme « tokens », « longueur » ou « certificat » ; elle recherche les intitulés et les portées, sans indexer les valeurs personnelles.

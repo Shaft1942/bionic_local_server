@@ -62,7 +62,7 @@ function fixture() {
     generation: { status: 'running', requestId: 'reading-approval-request', replyId: 'reading-warning', awaitingApproval: true },
     messages: [
       { id: 'reading-user', role: 'user', text: 'Code fourni par le message.\n\n```js\n' + codeUser + '```', fromBionic: true },
-      { id: 'reading-normal', role: 'assistant', text: markdown, fromBionic: true, complete: true, reasoning: 'high', outputBudget: { maxOutputTokens: 8192 }, metrics: { outputTokens: 120, inputTokens: 500, tokensPerSecond: 25 }, contextReceipt: structuredClone(receipt) },
+      { id: 'reading-normal', role: 'assistant', text: markdown, fromBionic: true, complete: true, reasoning: 'high', outputBudget: { maxOutputTokens: 8192 }, metrics: { outputTokens: 120, inputTokens: 500, tokensPerSecond: 25, responseSeconds: 6.4, rateSource: 'observed' }, contextReceipt: structuredClone(receipt) },
       { id: 'reading-open', role: 'assistant', text: 'Bloc reçu sans clôture.\n\n```python\n' + codeOpen, complete: true, interrupted: true },
       { id: 'reading-warning', role: 'assistant', text: 'Décisions et résultats restent consultables.', complete: false,
         approvals: [{ id: approvalId, projectId, chatId, kind: 'script', runtime: 'python', code: 'print("validation synthétique uniquement")', directory: '', status: 'pending', createdAt: now, expiresAt: now + 600000 }],
@@ -175,7 +175,13 @@ try {
       assert.equal(await normalBody.locator('a').count(), 1, 'only HTTP(S) links become anchors');
       assert.equal(await normalBody.locator('a').getAttribute('href'), 'https://example.com/documentation');
       assert.match(await normalBody.locator('a').getAttribute('rel'), /noopener/);
-      assert.equal(await extras.getAttribute('open'), null); assert.equal(await extras.locator(':scope > summary').textContent(), 'Détails du tour');
+      assert.equal(await extras.getAttribute('open'), null); assert.equal(await extras.locator('.message-extras-label').textContent(), 'Détails du tour');
+      assert.equal(await extras.locator('.message-turn-duration').textContent(),'6,4 s');assert.match(await extras.locator('.message-turn-throughput').textContent(),/120 tokens · ≈ 25 tok\/s/);
+      assert.equal(await extras.locator('.message-turn-measures').isVisible(),true,'metrics stay visible while details are closed');
+      await normal.getByRole('button',{name:'Copier la réponse',exact:true}).click();assert.equal(await page.evaluate(()=>window.__readingClipboard.at(-1)),api.chat.messages.find(m=>m.id==='reading-normal').text);
+      await message(page,'reading-user').getByRole('button',{name:'Copier mon prompt',exact:true}).click();assert.equal(await page.evaluate(()=>window.__readingClipboard.at(-1)),api.chat.messages.find(m=>m.id==='reading-user').text);
+      assert.equal(await normal.locator('.message-code-copy').textContent(),'');assert.equal(await normal.locator('.message-code-copy svg').count(),1);
+      await extras.scrollIntoViewIfNeeded();await snapshot(page,'compact-measures',width);
       assert.equal(await normal.locator('.message-budget').isVisible(), false, 'ordinary budget is collapsed');
       assert.equal(await normal.locator('.message-budget').evaluate(el => !!el.closest('.message-extras')), true);
       for (const [id, expected, kind, complete] of [['reading-user', codeUser, 'Code fourni', 'true'], ['reading-normal', codeClosed, 'Code proposé', 'true'], ['reading-open', codeOpen, 'Code proposé', 'false']]) {
@@ -297,6 +303,7 @@ try {
       await page.locator('#settings-close').click(); await streaming.locator('.message-truncated').scrollIntoViewIfNeeded();
       await snapshot(page, 'truncation', width);
       await streaming.locator('.message-code-copy').click(); assert.equal(await page.evaluate(() => window.__readingClipboard.at(-1)), streamInitial.split('```js\n')[1] + '  const suite = "fragment 2";\n  const suite3 = true;\n  // fragment pendant la sélection\n  // lecture remontée préservée\n  // suivi après retour 1\n  // suivi après retour 2\n  // fin sans clôture  ');
+      await streaming.getByRole('button',{name:'Copier la réponse',exact:true}).click();assert.equal(await page.evaluate(()=>window.__readingClipboard.at(-1)),api.chat.messages.find(m=>m.id===streamReply).text,'message copy uses the complete updated stream, not the initial snapshot');
 
       assert.equal(await page.evaluate(() => window.__readingExecuted), 0, 'code/HTML never executes');
       assert.deepEqual(outbound, [], 'all requests stay intercepted; raw HTML caused no request'); assert.deepEqual(api.unexpected, []); assert.deepEqual(errors, []);

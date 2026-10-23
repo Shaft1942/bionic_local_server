@@ -121,17 +121,16 @@
     if (!headers.length || headers.length > 128 || headers.length !== rules.length || !rules.every(rule => /^:?-{3,}:?$/.test(rule))) return null;
     return { headers, align: rules.map(rule => rule.startsWith(':') && rule.endsWith(':') ? 'center' : rule.endsWith(':') ? 'right' : 'left') };
   }
-  function codeBlock(parent, source, fence, complete, state) {
-    const { document } = state, index = state.codeIndex++;
-    const card = element(document, 'div', 'message-code'); card.dataset.codeIndex = String(index); card.dataset.complete = String(complete);
-    const toolbar = element(document, 'div', 'message-code-toolbar');
-    toolbar.append(element(document, 'span', 'message-code-kind', state.role === 'user' ? 'Code fourni' : state.role === 'assistant' ? 'Code proposé' : 'Code'));
-    const language = fence.info.split(/\s/)[0].slice(0, 100);
-    if (language) toolbar.append(element(document, 'span', 'message-code-language', language));
-    if (!complete) toolbar.append(element(document, 'span', 'message-code-state', 'Bloc non fermé'));
-    const copy = element(document, 'button', 'file-action message-code-copy', 'Copier le code'); copy.type = 'button'; copy.dataset.codeIndex = String(index);
+  function copyControl(root, sourceText, { document = globalThis.document, code = false, index, label = code ? 'Copier le code' : 'Copier le texte' } = {}) {
+    const copy = element(document, 'button', code ? 'message-copy-icon message-code-copy' : 'message-copy-icon message-text-copy');
+    copy.type = 'button'; copy.setAttribute('aria-label', label); copy.title = label;
+    copy.setAttribute('aria-busy','false');
+    if (index !== undefined) copy.dataset.codeIndex = String(index);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+    const shape = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    shape.setAttribute('d', 'M9 9h11v11H9zM5 15H4V4h11v1'); svg.append(shape); copy.append(svg);
     const status = element(document, 'p', 'message-code-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-    const pre = element(document, 'pre'), code = element(document, 'code', '', source); pre.append(code);
     let manual, copying = false, copyAttempt = 0;
     const closeManual = (focus = true) => { if (manual) { manual.remove(); manual = null; } if (focus) copy.focus({ preventScroll: true }); };
     const selectionSnapshot = () => {
@@ -140,12 +139,18 @@
     };
     copy.addEventListener('click', async () => {
       if (copying) return;
+      const card = typeof root === 'function' ? root() : root;
+      if (!card?.isConnected) return;
+      if (manual && !manual.isConnected) manual = null;
+      const source = typeof sourceText === 'function' ? sourceText() : sourceText;
+      if (typeof source !== 'string') return;
+      if (status.parentNode !== card) card.append(status);
       copying = true; const attempt = ++copyAttempt, focus = document.activeElement, selected = selectionSnapshot();
       // Keep the button focusable while Clipboard is pending. A late response must
       // not take over another message, control, or user selection.
       copy.setAttribute('aria-busy', 'true');
       const relevant = () => {
-        if (!card.isConnected || attempt !== copyAttempt || document.activeElement !== focus) return false;
+        if (!card.isConnected || !copy.isConnected || attempt !== copyAttempt || document.activeElement !== focus) return false;
         const current = selectionSnapshot();
         return current.length === selected.length && current.every((value, index) => value === selected[index]);
       };
@@ -153,14 +158,14 @@
         if (typeof globalThis.navigator?.clipboard?.writeText !== 'function') throw new Error('Clipboard unavailable');
         await globalThis.navigator.clipboard.writeText(source);
         if (!relevant()) return;
-        closeManual(false); status.textContent = 'Code copié.';
+        closeManual(false); status.textContent = code ? 'Code copié.' : 'Texte copié.';
       } catch {
         if (!relevant()) return;
-        status.textContent = 'Copie automatique indisponible. Sélectionne et copie ce code.';
+        status.textContent = code ? 'Copie automatique indisponible. Sélectionne et copie ce code.' : 'Copie automatique indisponible. Sélectionne et copie ce texte.';
         if (!manual) {
           manual = element(document, 'div', 'message-code-manual');
           // A textarea normalizes CRLF. Keep the raw source in a selectable text node.
-          const field = element(document, 'pre', 'message-code-fallback', source); field.tabIndex = 0; field.setAttribute('role', 'textbox'); field.setAttribute('aria-readonly', 'true'); field.setAttribute('aria-multiline', 'true'); field.setAttribute('aria-label', 'Code à copier manuellement');
+          const field = element(document, 'pre', 'message-code-fallback', source); field.tabIndex = 0; field.setAttribute('role', 'textbox'); field.setAttribute('aria-readonly', 'true'); field.setAttribute('aria-multiline', 'true'); field.setAttribute('aria-label', code ? 'Code à copier manuellement' : 'Texte à copier manuellement');
           const close = element(document, 'button', 'file-action message-code-fallback-close', 'Fermer la copie manuelle'); close.type = 'button'; close.addEventListener('click', () => closeManual());
           manual.append(field, close); manual.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeManual(); } }); card.append(manual);
         }
@@ -168,7 +173,19 @@
         try { const range = document.createRange(), selection = document.defaultView?.getSelection(); range.selectNodeContents(field); selection?.removeAllRanges(); selection?.addRange(range); } catch { /* Manual keyboard selection remains available. */ }
       } finally { copying = false; if (copy.isConnected) copy.setAttribute('aria-busy', 'false'); }
     });
-    toolbar.append(copy); card.append(toolbar, pre, status); parent.append(card);
+    return copy;
+  }
+  function codeBlock(parent, source, fence, complete, state) {
+    const { document } = state, index = state.codeIndex++;
+    const card = element(document, 'div', 'message-code'); card.dataset.codeIndex = String(index); card.dataset.complete = String(complete);
+    const toolbar = element(document, 'div', 'message-code-toolbar');
+    toolbar.append(element(document, 'span', 'message-code-kind', state.role === 'user' ? 'Code fourni' : state.role === 'assistant' ? 'Code proposé' : 'Code'));
+    const language = fence.info.split(/\s/)[0].slice(0, 100);
+    if (language) toolbar.append(element(document, 'span', 'message-code-language', language));
+    if (!complete) toolbar.append(element(document, 'span', 'message-code-state', 'Bloc non fermé'));
+    toolbar.append(copyControl(card, source, { document, code: true, index }));
+    const pre = element(document, 'pre'), code = element(document, 'code', '', source); pre.append(code);
+    card.append(toolbar, pre); parent.append(card);
   }
   function blocks(parent, lines, state, depth = 0) {
     const { document } = state;
@@ -236,5 +253,5 @@
     blocks(container, linesOf(typeof text === 'string' ? text : ''), { document, role, codeIndex: 0, blocks: 0, inlineTokens: 0 });
     return container;
   }
-  globalThis.BionicMessageText = Object.freeze({ render });
+  globalThis.BionicMessageText = Object.freeze({ render, copyControl });
 })();
