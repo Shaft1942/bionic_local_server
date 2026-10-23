@@ -1,6 +1,6 @@
-# Préparation de la 2.4 bêta
+# Version 2.4 bêta
 
-Date : 23 octobre 2026. Base vérifiée : stable 2.3.0, commit `f3158fc7e377861feb6069ef2312997a5734bf7a`. Version de travail : `2.4.0-beta.1`. Ce document décrit le lot local ; il ne constate pas une publication, une installation ou un gain de performance sur un moteur réel.
+Date : 23 octobre 2026. Base vérifiée : stable 2.3.0, commit `f3158fc7e377861feb6069ef2312997a5734bf7a`. Préversion : `2.4.0-beta.1`, distribuée sur le canal Bêta, sans changement de la stable. Ce document décrit le lot intégré ; il ne constate pas une installation ou un gain de performance sur un moteur réel.
 
 ## Interactions
 
@@ -58,6 +58,6 @@ Le diagnostic dispose de ses essais réels séparés ; ses durées ne constituen
 
 Le lot français/anglais demandé séparément est intégré depuis `8492a84769576b434d6fab052b5a0e9e62cc107d`, avec son complément d'accessibilité `fe0d1ea8383a96fa7cde5041a7a1e331064808b3` et les nouvelles chaînes des écrans 2.4. Les [catalogues extensibles](internationalisation.md), pluriels, dates et nombres suivent la langue choisie par navigateur. Le choix dans Paramètres → Conversations et affichage reste indépendant des prompts et des réponses du modèle. Les passages FR↔EN préservent formulaires, droits choisis, secrets d'export synthétiques, brouillons, messages et défilement ; ils ne déclenchent aucune requête serveur.
 
-Les tests API et navigateur utilisent des données synthétiques. Ils ne prouvent ni import de certificat système, ni téléphone physique, ni pare-feu, ni performance de modèle/GPU. Aucun déploiement personnel ni publication n'est déclenché par la préparation locale.
+Les tests API et navigateur utilisent des données synthétiques. Ils ne prouvent ni import de certificat système, ni téléphone physique, ni pare-feu, ni performance de modèle/GPU. La publication GitHub ne déploie pas cette version sur une installation personnelle. La préversion est proposée après choix explicite du canal Bêta dans Paramètres → Maintenance → Mises à jour ; revenir au canal Stable ne rétrograde pas une bêta installée.
 
 Validation finale de l'assemblage : **665 tests réussis, zéro échec/skip**, 136 fichiers JavaScript vérifiés et export fermé de 235 sources. Les parcours ordinateur/mobile simulés des fenêtres, images directes, projets, pagination, langues, aide, certificats, paramètres, lecture et mises à jour passent. Le bootstrap HTTP → HTTPS est aussi exercé sur un serveur/certificat de fixture, avec confiance limitée au processus navigateur et sans import système. Les rapports détaillés et méta-prompts exécutés restent dans le dépôt du socle, hors distribution.
