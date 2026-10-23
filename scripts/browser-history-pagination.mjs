@@ -26,7 +26,7 @@ try {
       if (url.origin !== origin) return route.abort();
       if (!url.pathname.startsWith('/api/')) {
         const name = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-        if (!/^(?:locales\/(?:fr|en)\/(?:ui|app|settings|components)\.js|[a-z0-9.-]+)$/i.test(name)) return route.abort();
+        if (!/^(?:locales\/(?:fr|en)\/(?:ui|app|settings|components|local-services)\.js|[a-z0-9.-]+)$/i.test(name)) return route.abort();
         return route.fulfill({ contentType: name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css' : name.endsWith('.svg') ? 'image/svg+xml' : 'text/html', body: await fs.readFile(path.join(root, 'public', name)) });
       }
       const input = req.postData() ? JSON.parse(req.postData()) : null;

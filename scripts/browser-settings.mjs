@@ -13,7 +13,7 @@ const captures = process.env.BIONIC_SMOKE_SCREENSHOTS;
 if (captures) await fs.mkdir(captures, { recursive: true });
 const origin = 'http://bionic.test', projectId = 'settings-project';
 const chatA = 'web-11111111-1111-4111-8111-111111111111', chatB = 'web-22222222-2222-4222-8222-222222222222', nativeId = 'native-settings-history';
-const pages = ['reading', 'models', 'tools', 'images', 'connection', 'maintenance', 'help'];
+const pages = ['reading', 'models', 'tools', 'images', 'servers', 'connection', 'maintenance', 'help'];
 const fakePassphrase = 'FAKE-CERT-ONLY-NOT-A-REAL-CREDENTIAL';
 const tick = page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
@@ -36,6 +36,7 @@ function fixture() {
     return { model: input.model, contextLength: models.find(model => model.id === input.model)?.contextLength ?? null, autoMaxOutputTokens: 8192, modelMaxOutputTokens: global, sessionMaxOutputTokens: configured ? stored[input.model] : null, sessionConfigured: configured, automatic: value === null, maxOutputTokens: value ?? 8192, source: configured ? 'session' : global !== null ? 'model' : 'auto', applyToAllSessions: !configured && global !== null };
   }
   async function respond(url, method, input) {
+    if (url.pathname === '/api/local-services') return { services: [], csrfNonce: 'synthetic-services-nonce' };
     calls.push({ route: url.pathname, method, input: structuredClone(input), query: Object.fromEntries(url.searchParams) });
     if (failures.has(url.pathname)) { const value = failures.get(url.pathname); failures.delete(url.pathname); return { httpError: value }; }
     if (url.pathname === '/api/status') { const result = { ok: true, models, addresses: ['http://bionic.test'] }; if (holdNextStatus) { holdNextStatus = false; return new Promise(resolve => { releaseStatus = () => { releaseStatus = null; resolve(result); }; }); } return result; }
@@ -142,7 +143,7 @@ try {
         } catch (error) { errors.push(error.message); return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: error.message }) }); }
       }
       const file = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-      if (!/^(?:locales\/(?:fr|en)\/(?:ui|app|settings|components)\.js|[a-z0-9.-]+)$/i.test(file)) return route.abort();
+      if (!/^(?:locales\/(?:fr|en)\/(?:ui|app|settings|components|local-services)\.js|[a-z0-9.-]+)$/i.test(file)) return route.abort();
       return route.fulfill({ contentType: file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.html') ? 'text/html' : file.endsWith('.svg') ? 'image/svg+xml' : 'application/json', body: await fs.readFile(path.join(root, 'public', file)) });
     });
     const started = performance.now();
@@ -202,7 +203,7 @@ try {
       await openSettings(page); assert.equal(await page.locator('#settings-close').isVisible(), true);
       if (width === 320 || width === 1280) { if (width === 320) await page.locator('#settings-back').click(); await capture(page, width, 'index'); if (width === 320) await navigate(page, 'reading'); }
       // Inventory controls retain one canonical instance; metadata and actions remain scoped.
-      const locations = { reading: ['draft-duration', 'draft-download', 'draft-clear'], models: ['settings-model', 'output-mode', 'output-tokens', 'output-tokens-slider', 'output-all-sessions', 'output-save', 'settings-models-loaded', 'settings-edit-model'], tools: ['settings-edit-tools'], images: ['comfy-enabled', 'comfy-url', 'comfy-workflow', 'comfy-lora-1', 'comfy-lora-2', 'comfy-lora-1-strength', 'comfy-lora-2-strength', 'comfy-loras-refresh', 'comfy-test', 'comfy-save', 'settings-edit-image'], connection: ['certificate-refresh', 'certificate-hosts', 'certificate-prepare', 'certificate-ca-download', 'certificate-proof', 'certificate-cancel', 'certificate-device-name', 'certificate-issue', 'certificate-download', 'certificate-export-clear', 'certificate-mtls', 'certificate-revoke-yes', 'certificate-revoke-no'], maintenance: ['diagnostics-open', 'diagnostics-result', 'updates-dialog', 'updates-channel', 'updates-enabled', 'updates-check'], help: ['help-content', 'settings-capabilities'] };
+      const locations = { servers: ['local-services-list', 'local-services-reload'], reading: ['draft-duration', 'draft-download', 'draft-clear'], models: ['settings-model', 'output-mode', 'output-tokens', 'output-tokens-slider', 'output-all-sessions', 'output-save', 'settings-models-loaded', 'settings-edit-model'], tools: ['settings-edit-tools'], images: ['comfy-enabled', 'comfy-url', 'comfy-workflow', 'comfy-lora-1', 'comfy-lora-2', 'comfy-lora-1-strength', 'comfy-lora-2-strength', 'comfy-loras-refresh', 'comfy-test', 'comfy-save', 'settings-edit-image'], connection: ['certificate-refresh', 'certificate-hosts', 'certificate-prepare', 'certificate-ca-download', 'certificate-proof', 'certificate-cancel', 'certificate-device-name', 'certificate-issue', 'certificate-download', 'certificate-export-clear', 'certificate-mtls', 'certificate-revoke-yes', 'certificate-revoke-no'], maintenance: ['diagnostics-open', 'diagnostics-result', 'updates-dialog', 'updates-channel', 'updates-enabled', 'updates-check'], help: ['help-content', 'settings-capabilities'] };
       for (const section of pages) {
         await navigate(page, section); assert.equal(await page.locator('#settings-page-' + section).isVisible(), true);
         for (const id of locations[section]) { assert.equal(await page.locator('#' + id).count(), 1, 'one canonical #' + id); assert.equal(await page.locator('#' + id).evaluate((el, expected) => el.closest('[data-settings-section]')?.id === 'settings-page-' + expected, section), true, '#' + id + ' destination'); }

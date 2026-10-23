@@ -1,6 +1,8 @@
-# Version 2.5.0-beta.1
+# Version 2.5.0-beta.2
 
-Assemblage local préparé le 23 octobre 2026 à partir de `2.4.0-beta.3` (`3576e9a`) et `2.4.1-beta.2` (`2f42791`), sur leur base stable commune `f3158fc`. Ce document ne constate pas une publication ou une installation personnelle.
+La bêta 2 intègre le livrable 2.4.2-beta.2 (`5427cb0`) à la bêta 1 (`0b0ef56`), dont il est un descendant direct. La rubrique **Paramètres → Serveurs sur le PC** permet le démarrage, l’arrêt et le redémarrage manuels de Bionic et de ComfyUI selon leurs capacités et leur identité vérifiée. Les activités connues/incertaines et attentes GPU sont protégées ; les commandes disposent de reçus durables sans rejeu automatique. Configuration initiale via `Configurer-serveurs.cmd` ; voir [le guide Serveurs](local-services.md). Le profil privé reste local et ne fait pas partie de la distribution.
+
+Assemblage initial de la bêta 1 préparé le 23 octobre 2026 à partir de `2.4.0-beta.3` (`3576e9a`) et `2.4.1-beta.2` (`2f42791`), sur leur base stable commune `f3158fc`. Ce document ne constate pas une publication ou une installation personnelle.
 
 ## Fonctions réunies
 
@@ -22,6 +24,6 @@ Le parcours **Générer ce prompt directement** reste une image exacte sans pré
 
 ## Contrôles et limites
 
-La validation utilise les tests et API synthétiques du produit. Les parcours navigateur couvrent les séries de 1 à 5, politiques et brouillons, annulation/relance avec réponse perdue, galerie de 22 images, limite ZIP de 20, aperçu/focus, changement FR/EN, interactions et pagination. Les commandes sont décrites dans [Développement](developpement.md).
+La validation utilise les tests et API synthétiques du produit. `npm run test:browser:services` vérifie les commandes, confirmations, états et récupération en FR/EN. Les cinq essais OS opt-in du lanceur restent distincts de la suite synthétique et ne sont pas réexécutés pour ce lot. Les parcours navigateur couvrent les séries de 1 à 5, politiques et brouillons, annulation/relance avec réponse perdue, galerie de 22 images, limite ZIP de 20, aperçu/focus, changement FR/EN, interactions et pagination. Les commandes sont décrites dans [Développement](developpement.md).
 
 L’archive locale est construite depuis la liste fermée de distribution. Les résultats exacts accompagnent la livraison. Aucun nouveau benchmark de modèle/GPU, téléphone physique, import système de certificat, déploiement ou publication n’est réalisé par cet assemblage. Les mesures des branches d’origine ne qualifient pas automatiquement cette nouvelle version.

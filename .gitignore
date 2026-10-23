@@ -2,6 +2,8 @@
 /data/
 /runtime/
 /config.local.json
+/config.launchers.local.json
+/config.launchers.local.json.*
 /ACCES-PRIVE.txt
 *.log
 /reseau-verification.txt

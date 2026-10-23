@@ -1,6 +1,6 @@
 {
   "name": "bionic-mobile-local",
-  "version": "2.5.0-beta.1",
+  "version": "2.5.0-beta.2",
   "private": true,
   "type": "module",
   "description": "Compagnon local pour consulter les projets et chats Bionic et continuer par API",
@@ -27,7 +27,8 @@
     "test:browser:history": "node scripts/browser-history-pagination.mjs",
     "test:browser:i18n": "node scripts/browser-i18n.mjs",
     "test:browser:image-actions": "node scripts/browser-image-actions.mjs",
-    "test:browser:image-counts": "node scripts/browser-image-counts.mjs"
+    "test:browser:image-counts": "node scripts/browser-image-counts.mjs",
+    "test:browser:services": "node scripts/browser-services.mjs"
   },
   "engines": {
     "node": ">=24"

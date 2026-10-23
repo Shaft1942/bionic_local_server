@@ -1,5 +1,7 @@
 # Bionic Mobile — compagnon local
 
+**Candidat local 2.5.0-beta.2**, cumulatif : [lanceur Bionic et ComfyUI](docs/local-services.md) dans Paramètres → Serveurs sur le PC et toutes les [fonctions images de la 2.4.1-beta.2](docs/comfyui.md), notamment quantité 1–5, mémoire par demande, annulation, relance et galerie/ZIP. Les fonctions de la v2.4.0-beta.3 sont conservées. Cette mention ne désigne pas une publication GitHub.
+
 Utilisez les modèles de votre PC, consultez vos projets Bionic et continuez une conversation depuis le navigateur de votre téléphone, sur votre réseau local.
 
 Ce projet communautaire est indépendant de Bionic. Bionic et ses modèles ne sont pas inclus. Le compagnon utilise l’API locale de Bionic et un adaptateur de lecture de ses fichiers internes.
