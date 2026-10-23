@@ -52,7 +52,7 @@ async function openUpdates(page) {
   await page.locator('#settings-open-sidebar').click();
   const maintenance = page.locator('button[data-settings-page="maintenance"]');
   if (!(await maintenance.isVisible())) await page.locator('#settings-back').click();
-  await maintenance.click(); await page.locator('#updates-open').click();
+  await maintenance.click();
   await page.locator('#updates-dialog').waitFor({ state: 'visible' });
   await page.waitForFunction(() => !document.querySelector('#updates-channel').disabled);
 }
@@ -61,12 +61,12 @@ async function ready(page, channel) {
 }
 async function capture(page, width, name) {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'page overflow ' + width);
-  assert.equal(await page.locator('#updates-dialog').evaluate(el => el.scrollWidth <= el.clientWidth), true, 'dialog overflow ' + width);
+  assert.equal(await page.locator('#updates-dialog').evaluate(el => el.scrollWidth <= el.clientWidth), true, 'update section overflow ' + width);
   if (captures) await page.screenshot({ path: path.join(captures, width + '-update-channels-' + name + '.png') });
 }
 
 try {
-  for (const width of [1280, 320]) {
+  for (const width of [320, 390, 1280]) {
     const context = await browser.newContext({ viewport: { width, height: 900 } }), page = await context.newPage();
     const api = fixture(), errors = [], outbound = [];
     page.setDefaultTimeout(6000); page.on('pageerror', error => errors.push(error.message));
@@ -85,6 +85,7 @@ try {
     });
     try {
       await page.goto(origin); await page.locator('#app').waitFor({ state: 'visible' }); await openUpdates(page);
+      assert.equal(await page.locator('#updates-dialog').evaluate(el => el.tagName === 'SECTION' && !!el.closest('#settings-page-maintenance')), true, 'updates are part of settings');
       const select = page.getByRole('combobox', { name: 'Canal de publication', exact: true });
       assert.equal(await select.inputValue(), 'stable');
       assert.match(await page.locator('#updates-version').textContent(), /2\.1\.0 · canal Stable/);
@@ -92,7 +93,7 @@ try {
       assert.match(await page.locator('#updates-channel-scope').textContent(), /tous les appareils connectés/);
       await capture(page, width, 'stable');
 
-      await page.locator('#updates-close').click(); api.checkInProgress(); await page.locator('#updates-open').click();
+      await page.locator('#settings-close').click(); api.checkInProgress(); await openUpdates(page);
       await page.waitForFunction(() => document.querySelector('#updates-status').textContent === 'Vérification en cours…');
       assert.equal(await select.isEnabled(), true, 'a slow background check must not block channel selection');
 
@@ -107,6 +108,8 @@ try {
       assert.match(await page.locator('#updates-channel-note').textContent(), /en cours d’essai/);
       await page.locator('#updates-check').click(); await page.locator('#updates-candidate').waitFor({ state: 'visible' });
       assert.match(await page.locator('#updates-candidate-title').textContent(), /2\.2\.0-beta\.1 · Bêta/);
+      assert.equal(await page.locator('#updates-badge').isVisible(), true);
+      assert.equal(await page.locator('#settings-open-sidebar').evaluate(el => el.classList.contains('update-available')), true, 'available version is signalled on the bottom settings action');
       assert.equal(await page.locator('#updates-install').isDisabled(), true); await capture(page, width, 'beta');
 
       api.failNextPreference(); await select.focus(); await select.selectOption('stable');
@@ -115,16 +118,18 @@ try {
       assert.equal(await page.locator('#updates-candidate').isVisible(), true, 'failed preference keeps the previous candidate');
       await select.selectOption('stable'); await ready(page, 'stable');
       assert.equal(await page.locator('#updates-candidate').isVisible(), false, 'channel change invalidates the previous candidate');
-      await page.locator('#updates-close').click();
-      assert.equal(await page.evaluate(() => document.activeElement.id), 'updates-open');
+      assert.equal(await page.locator('#updates-badge').isVisible(), false);
+      assert.equal(await page.locator('#settings-open-sidebar').evaluate(el => el.classList.contains('update-available')), false, 'changing channel clears the old available badge');
+      await page.locator('#settings-close').click();
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'settings-open-sidebar');
 
-      api.installBeta(); await page.locator('#updates-open').click(); await page.waitForFunction(() => document.querySelector('#updates-version').textContent.includes('2.2.0-beta.1')); await ready(page, 'stable');
+      api.installBeta(); await openUpdates(page); await page.waitForFunction(() => document.querySelector('#updates-version').textContent.includes('2.2.0-beta.1')); await ready(page, 'stable');
       assert.match(await page.locator('#updates-version').textContent(), /2\.2\.0-beta\.1 · canal Bêta/);
       assert.match(await page.locator('#updates-channel-note').textContent(), /version stable plus récente/);
       await capture(page, width, 'return-stable');
-      await page.locator('#updates-close').press('Escape');
-      assert.equal(await page.locator('#updates-dialog').isVisible(), false);
-      assert.equal(await page.evaluate(() => document.activeElement.id), 'updates-open');
+      await page.locator('#updates-channel').press('Escape');
+      assert.equal(await page.locator('#settings-view').isVisible(), false);
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'settings-open-sidebar');
       assert.equal(api.calls.some(call => call.route === '/api/updates/install'), false);
       assert.deepEqual(outbound, []); assert.deepEqual(errors, []);
       results.push({ width, passed: true, checks: ['stable default', 'PC scope', 'change during background check', 'pending state', 'beta choice', 'manual check', 'failure rollback', 'candidate invalidation', 'stable return after beta', 'keyboard and focus', 'no overflow'] });

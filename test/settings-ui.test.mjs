@@ -27,7 +27,7 @@ function fixture(intercept=()=>undefined) {
   }
   for(const page of ['reading','models','tools','images','connection','maintenance'])element('nav-'+page).dataset.settingsPage=page;
   const state={authenticated:true,authEpoch:1,projectId:'p',chat:null,viewKey:'p|new',status:{models:[{id:'m',name:'Modèle M'}]}};
-  element('model').value='m';document.activeElement=element('settings-open');
+  element('model').value='m';document.activeElement=element('settings-open-sidebar');
   const api=async(route,options)=>{
     if(options?.method==='POST')writes.push({route,body:JSON.parse(options.body)});
     const override=intercept(route,options);if(override!==undefined)return override;
@@ -42,7 +42,7 @@ function fixture(intercept=()=>undefined) {
   vm.runInContext(source,context);
   let nodes=0;const settings=context.createCompanionSettings({api,getState:()=>state,node:(tag,className,textContent)=>Object.assign(element('node-'+nodes++),{tag,className,textContent}),onChange(){},onNavigate:target=>navigations.push(target)});
   const fire=(id,type='click')=>element(id).listeners[type]({currentTarget:element(id),preventDefault(){}});
-  const open=()=>fire('settings-open');
+  const open=()=>fire('settings-open-sidebar');
   async function saveOutput(value,all=false){element('output-mode').value=value===null?'auto':'manual';element('output-tokens').value=value??8192;element('output-all-sessions').value=all?'model':'session';return fire('output-settings-form','submit');}
   return {state,document,element,settings,writes,navigations,globalEvents,fire,open,saveOutput};
 }
@@ -345,7 +345,7 @@ test('targeted opening preserves a non-enumerable event currentTarget as its ret
 
 test('closing restores an available chat or sidebar trigger when the original menu entry is hidden',async()=>{
   for(const inThread of [true,false]){
-    const f=fixture();await f.open();f.element('settings-open').hidden=true;
+    const f=fixture(),trigger=f.element('ephemeral-settings-trigger');await f.settings.openPage({currentTarget:trigger},'reading');trigger.hidden=true;
     f.element('conversation-options-toggle').hidden=!inThread;
     await f.settings.close();
     assert.equal(f.document.activeElement,f.element(inThread?'conversation-options-toggle':'settings-open-sidebar'));

@@ -13,7 +13,7 @@ La distribution 2.0.0 conserve l’assistant Windows et les mises à jour propos
 
 ## Quelle version télécharger ?
 
-Cette distribution **2.2.0-beta.1** réunit les améliorations de lecture et de paramètres. Le canal Stable reste choisi par défaut ; le canal Bêta s’active dans **Paramètres → Maintenance et aide → Mises à jour**. Le premier passage depuis la stable 2.1.0 suit la procédure manuelle avec sauvegarde, car cette stable ignore les préversions. Voir [le choix des canaux](docs/mises-a-jour.md). La [Release bêta 2.2.0-beta.1](https://github.com/Shaft1942/bionic_local_server/releases/tag/v2.2.0-beta.1) distribue le ZIP de cette version d’essai.
+Cette distribution **2.2.1-beta.1** réunit les améliorations de lecture, les canaux de publication et les accès système dans la barre du bas. Le canal Stable reste choisi par défaut ; le canal Bêta s’active dans **Paramètres → Maintenance et aide → Mises à jour**. Le premier passage depuis la stable 2.1.0 suit la procédure manuelle avec sauvegarde, car cette stable ignore les préversions. Voir [le choix des canaux](docs/mises-a-jour.md). La préparation locale d'une archive ne vaut pas publication ; consultez les [préversions publiées](https://github.com/Shaft1942/bionic_local_server/releases).
 
 La dernière stable est la **version 2.1.0**, avec un assistant d’installation Windows et des mises à jour proposées au démarrage puis toutes les 24 heures. Téléchargez **`bionic-mobile-v2.1.0.zip`** depuis [la Release 2.1.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v2.1.0), avec `SHA256SUMS.txt`. **Node.js 24 ou ultérieur est requis** : l’assistant peut réutiliser une installation existante ou, avec votre accord, télécharger une copie portable officielle. Node.js n’est pas inclus dans le ZIP. Aucun Docker requis. Depuis 1.9.0, une mise à jour compatible peut être proposée dans le compagnon ; depuis 1.8.0, suivez [la procédure manuelle](docs/sauvegarde-mise-a-jour.md). **Code → Download ZIP** fournit l’état de la branche choisie, qui peut différer d’une Release. Voir [les mises à jour proposées](docs/mises-a-jour.md).
 
@@ -41,7 +41,7 @@ Le [bilan du lot d’audit](docs/choix-audit.md) décrit les choix intégrés et
 
 ## Démarrer sous Windows
 
-1. Téléchargez le ZIP de [la stable 2.1.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v2.1.0) ou de [cette bêta 2.2.0-beta.1](https://github.com/Shaft1942/bionic_local_server/releases/tag/v2.2.0-beta.1), selon le canal souhaité, puis extrayez entièrement l’archive.
+1. Téléchargez le ZIP de [la stable 2.1.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v2.1.0) ou d'une [bêta publiée](https://github.com/Shaft1942/bionic_local_server/releases), selon le canal souhaité, puis extrayez entièrement l’archive.
 2. Double-cliquez sur **Installer.cmd**. Choisissez le dossier du compagnon et un Node.js compatible, ou cochez le téléchargement portable proposé.
 3. Dans **Bionic → API des modèles locaux**, activez le serveur. Reportez son adresse dans l’assistant ; le suffixe `/v1` est accepté et retiré automatiquement. Le bouton **Tester l’API** lit la liste des modèles sans génération ni déchargement.
 4. Vérifiez le récapitulatif puis cliquez sur **Installer**. Le raccourci et le démarrage sont proposés. L’accès au téléphone via le pare-feu est facultatif et demande l’accord Windows sur un réseau privé.

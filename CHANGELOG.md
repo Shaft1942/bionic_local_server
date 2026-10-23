@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.2.1-beta.1 — 23 octobre 2026
+
+- Mises à jour intégrées aux paramètres, dans Maintenance et aide, avec canal Stable ou Bêta, version et état de vérification.
+- Paramètres et Modèles chargés réunis dans la barre du bas avec Reconnexion au PC et Déconnecter ; accès par icônes nommées, sans doublons dans l'en-tête.
+- Reprise des optimisations CI : contrôles Windows/Linux sur les PR et main, lancement manuel pour les branches de travail, annulation des contrôles obsolètes et délai maximal de 15 minutes. Le workflow de publication conserve ses règles.
+
 ## 2.2.0-beta.1 — 23 octobre 2026
 
 - Deux canaux dans Paramètres → Maintenance et aide → Mises à jour : stable par défaut et bêta sur choix explicite, partagé par l'installation PC. La vérification automatique reste indépendante du canal.

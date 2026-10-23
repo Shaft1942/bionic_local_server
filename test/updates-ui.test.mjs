@@ -20,7 +20,7 @@ function fixture(intercept = () => undefined, status = initial()) {
     });
     return elements.get(id);
   }
-  document.activeElement = element('updates-open');
+  document.activeElement = element('settings-open-sidebar');
   const api = async (route, options) => {
     const body = options?.body ? JSON.parse(options.body) : null;
     calls.push({ route, body });
@@ -52,7 +52,7 @@ test('updates default to stable and keep installed channel separate from the sel
 
 test('a pending channel preference disables conflicting actions then rolls back on failure and restores focus', async () => {
   const saved = deferred(), f = fixture(route => route === '/api/updates/preferences' ? saved.promise : undefined);
-  await f.updates.activate(); f.element('updates-dialog').open = true;
+  await f.updates.activate(); f.element('settings-view').hidden = false; f.element('settings-page-maintenance').hidden = false;
   const select = f.element('updates-channel'); select.focus(); select.value = 'beta';
   const request = f.fire('updates-channel', 'change');
   assert.equal(select.value, 'beta');
@@ -92,7 +92,7 @@ test('channel replies arriving after logout cannot repopulate the update control
   await f.updates.activate(); f.element('updates-channel').value = 'beta'; const request = f.fire('updates-channel', 'change');
   f.updates.stop(); saved.resolve({ ...initial(), channel: 'beta' }); await request;
   assert.equal(f.element('updates-channel').value, 'stable'); assert.equal(f.element('updates-channel').disabled, true);
-  assert.equal(f.element('updates-open').hidden, true); assert.equal(f.timers.size, 0);
+  assert.equal(f.element('updates-badge').hidden, true); assert.equal(f.timers.size, 0);
 });
 
 test('the channel stays available during background checks and their status receives a short poll', async () => {
@@ -102,4 +102,16 @@ test('the channel stays available during background checks and their status rece
   assert.equal(f.element('updates-channel').value, 'beta');
   assert.equal(f.element('updates-channel').disabled, false);
   assert.equal([...f.timers.values()].at(-1).delay, 1500);
+});
+
+test('a delayed channel save cannot take focus back after leaving maintenance', async () => {
+  const saved = deferred(), f = fixture(route => route === '/api/updates/preferences' ? saved.promise : undefined);
+  await f.updates.activate(); f.element('settings-view').hidden = false;
+  const select = f.element('updates-channel'); select.focus(); select.value = 'beta';
+  const request = f.fire('updates-channel', 'change');
+  f.element('settings-page-maintenance').hidden = true;
+  const reading = f.element('draft-duration'); reading.focus();
+  saved.resolve({ ...initial(), channel: 'beta' }); await request;
+  assert.equal(f.document.activeElement, reading);
+  assert.equal(select.value, 'beta');
 });

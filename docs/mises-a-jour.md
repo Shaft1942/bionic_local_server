@@ -8,14 +8,14 @@ La vérification transmet à GitHub une demande publique de liste de versions et
 
 ## Choisir
 
-Ouvrez **Paramètres → Maintenance et aide → Mises à jour**, ou utilisez l'icône de la barre latérale. Une indication discrète apparaît si une version compatible est disponible ; aucune fenêtre ne s'ouvre automatiquement.
+Ouvrez **Paramètres → Maintenance et aide → Mises à jour**. L'icône Paramètres se trouve dans la barre du bas, avec Modèles chargés, Reconnexion au PC et Déconnecter. Une indication discrète sur Paramètres apparaît si une version compatible est disponible ; aucune fenêtre ne s'ouvre automatiquement.
 
 Le **canal de publication** vaut **Stable** par défaut, même après installation d'un ZIP bêta. Le choix **Bêta** ajoute les versions d'essai `X.Y.Z-beta.N` aux stables compatibles plus récentes. Le choix s'applique au PC pour tous les appareils connectés et reste indépendant de la vérification automatique. Changer le canal n'installe rien ; si les vérifications automatiques sont désactivées, utilisez **Vérifier maintenant**.
 
 Après une bêta, revenir à Stable attend une version stable plus récente ; cela ne réinstalle pas une ancienne version. Par exemple, `2.2.0-beta.1` peut recevoir `2.2.0`, mais pas `2.1.0`.
 
 - **Installer et redémarrer** : après votre confirmation explicite, le serveur télécharge et vérifie l'archive, prépare une sauvegarde des sources, arrête cette instance et la redémarre. Reconnectez-vous avec votre code habituel si nécessaire.
-- **Plus tard** : ferme la proposition et masque son indication dans l'onglet pour la session en cours. Rien n'est téléchargé ni installé. Une vérification manuelle peut la réafficher.
+- **Plus tard** : masque l'indication de cette version dans l'onglet pour la session en cours. Les paramètres restent ouverts. Rien n'est téléchargé ni installé. Une vérification manuelle peut réafficher l'indication.
 - **Ignorer cette version** : mémorise ce choix sur le PC pour tous les appareils, dans `data/update-state.json`. Cette version ne sera plus proposée, y compris après redémarrage. Une version ultérieure compatible reste proposable. Le compagnon ne propose pas une version plus ancienne simplement parce que la plus récente a été ignorée.
 - **Vérifier maintenant** : relance une vérification dédoublonnée. Les vérifications automatiques peuvent être désactivées ; la commande manuelle reste disponible.
 

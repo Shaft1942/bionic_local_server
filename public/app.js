@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const composerFiles = $('composer-files'), composerFilesToggle = $('files-menu-toggle');
 const mobileComposer = matchMedia('(max-width:760px)');
 const conversationMove = { busy: false, action: null, revision: 0 };
+let connectionRefreshing = false;
 function closeComposerFiles(restoreFocus = false) {
   if (!composerFiles.open) return;
   composerFiles.open = false;
@@ -26,6 +27,7 @@ document.addEventListener('pointerdown', event => {
   for (const details of document.querySelectorAll('.message.user .message-extras[open]')) if (!details.contains(event.target)) details.open = false;
 });
 const icons = {
+  settings: '<path d="M10 3h4l.5 2 2 1 2-.5 2 3L19 10v4l1.5 1.5-2 3-2-.5-2 1-.5 2h-4l-.5-2-2-1-2 .5-2-3L5 14v-4L3.5 8.5l2-3 2 .5 2-1Z"/><circle cx="12" cy="12" r="3"/>',
   branch: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M6 7v10m12-10v2a5 5 0 0 1-5 5H6"/>',
   more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
   refresh: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 18 17"/>',
@@ -44,13 +46,13 @@ const icons = {
 };
 function icon(name) { const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); el.setAttribute('viewBox', '0 0 24 24'); el.setAttribute('aria-hidden', 'true'); el.innerHTML = icons[name]; return el; }
 for (const [id, name] of [['refresh', 'refresh'], ['search-icon', 'search'], ['back', 'back'], ['send', 'send'], ['info-button', 'info'], ['logout', 'logout'], ['reveal', 'eye']]) $(id).append(icon(name));
-for (const [id, name] of [['models-open-thread','models'], ['models-close','close'], ['models-refresh','refresh']]) $(id).append(icon(name));
+for (const [id, name] of [['settings-open-sidebar','settings'], ['reconnect','refresh'], ['models-close','close'], ['models-refresh','refresh']]) $(id).append(icon(name));
 $('info-close').append(icon('close'));
 $('models-open-sidebar').prepend(icon('models'));
 $('conversation-options-toggle').append(icon('more'));
 $('new-chat').append(icon('plus'), document.createTextNode('Nouveau chat web'));
 const state = { projects: [], sessions: [], projectId: null, chat: null, sending: false, loading: false, uploading: false, status: null, viewSeq: 0, projectSeq: 0, authenticated: false, authEpoch: 0, viewKey: null, draftReasoning: {}, draftFileProfile: null, draftFileAccess: null, draftWebAccess:null, draftWebApproval:null, draftScriptAccess:null, draftImageAccess:null, draftImageWorkflowId:null, sessionsPartial:false, sessionWarnings:[] };
-const companionSettings = createCompanionSettings({api,getState:()=>state,node,onChange:()=>setSending(),onNavigate:target=>{
+const companionSettings = createCompanionSettings({api,getState:()=>state,node,onChange:()=>setSending(),onPageChange:page=>page==='maintenance'?updatesPanel.refresh():undefined,onNavigate:target=>{
   $('app').classList.add('thread-open');
   if(target==='help') { $('info').hidden=false; $('info-button').setAttribute('aria-expanded','true'); $('info-body').scrollTop=0; $('info-close').focus({preventScroll:true}); return; }
   if(target==='tools'||target==='image') { composerFiles.open=true; const control=$(target==='image'?'agent-images':'agent-files'); (control.disabled?composerFilesToggle:control).focus({preventScroll:true}); composerFiles.scrollIntoView({block:'nearest'}); }
@@ -190,6 +192,7 @@ function recoverUpdateDrafts(instanceId) {
   rememberDrafts();
 }
 const updatesPanel = initUpdates({ api, isAuthenticated: () => state.authenticated, toast,
+  openSettings: opener => companionSettings.openPage({currentTarget:opener},'maintenance','updates-title'),
   beforeInstall: async () => {
     if (companionSettings.hasUnsaved()) throw new Error('Enregistre ou annule les saisies des paramètres avant d’installer la mise à jour.');
     if (state.uploading || conversationMove.busy || fileBrowser.isWorking() || fileBrowser.hasUnsavedChanges()) throw new Error('Enregistre le fichier ouvert et attends la fin des opérations avant d’installer.');
@@ -890,7 +893,8 @@ function setSending() {
   $('send').title = state.sending ? 'Ajouter à la file' : 'Envoyer le message';
   $('send').classList.toggle('queue-send', state.sending);
   $('send-label').textContent = state.sending ? 'Ajouter à la file' : '';
-  for (const id of ['project', 'new-chat', 'refresh']) $(id).disabled = state.uploading || conversationMove.busy;
+  for (const id of ['project', 'new-chat']) $(id).disabled = state.uploading || conversationMove.busy;
+  for (const id of ['refresh', 'reconnect']) $(id).disabled = connectionRefreshing || state.uploading || conversationMove.busy;
   $('model').disabled = locked;
   for (const id of ['files-open-sidebar', 'attach-file', 'upload-file','upload-attach-file']) $(id).disabled = locked || !state.projectId || unassignedProject();
   $('agent-files').disabled = locked || unassignedProject();
@@ -1209,7 +1213,9 @@ $('prompt').addEventListener('input', saveDraft);
 $('search').addEventListener('input', ()=>{renderSessions();clearTimeout(searchAnnouncementTimer);searchAnnouncementTimer=setTimeout(()=>announce($('session-count').textContent+' conversation(s) trouvée(s).','search:'+state.projectId+':'+$('search').value+':'+$('session-count').textContent),300);});
 $('new-chat').addEventListener('click', () => newChat());
 $('back').addEventListener('click', () => { $('app').classList.remove('thread-open'); $('project').focus(); });
-$('refresh').addEventListener('click', async () => { if (state.uploading || conversationMove.busy) return; const epoch = state.authEpoch, revision = conversationMove.revision; saveDraft(); $('refresh').disabled = true; try { error(''); await Promise.all([checkStatus(), loadProjects()]); if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return; if (state.chat?.id) await openChat(state.chat.id); if (epoch === state.authEpoch && state.authenticated) toast('Projets et conversations actualisés.'); } catch (e) { if (epoch === state.authEpoch && state.authenticated) { error(e.message); toast(e.message); } } finally { $('refresh').disabled = state.uploading || conversationMove.busy; } });
+async function refreshConnection() { if (connectionRefreshing || state.uploading || conversationMove.busy) return; connectionRefreshing = true; $('reconnect').disabled = true; $('reconnect').setAttribute('aria-busy','true'); const epoch = state.authEpoch, revision = conversationMove.revision; saveDraft(); $('refresh').disabled = true; try { error(''); await Promise.all([checkStatus(), loadProjects()]); if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return; if (state.chat?.id) await openChat(state.chat.id); if (epoch === state.authEpoch && state.authenticated) toast('Projets et conversations actualisés.'); } catch (e) { if (epoch === state.authEpoch && state.authenticated) { error(e.message); toast(e.message); } } finally { connectionRefreshing = false; $('refresh').disabled = $('reconnect').disabled = state.uploading || conversationMove.busy; $('reconnect').setAttribute('aria-busy','false'); } }
+$('refresh').addEventListener('click', refreshConnection);
+$('reconnect').addEventListener('click', refreshConnection);
 $('logout').addEventListener('click', async () => {
   if (state.uploading || conversationMove.busy) return;
   try { sessionStorage.removeItem(updateRecoveryKey); } catch {}
@@ -1261,11 +1267,9 @@ window.addEventListener('online', resumeReply);
 window.addEventListener('pagehide', saveDraft);
 window.addEventListener('storage', event=>{if(textDraftStore.handlesStorageKey(event.key)){try{if(textDraftStore.synchronize()){applyDraftRevocation();rememberDrafts();if(state.authenticated)renderChat();}}catch{draftFailure();}}});
 $('models-open-sidebar').addEventListener('click', openModels);
-$('models-open-thread').addEventListener('click', openModels);
 $('settings-models-loaded').addEventListener('click', openModels);
 $('draft-settings-open').addEventListener('click',event=>companionSettings.openPage(event,'reading','draft-duration'));
 $('diagnostics-shortcut').addEventListener('click',event=>companionSettings.openPage(event,'maintenance','diagnostics-open'));
-$('updates-shortcut').addEventListener('click',event=>companionSettings.openPage(event,'maintenance','updates-open'));
 $('models-refresh').addEventListener('click', refreshLoadedModels);
 $('models-close').addEventListener('click', () => $('models-dialog').close());
 

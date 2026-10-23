@@ -1,5 +1,5 @@
 /* Server-owned settings; unsent preferences and form drafts stay separate. */
-function createCompanionSettings({api,getState,node,onChange,onNavigate}) {
+function createCompanionSettings({api,getState,node,onChange,onNavigate,onPageChange}) {
   const el=id=>document.getElementById(id),pending=new Map(),outputDrafts=new Map();
   const certificateClient=createCompanionCertificates({api,getState,node});
   const certificates={load:()=>certificateClient.load(),reset(){certificateClient.reset();el('certificate-hosts').value='';el('certificate-device-name').value='';}};
@@ -27,7 +27,7 @@ function createCompanionSettings({api,getState,node,onChange,onNavigate}) {
     ['Préparer HTTPS','connection','certificate-prepare','hôtes noms dns certificat serveur preuve vérifier','Installation'],
     ['Certificat de cet appareil','connection','certificate-device-name','client p12 créer télécharger renouveler retirer révoquer','Appareil concerné'],
     ['Actualiser les certificats','connection','certificate-refresh','état appareils autorité','Lecture du serveur'],
-    ['Mises à jour du compagnon','maintenance','updates-open','version installer redémarrer vérifier automatique ignorer canal publication stable bêta beta','Installation'],
+    ['Mises à jour du compagnon','maintenance','updates-title','version installer redémarrer vérifier automatique ignorer canal publication stable bêta beta','Installation'],
     ['Diagnostic de connexion','maintenance','diagnostics-open','rapport télécharger bionic moteur outils config pc','Action ponctuelle'],
     ['Aide et capacités','maintenance','settings-help','fonctionnement limites connexion api port python configuration','Information'],
     ['Organiser une conversation','tools','settings-heading-tools','renommer déplacer supprimer branche classement historique source','Actions du fil'],
@@ -97,7 +97,7 @@ function createCompanionSettings({api,getState,node,onChange,onNavigate}) {
     for(const id of pages)if(el('settings-page-'+id))el('settings-page-'+id).hidden=id!==page;
     const body=document.querySelector?.('.settings-body');if(body)body.scrollTop=0;
     for(const button of document.querySelectorAll('[data-settings-page]'))button.setAttribute('aria-current',button.dataset.settingsPage===page?'page':'false');
-    const loading=page==='connection'?certificates.load():Promise.resolve(),focused=focusId?focusDestination(page,focusId):null;
+    const loading=page==='connection'?certificates.load():Promise.resolve(onPageChange?.(page)),focused=focusId?focusDestination(page,focusId):null;
     return loading.then(()=>{if(focusId&&focused!==el(focusId)&&current(revision)&&navigationRevision===nav&&document.activeElement===focused&&available(el(focusId)))focusDestination(page,focusId);});
   }
   const fold=text=>String(text).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
@@ -162,6 +162,6 @@ function createCompanionSettings({api,getState,node,onChange,onNavigate}) {
   listen('settings-model','change',()=>{const next=el('settings-model').value;if(next===loadedModel)return;el('settings-model').value=loadedModel;return requestTransition(()=>{el('settings-model').value=next;return loadOutput();},'Changer le modèle ciblé par ce plafond ?');});
   listen('output-mode','change',()=>{outputMode();updateDirty();});listen('output-all-sessions','change',updateDirty);listen('output-tokens','input',()=>{syncOutputSlider();updateDirty();});listen('output-tokens-slider','input',()=>{el('output-tokens').value=el('output-tokens-slider').value;syncOutputSlider();updateDirty();});listen('output-cancel','click',cancelOutput);listen('comfy-cancel','click',cancelComfy);listen('settings-reload','click',reload);
   listen('settings-close','click',()=>close());listen('settings-view','keydown',event=>{if(event.key==='Escape'){event.preventDefault();if(transition)decideTransition('continue');else close();}});for(const choice of ['continue','discard','keep'])listen('settings-unsaved-'+choice,'click',()=>decideTransition(choice));for(const button of document.querySelectorAll('[data-settings-page]'))button.addEventListener('click',()=>showPage(button.dataset.settingsPage,'settings-heading-'+button.dataset.settingsPage));listen('settings-back','click',()=>{++navigationRevision;if(activePage==='connection')certificates.reset();el('settings-view').dataset.settingsIndex='true';el('settings-search').focus({preventScroll:true});});listen('settings-search','input',search);
-  for(const [id,target]of [['settings-edit-model','model'],['settings-edit-tools','tools'],['settings-edit-image','image'],['settings-help','help']])listen(id,'click',()=>requestNavigate(target));for(const id of ['settings-open','settings-open-sidebar'])listen(id,'click',open);globalThis.addEventListener?.('beforeunload',event=>{if(getState().authenticated&&hasUnsaved()){event.preventDefault();event.returnValue='';}});
+  for(const [id,target]of [['settings-edit-model','model'],['settings-edit-tools','tools'],['settings-edit-image','image'],['settings-help','help']])listen(id,'click',()=>requestNavigate(target));listen('settings-open-sidebar','click',open);globalThis.addEventListener?.('beforeunload',event=>{if(getState().authenticated&&hasUnsaved()){event.preventDefault();event.returnValue='';}});
   return {refresh,close,openPage,requestNavigate,hasUnsaved,revision:()=>viewRevision,isCurrent:revision=>current(revision),async openOutput(event,model){if(await openPage({currentTarget:event?.currentTarget||document.activeElement,outputModel:model},'models',model?'output-mode':'settings-model'))el('output-settings-form').scrollIntoView({block:'start'});},async openSecurity(){await openPage({currentTarget:el('settings-open-sidebar')},'connection','certificate-title');},imagePermission,enabled:()=>comfy?.enabled===true,decorate(data){const preference=pending.get(key(data.model));return {...data,...(preference?{outputPreferences:preference}:{}),...(data.imageAccess?{imageWorkflowId:el('image-workflow').value||comfy?.workflowId}:{})};},accepted(data,viewKey){const k=key(data.model,viewKey),value=pending.get(k);if(value&&same(value,data.outputPreferences))pending.delete(k);},reset(){pending.clear();outputDrafts.clear();outputOperations.clear();++comfyRevision;comfyDraft=null;outputBaseline=null;comfyBaseline=null;comfy=null;outputSubmitting=null;comfySubmitting=null;closeNow(false);}};
 }

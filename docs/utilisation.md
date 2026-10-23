@@ -58,6 +58,8 @@ L'icône de deux feuilles permet de copier le texte seul d'un prompt (y compris 
 
 ## Retrouver les paramètres
 
+La barre du bas réunit les icônes **Paramètres**, **Modèles chargés**, **Reconnexion au PC** et **Déconnecter**, à côté de l'état de connexion. Sur téléphone, ces accès restent disponibles depuis la conversation. Les mises à jour sont intégrées à **Paramètres → Maintenance et aide** ; le choix du canal Stable ou Bêta ne déclenche aucune installation.
+
 **Paramètres** regroupe six rubriques : Conversations et affichage, Modèles et réponses, Outils et autorisations, Images et ComfyUI, Connexion et appareils, Maintenance et aide. Sur téléphone, **Rubriques** revient à la liste. **Fermer** et Échap ramènent au déclencheur. La recherche locale comprend aussi des synonymes comme « tokens », « longueur » ou « certificat » ; elle recherche les intitulés et les portées, sans indexer les valeurs personnelles.
 
 Les choix du prochain envoi restent dans le composeur : modèle, effort, outils et profil d'image. Les paramètres en montrent le résumé et permettent de rejoindre ces contrôles canoniques. **Voir les modèles chargés** agit sur les instances en mémoire du PC. Les brouillons sont dans **Conversations et affichage**, le diagnostic et les mises à jour dans **Maintenance et aide**. Les actions de classement du chat et les opérations sur les fichiers restent dans leurs espaces habituels.
