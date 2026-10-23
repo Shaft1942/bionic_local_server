@@ -48,7 +48,7 @@ test('v1 settings migrate without losing endpoint; two model LoRA profiles persi
   await fs.writeFile(file,JSON.stringify({version:1,enabled:true,url:'http://127.0.0.1:8188',workflowId:'krea2_turbo'}));
   const store=await createComfySettings({file});await store.update({loraProfiles:{krea2_turbo:slots}});await store.update({loraProfiles:{hassaku_illustrious:[{name:'sdxl.safetensors',strength:1}]}});
   const restored=await createComfySettings({file});assert.deepEqual(restored.get().loraProfiles.krea2_turbo,slots);assert.equal(restored.get().loraProfiles.hassaku_illustrious[0].name,'sdxl.safetensors');
-  const copy=restored.get();copy.loraProfiles.krea2_turbo[0].name='mutated';assert.equal(restored.get().loraProfiles.krea2_turbo[0].name,slots[0].name);assert.equal(JSON.parse(await fs.readFile(file)).version,3);
+  const copy=restored.get();copy.loraProfiles.krea2_turbo[0].name='mutated';assert.equal(restored.get().loraProfiles.krea2_turbo[0].name,slots[0].name);assert.equal(JSON.parse(await fs.readFile(file)).version,4);
 });
 
 test('catalog uses ComfyUI loader choices, including extra folders; image job keeps selected model, two LoRA and /free',async t=>{

@@ -77,6 +77,7 @@
             <label class="agent-files-option"><input id="agent-web-approval" type="checkbox"><span>Valider chaque recherche et URL avant envoi</span></label>
             <label class="agent-files-option"><input id="agent-images" type="checkbox" aria-describedby="image-settings-help"><span>Générer des images avec ComfyUI</span></label>
             <label class="image-model-choice" for="image-workflow"><span>Modèle d’image</span><select id="image-workflow" aria-describedby="image-settings-help"></select></label>
+            <label class="image-model-choice" for="image-count"><span>Images par demande</span><select id="image-count" aria-describedby="image-settings-help"><option value="1">1 image</option><option value="3">Série de 3 images</option></select></label>
             <p id="image-settings-help" class="tools-help">Active et configure ComfyUI dans les paramètres.</p>
             <label class="agent-files-option"><input id="agent-scripts" type="checkbox"><span>Scripts sur le PC, avec validation</span></label>
             <p class="tools-help">Chaque script attend ton accord dans le chat avant de s’exécuter.</p>
@@ -176,9 +177,11 @@
           <h3>2. Vérifier le modèle d’image</h3>
           <p>Choisis une recette puis lance la vérification ci-dessous. Les fichiers attendus et leur dossier seront indiqués. Les poids ne sont pas inclus avec le compagnon.</p>
           <label for="comfy-workflow">Modèle d’image</label><select id="comfy-workflow"></select>
+          <label for="comfy-model-policy">Modèle texte pendant les images</label><select id="comfy-model-policy" aria-describedby="comfy-model-policy-help"><option value="keep">Conserver le modèle texte</option><option value="unload">Décharger avant les images</option></select>
+          <p id="comfy-model-policy-help">Conserver permet de continuer une autre conversation, avec un risque de ralentir les images. Décharger libère la mémoire après la préparation des prompts ; les réponses texte attendent la fin du lot. Le modèle sera rechargé à la prochaine demande.</p>
           <h3>3. Choisir le nettoyage mémoire</h3>
-          <label class="settings-check"><input id="comfy-memory-cleanup" type="checkbox" aria-describedby="comfy-memory-help"><span>Décharger les modèles ComfyUI après chaque rendu</span></label>
-          <p id="comfy-memory-help">Facultatif. Utile pour rendre de la mémoire à d’autres applications ou en cas de ralentissement entre rendus, notamment avec Krea 2. Les poids devront être rechargés au rendu suivant, qui peut donc être plus lent. Aucun gain de vitesse ni quantité de mémoire libérée n’est garanti.</p>
+          <label class="settings-check"><input id="comfy-memory-cleanup" type="checkbox" aria-describedby="comfy-memory-help"><span>Libérer les modèles ComfyUI après chaque image</span></label>
+          <p id="comfy-memory-help">Facultatif. Les modèles sont libérés après chaque image, y compris dans une série. Utile pour rendre de la mémoire à d’autres applications ou limiter les ralentissements entre rendus, notamment avec Krea 2. Les poids devront être rechargés à l’image suivante, qui peut donc être plus lente. Aucun gain de vitesse ni quantité de mémoire libérée n’est garanti.</p>
           <p>Le nettoyage attend la fin du workflow et ne décharge pas Bionic. Désactivé : ComfyUI conserve sa gestion mémoire habituelle, aucun module supplémentaire n’est requis. Les réglages existants conservent leur ancien choix.</p>
           <details class="comfy-help"><summary>Installer le module mémoire facultatif</summary>
             <ol><li><a href="/api/comfy/memory-module" download="free_memory_after_workflow.py">Télécharger le module mémoire fourni</a> sur le PC qui héberge ComfyUI.</li><li>Copie le fichier dans le dossier <code>custom_nodes</code> de l’instance ComfyUI utilisée. Aucun paquet Python supplémentaire n’est nécessaire.</li><li>Attends la fin des travaux, puis redémarre ComfyUI et relance la vérification. Le compagnon ne l’installe pas et ne redémarre pas ComfyUI.</li></ol>
@@ -201,6 +204,11 @@
             <p id="comfy-memory-status"></p><ul id="comfy-node-errors"></ul>
             <p>Pour un fichier manquant, installe exactement le modèle indiqué dans le dossier indiqué de ComfyUI (ou un dossier supplémentaire configuré). Actualise les modèles dans ComfyUI, puis vérifie à nouveau. Un fichier renommé ou placé sous un sous-dossier doit correspondre au nom attendu par cette recette.</p>
             <a href="https://docs.comfy.org/basic-concepts/models" target="_blank" rel="noopener noreferrer">Guide officiel pour ajouter des modèles</a>
+          </div>
+          <div id="comfy-queue-paused" hidden>
+            <h3>File commune suspendue</h3>
+            <p id="comfy-queue-resume-help">Vérifie les sorties de ComfyUI. Les soumissions incertaines ne seront pas relancées.</p>
+            <button id="comfy-queue-resume" class="file-action" type="button" aria-describedby="comfy-queue-resume-help">Reprendre la file après vérification</button>
           </div>
           <p id="comfy-result" role="status"></p><p id="comfy-error" class="error" role="alert" hidden></p>
         </form>

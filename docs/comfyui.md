@@ -80,7 +80,18 @@ Le contrôle **Tester la connexion et les modèles** consulte seulement
 `generate_comfy_image` et son alias historique `generate_krea2_image` utilisent
 le modèle choisi pour le message, avec le réglage des paramètres comme valeur par défaut.
 
-Une image maximum par message et quatre générations en attente dans le compagnon.
+Dans **Outils**, choisir **1 image** ou **Série de 3 images** avant d'envoyer le
+message. La série utilise `generate_comfy_image_series` : le modèle prépare trois
+descriptions et trois seeds distinctes dans un seul appel. Le compagnon valide
+l'ensemble avant d'admettre le lot. Chaque image possède sa carte et revient
+dans la conversation d'origine avec son indice et sa position dans la file.
+
+La file est commune aux conversations de cette instance : douze images actives
+au maximum, lots FIFO, une seule soumission ComfyUI en cours à la fois. Les trois
+images d'une série restent groupées. Le nettoyage ComfyUI facultatif reste appliqué
+après chaque image ; un échec du lot peut aussi demander le nettoyage. Le conserver
+actif peut éviter des ralentissements de Krea 2 entre deux prompts. Garder les poids
+en mémoire jusqu'à la fin du lot n'a pas amélioré les performances sur le GPU testé.
 Les demandes sont enregistrées sous `data/comfy-generations` avant soumission,
 puis suivies par `prompt_id`. Les images sont copiées dans ce dossier privé et
 servies par une route authentifiée du compagnon, jamais par un localhost envoyé au téléphone.
@@ -89,10 +100,37 @@ Chaque job garde son URL, son workflow et son nœud de sortie. Les anciennes
 images restent lisibles après désactivation. Attendre la fin des générations
 pour changer de connexion ou de workflow.
 
+Dans **Paramètres → Images et ComfyUI**, choisir la gestion du modèle texte :
+
+- **Conserver le modèle texte** (valeur initiale) : les autres conversations peuvent
+  répondre pendant les images. La concurrence GPU/mémoire peut ralentir le rendu.
+- **Décharger avant les images** : le lot attend les inférences en cours, décharge
+  les instances LLM chargées dans Bionic avec confirmation, puis bloque les nouvelles
+  inférences de ce compagnon jusqu'à la fin du lot. Le modèle sera rechargé à la
+  prochaine réponse avec les réglages Bionic existants. Ce rechargement a un coût ;
+  la stratégie ne garantit pas un délai complet inférieur.
+
+La politique est figée à l'envoi du message. Modifier les réglages exige une file
+vide. Cette coordination ne couvre pas une autre instance ou une autre application.
+
 Un délai expiré ou un redémarrage pendant la soumission donne un état inconnu,
-sans répétition automatique du POST. Vérifier ComfyUI avant de soumettre un nouveau
-message. Un redémarrage reprend le suivi des jobs déjà connus. Arrêter la réponse
-du modèle n’interrompt pas globalement les travaux ComfyUI.
+sans répétition automatique du POST. La file suspend les nouvelles images. Après
+vérification des sorties de ComfyUI, **Reprendre la file après vérification** exige
+une file moteur vide, clôt les soumissions incertaines sans les rejouer et reprend
+uniquement les lots encore admis en mémoire. Les jobs déjà connus sont suivis après
+redémarrage ; les images encore locales sont marquées interrompues, sans rejeu.
+Le verrou des anciens jobs distants est rétabli. Arrêter la réponse du modèle
+n'interrompt pas globalement les travaux ComfyUI ni un lot déjà enregistré.
+
+Pour les clients API, `POST /api/chat` accepte `imageCount: 1 | 3` avec
+`imageAccess: true`. En mode trois, seul l'outil de série est proposé ; ses arguments
+sont `{images: [{prompt, seed, format?}, ...]}` (exactement trois éléments).
+L'action renvoie `imageGenerations`, et chaque job ajoute `seriesId`, `seriesIndex`,
+`seriesTotal`, `queuePosition`, `queuedLocally` et `modelPolicy`. Le suivi et les
+images conservent leurs routes authentifiées et leurs propriétaires projet/chat/message.
+`POST /api/comfy/settings` accepte `modelPolicy: "keep" | "unload"` ; les anciens
+réglages migrent vers `keep`. `POST /api/comfy/queue/resume` reçoit `{}` et ne resoumet
+jamais un job incertain. Les limites et erreurs sont distinctes d'une réussite image.
 
 Cette fonction est indépendante des outils fichiers, Internet et scripts ; elle
 n’affaiblit pas leurs validations. Les conversations natives Bionic restent en

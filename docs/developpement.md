@@ -38,6 +38,7 @@ Copiez `config.example.json` en `config.local.json`, choisissez un port de test 
 | `lib/context-receipt.mjs` | Reçu borné du contexte sélectionné et des extraits effectivement lus |
 | `lib/workspace-features.mjs` | Activité des réponses web et copies figées de livrables, isolées par projet |
 | `lib/inference-gate.mjs` | Admission FIFO optionnelle de chaque inférence ; les accords humains ne gardent pas de créneau |
+| `lib/gpu-scheduler.mjs` | Coordination des inférences et lots image entre conversations ; conservation ou déchargement des modèles texte |
 | `lib/request-body.mjs` | Réception bornée en taille et durée, distincte du streaming après acceptation |
 | `lib/diagnostics.mjs` | Cinq contrôles à la demande et rapport construit par liste blanche |
 | `public/message-drafts.js` | Conservation volontaire des textes non envoyés, durée et retrait local |

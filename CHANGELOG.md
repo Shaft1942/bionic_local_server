@@ -2,6 +2,8 @@
 
 ## Non publié
 
+- Mode Série de 3 images : préparation des trois prompts en un appel, cartes séparées et file FIFO commune aux conversations (douze images maximum), sans calculs image simultanés. Le nettoyage ComfyUI facultatif reste appliqué après chaque image.
+- Choix mémoire : conserver les modèles texte pour continuer à discuter, ou les décharger avant le lot et différer les nouvelles inférences jusqu'à sa fin. Reprise explicite après une soumission incertaine, sans rejeu automatique ; suivi des jobs distants et protection GPU rétablis après redémarrage.
 - Images ComfyUI : confirmation de lancement produite par le compagnon sans seconde inférence de conclusion. Les lots mêlant image et autres outils attendent la fin du rendu avant leur synthèse texte ; les soumissions incertaines ne sont pas relancées.
 
 ## 2.3.0 — 2026-10-23

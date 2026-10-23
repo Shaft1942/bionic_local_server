@@ -1,11 +1,13 @@
 /* Generated images are server-owned assets, never arbitrary model-supplied URLs. */
 function createImageGenerationView({api,node,getState,redraw}) {
   let polling=false;
-  const labels={submitting:'Envoi à ComfyUI…',queued:'Image en attente dans ComfyUI…',running:'ComfyUI génère ton image sur le PC…',succeeded:'Image générée',failed:'La génération a échoué',unknown:'Résultat de génération à vérifier'};
+  const labels={submitting:'Envoi à ComfyUI…',queued:'Image en attente dans la file commune…',running:'ComfyUI génère ton image sur le PC…',succeeded:'Image générée',failed:'La génération a échoué',unknown:'Résultat de génération à vérifier',cancelled:'Génération annulée',canceled:'Génération annulée'};
   function url(job,chat,message,download=false){return '/api/comfy/image?'+new URLSearchParams({jobId:job.id,projectId:chat.projectId,chatId:chat.id,messageId:message.id,...(download?{download:'1'}:{})});}
   function card(job,chat,message){
     const figure=node('figure','generated-image');figure.dataset.imageJobId=job.id;
-    const status=node('p','generated-image-status',labels[job.status]||'Suivi de génération');status.setAttribute('role','status');figure.append(status);
+    const series=job.seriesTotal===3&&Number.isInteger(job.seriesIndex)&&job.seriesIndex>=1&&job.seriesIndex<=3?'Série · image '+job.seriesIndex+'/3 · ':'';
+    const position=job.status==='queued'&&Number.isSafeInteger(job.queuePosition)&&job.queuePosition>0?' Position '+job.queuePosition+'.':'';
+    const status=node('p','generated-image-status',series+(labels[job.status]||'Suivi de génération')+position);status.setAttribute('role','status');figure.append(status);
     if(job.status==='succeeded'&&job.image){
       const image=node('img','generated-image-result');image.src=url(job,chat,message);image.alt=job.prompt.slice(0,200);image.width=job.width;image.height=job.height;image.loading='lazy';
       image.addEventListener('error',()=>{status.textContent='L’image est indisponible. Reconnecte-toi puis actualise la conversation.';});

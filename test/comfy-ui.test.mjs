@@ -27,3 +27,15 @@ test('offline or terminal states do not trigger another request or fabricate an 
   const card=f.view.card(f.state.chat.messages[0].imageGenerations[0],f.state.chat,{id:'reply'});assert.equal(card.children.some(n=>n.tag==='img'),false);
   f.state.authenticated=false;f.state.chat.messages[0].imageGenerations[0].status='queued';await f.view.poll();assert.equal(f.requests.length,0);
 });
+
+test('series cards identify their image and queue position without exposing another conversation',()=>{
+  const f=fixture(),message={id:'series-message'};
+  const queued=f.view.card({...job,seriesId:'series-a',seriesIndex:2,seriesTotal:3,queuePosition:4},f.state.chat,message);
+  assert.match(queued.children[0].text,/Série · image 2\/3/);assert.match(queued.children[0].text,/file commune.*Position 4/);
+  const running=f.view.card({...job,status:'running',seriesIndex:2,seriesTotal:3,queuePosition:4},f.state.chat,message);
+  assert.match(running.children[0].text,/génère/);assert.doesNotMatch(running.children[0].text,/Position/);
+  const terminal=f.view.card({...job,status:'succeeded',seriesIndex:3,seriesTotal:3,queuePosition:1,image:{}},f.state.chat,message);
+  assert.match(terminal.children[0].text,/image 3\/3 · Image générée/);assert.doesNotMatch(terminal.children[0].text,/Position/);
+  const invalid=f.view.card({...job,seriesIndex:99,seriesTotal:3,queuePosition:-1},f.state.chat,message);
+  assert.doesNotMatch(invalid.children[0].text,/Série|Position/);
+});
