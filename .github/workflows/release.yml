@@ -47,9 +47,52 @@ jobs:
           const changes = section.slice(section.indexOf('\n') + 1).trim().replace(/\]\((docs\/[^)]+)\)/g, (_, target) => '](https://github.com/Shaft1942/bionic_local_server/blob/v' + pkg.version + '/' + target + ')');
           const archive = 'bionic-mobile-v' + pkg.version + '.zip';
           const beta = pkg.version.includes('-beta.');
-          const notice = beta ? '**Version beta : version d’essai du canal beta, à choisir volontairement.**\n\n' : '';
-          const update = beta ? 'Choisissez Bêta dans Paramètres → Maintenance → Mises à jour si votre installation propose ce canal. Sinon, suivez la procédure manuelle du README avec sauvegarde des données. ' : 'Depuis 1.9.0, utilisez les mises à jour proposées dans le compagnon. Les installations plus anciennes suivent la procédure manuelle du README, avec sauvegarde des données. ';
-          const notes = notice + '## Installation Windows\n\nTéléchargez **' + archive + '** ci-dessous, extrayez entièrement le ZIP puis double-cliquez sur **Installer.cmd**. L’assistant détecte Node.js ou propose son téléchargement portable avec votre accord. Bionic doit être installé séparément. L’interface et les guides d’accueil sont disponibles en français et en anglais.\n\n## Nouveautés\n\n' + changes + '\n\n## Mise à jour\n\n' + update + 'Node.js 24 minimum ; le runtime portable n’est pas inclus dans le ZIP.\n\nL’archive ne contient ni conversations, ni clés, ni configuration personnelle. SHA256SUMS.txt et update-manifest.json sont joints pour le contrôle de l’archive et de sa compatibilité.\n';
+          const source = 'https://github.com/Shaft1942/bionic_local_server/blob/v' + pkg.version + '/';
+          const notice = beta ? '**Version bêta / Beta release : version d’essai à choisir volontairement / opt in to test this version.**\n\n' : '';
+          const update = beta ? 'Choisissez Bêta dans Paramètres → Maintenance → Mises à jour si votre installation propose ce canal. Sinon, suivez la procédure manuelle du README avec sauvegarde des données.' : 'Dans Paramètres → Maintenance → Mises à jour, recherchez une version compatible puis confirmez son installation. Pour une installation sans vérificateur ou un changement de dossier, suivez la procédure manuelle du README avec sauvegarde des données.';
+          const notes = notice + `**Bionic Mobile ${pkg.version}** · [README français](${source}README.md) · [English README](${source}README.en.md)
+
+          ## Installation Windows
+
+          1. Téléchargez **${archive}** ci-dessous et extrayez entièrement le ZIP.
+          2. Double-cliquez sur **Installer.cmd**. L’assistant Windows reste en **français** ; il détecte Node.js ou propose son téléchargement portable avec votre accord.
+          3. Configurez l’API Bionic locale, démarrez le compagnon puis ouvrez **ACCES-PRIVE.txt** dans le dossier installé pour retrouver votre adresse et votre code personnel.
+
+          **Node.js 24 minimum.** Bionic, ComfyUI et les modèles s’installent séparément ; le runtime portable Node.js n’est pas inclus dans le ZIP. Le lancement des moteurs est facultatif et se configure explicitement sur le PC avec **Configurer-serveurs.cmd**. Consultez [Installation](${source}docs/installation.md) et [Serveurs sur le PC](${source}docs/local-services.md).
+
+          ## Nouveautés
+
+          ${changes}
+
+          ## Mise à jour
+
+          ${update}
+
+          Sauvegardez vos données et les dossiers de projets avant une mise à jour manuelle. Les checkouts Git se mettent à jour avec Git. Voir [Sauvegarde et mise à jour](${source}docs/sauvegarde-mise-a-jour.md).
+
+          ## Langues et limites
+
+          L’interface et l’aide intégrée sont disponibles en **français et anglais**, avec un choix par navigateur dans **Paramètres → Langue et brouillons**. Ce choix ne traduit ni les conversations, ni les réponses du modèle, ni les prompts ou fichiers. Les outils Windows et certains diagnostics conservent leur langue d’origine.
+
+          Le compagnon vise un réseau local de confiance. HTTP ne chiffre pas les échanges ; préparez HTTPS sans contourner les alertes de certificat. N’exposez pas directement le port sur Internet. Le parcours principal cible Windows ; le parcours complet macOS/Linux n’est pas qualifié. Les appels d’outils, les images et les performances dépendent des moteurs, modèles et matériels installés.
+
+          L’archive ne contient ni conversations, ni clés, ni configuration personnelle. **SHA256SUMS.txt** et **update-manifest.json** sont joints pour vérifier l’archive et sa compatibilité.
+
+          ## English — quick start
+
+          1. Download **${archive}** below and extract the entire ZIP.
+          2. Run **Installer.cmd** on Windows. The setup assistant uses **French labels**. It can use Node.js already installed or offer an official portable download with your consent.
+          3. Configure Bionic’s local API and start the companion. Open **ACCES-PRIVE.txt** in the installation folder for your address and personal access code.
+          4. In **Settings → Language and drafts → Interface language**, choose **English**. Read the [English README](${source}README.en.md) or the [English user guide](${source}docs/en/guide.md) for setup, permissions and everyday use.
+
+          ### Release details
+
+          The full changes for this version are preserved in French above and in the [versioned changelog](${source}CHANGELOG.md). The [English README](${source}README.en.md) describes the features and limitations available in this version.
+
+          **Requirements and limits:** Node.js **24+** and Windows for the setup assistant; Bionic, optional ComfyUI and all models are installed separately. The interface language does not translate chat content, model responses, image prompts or files. Use a trusted local network, prepare HTTPS and do not expose the companion port directly to the Internet. Full macOS/Linux workflows have not been qualified. Approved scripts run with the PC account’s permissions and are not sandboxed.
+
+          Back up private data and project folders before manual updates. In **Settings → Maintenance → Updates**, install only a compatible version after confirmation; Git checkouts use Git. The attached **SHA256SUMS.txt** and **update-manifest.json** provide archive checks and compatibility metadata.
+          `;
           fs.writeFileSync('dist/RELEASE_NOTES.md', notes);
           NODE
       - name: Publier le ZIP et son empreinte

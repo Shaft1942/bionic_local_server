@@ -1,13 +1,19 @@
 ﻿param([string]$PreviewDirectory)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Installation-commun.ps1')
+# Preview is restricted to this wizard and never probes an installed server.
+if ($PreviewDirectory) { function Test-BionicPortOpen { param([int]$Port) return $false } }
+$package = Read-BionicJson (Join-Path $PSScriptRoot 'package.json')
+$version = [string](Get-BionicField $package 'version')
+if ($version -notmatch '^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$') { $version = '' }
+$product = ('Bionic Mobile ' + $version).Trim()
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
 
 $script:state = @{ Step=0; Busy=$false; Node=''; Result=$null; Worker=$null; Handle=$null; Token=$null; Queue=$null }
 $form = New-Object Windows.Forms.Form
-$form.Text = 'Installer Bionic Mobile'; $form.Size = New-Object Drawing.Size(780,680)
+$form.Text = 'Installer ' + $product; $form.Size = New-Object Drawing.Size(780,680)
 $form.MinimumSize = New-Object Drawing.Size(740,640); $form.StartPosition='CenterScreen'; $form.AutoScaleMode='Dpi'
 $form.Font = New-Object Drawing.Font('Segoe UI',10); $form.BackColor=[Drawing.Color]::White
 $layout = New-Object Windows.Forms.TableLayoutPanel
@@ -53,17 +59,36 @@ function Add-Choice($Page,[string]$Text,[bool]$Checked) {
     $choice=New-Object Windows.Forms.CheckBox; $choice.Text=$Text; $choice.Checked=$Checked; $choice.Size=New-Object Drawing.Size(660,40); $choice.Margin=New-Object Windows.Forms.Padding(0,4,0,4)
     $Page.Controls.Add($choice); return $choice
 }
+function Add-GuideButtons($Page,[bool]$Installed) {
+    $row=New-Object Windows.Forms.FlowLayoutPanel; $row.Size=New-Object Drawing.Size(660,44); $row.WrapContents=$false
+    foreach ($entry in @(@{Action='guide-fr';Label='Guide français'},@{Action='guide-en';Label='English guide'})) {
+        $button=New-ActionButton $entry.Label; $button.Width=190
+        $button.Tag=@{Action=$entry.Action;Installed=$Installed}
+        $button.Add_Click({
+            try {
+                $guideRoot=if($this.Tag.Installed){$script:state.Result.Root}else{$PSScriptRoot}
+                $guide=Get-BionicInstallActionPath -Root $guideRoot -Action $this.Tag.Action
+                Start-Process -FilePath 'notepad.exe' -ArgumentList ('"'+$guide+'"')
+            } catch { $feedback.Text='Guide indisponible : '+$_.Exception.Message }
+        })
+        $row.Controls.Add($button)
+    }
+    $Page.Controls.Add($row)
+}
 $pages=@((New-Page),(New-Page),(New-Page),(New-Page),(New-Page))
 $existing=Test-Path -LiteralPath (Join-Path $PSScriptRoot 'data/config.json')
 $defaultTarget=if($existing){$PSScriptRoot}else{Join-Path $env:LOCALAPPDATA 'BionicMobile'}
-$null=Add-Info $pages[0] 'Installe le compagnon sur ce PC. Bionic et ses modèles restent separes. Aucun compte, Docker ou droit administrateur requis pour cette installation.' 65
+$null=Add-Info $pages[0] ($product + ' installe le compagnon sur ce PC. Bionic, ComfyUI et leurs modèles restent séparés. Aucun Docker ni droit administrateur requis hors autorisation réseau facultative.') 65
+$null=Add-Info $pages[0] 'Interface web en français ou anglais, choisie dans le navigateur après installation. English: use the guide below, then choose English in web Settings. Cet assistant Windows reste en français.' 65
+Add-GuideButtons $pages[0] $false
 $destination=Add-Field $pages[0] 'Dossier du compagnon' $defaultTarget $true
 $useHere=New-ActionButton 'Ce dossier'; $pages[0].Controls.Add($useHere); $useHere.Add_Click({$destination.Text=$PSScriptRoot})
 $null=Add-Info $pages[0] 'Une nouvelle installation utilise un dossier vide. Pour conserver une installation et ses conversations, lance son Installer.cmd puis choisis Ce dossier. Les mises a jour disposent de leur propre parcours.' 80
 
 $null=Add-Info $pages[1] 'Le serveur utilise Node.js 24 ou plus récent. Le compagnon ne necessite aucune dependance npm. Python reste facultatif pour les documents et scripts.' 65
 $nodeStatus=Add-Info $pages[1] '' 50
-try { $script:state.Node=Get-BionicNode -Root $PSScriptRoot; $nodeStatus.Text='Node.js compatible détecté : ' + $script:state.Node } catch { $nodeStatus.Text='Node.js compatible non détecté. Choisis node.exe ou autorise le téléchargement portable ci-dessous.' }
+if ($PreviewDirectory) { $nodeStatus.Text='Aperçu : aucun exécutable Node.js ni serveur recherché.' }
+else { try { $script:state.Node=Get-BionicNode -Root $PSScriptRoot; $nodeStatus.Text='Node.js compatible détecté : ' + $script:state.Node } catch { $nodeStatus.Text='Node.js compatible non détecté. Choisis node.exe ou autorise le téléchargement portable ci-dessous.' } }
 $chooseNode=New-ActionButton 'Choisir node.exe'; $chooseNode.Width=180; $pages[1].Controls.Add($chooseNode)
 $chooseNode.Add_Click({$dialog=New-Object Windows.Forms.OpenFileDialog; $dialog.Filter='Node.js (node.exe)|node.exe'; if($dialog.ShowDialog($form) -eq 'OK'){$script:state.Node=$dialog.FileName; $nodeStatus.Text='Executable choisi : '+$dialog.FileName; $download.Checked=$false}; $dialog.Dispose()})
 $download=Add-Choice $pages[1] 'Télécharger Node.js 24 portable depuis nodejs.org (Internet requis)' $false
@@ -105,6 +130,17 @@ $openAccess=New-ActionButton 'Code et adresses'; $openAccess.Width=175; $pages[4
 $openAccess.Add_Click({ $file=Join-Path $script:state.Result.Root 'ACCES-PRIVE.txt'; if(Test-Path -LiteralPath $file){Start-Process -FilePath 'notepad.exe' -ArgumentList ('"'+$file+'"')}else{$feedback.Text='Lance Demarrer.cmd pour générér ACCES-PRIVE.txt.'} })
 $openFolder=New-ActionButton 'Ouvrir le dossier'; $openFolder.Width=175; $pages[4].Controls.Add($openFolder)
 $openFolder.Add_Click({Start-Process -FilePath 'explorer.exe' -ArgumentList ('"'+$script:state.Result.Root+'"')})
+$null=Add-Info $pages[4] 'Dans Paramètres : Langue et brouillons choisit Français/English pour ce navigateur ; Images et ComfyUI règle les images et la mémoire. La langue ne traduit ni messages, ni prompts, ni fichiers.' 75
+$configureServers=New-ActionButton 'Configurer les serveurs'; $configureServers.Width=230; $pages[4].Controls.Add($configureServers)
+$configureServers.Add_Click({
+    try {
+        $setup=Get-BionicInstallActionPath -Root $script:state.Result.Root -Action 'servers'
+        Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"'+$setup+'"')) -WorkingDirectory $script:state.Result.Root -WindowStyle Normal
+        $feedback.Text='La configuration se poursuit dans une fenêtre du PC. Puis ouvre Paramètres, Serveurs sur le PC, Relire la configuration.'
+    } catch { $feedback.Text='Configuration des serveurs non ouverte : '+$_.Exception.Message }
+})
+$null=Add-Info $pages[4] 'Facultatif : ce bouton prépare les chemins de Bionic et ComfyUI sur le PC, sans télécharger ni démarrer de moteur. Le contrôle se fait ensuite dans Serveurs sur le PC. ComfyUI et ses modèles doivent être installés séparément.' 75
+Add-GuideButtons $pages[4] $true
 $manageCertificates=New-ActionButton 'Acces securises'; $manageCertificates.Width=190
 $pages[0].Controls.Add($manageCertificates)
 $manageCertificates.Add_Click({
@@ -122,12 +158,16 @@ $null=Add-Info $pages[0] 'Acces securises ouvre les parametres dans le navigateu
 
 function Show-Step([int]$Index) {
     $script:state.Step=$Index; $hostPanel.Controls.Clear(); $hostPanel.Controls.Add($pages[$Index])
-    $titles=@('Choisir le dossier','Préparer Node.js','Connecter Bionic','Verifier et installér','Installation terminée')
-    $title.Text=$titles[$Index]; $stepLabel.Text=if($Index -eq 4){'BIONIC MOBILE  /  PRÊT'}else{'BIONIC MOBILE  /  ÉTAPE '+($Index+1)+' SUR 4'}
+    $titles=@('Choisir le dossier','Préparer Node.js','Connecter Bionic','Vérifier et installer','Installation terminée')
+    $title.Text=$titles[$Index]; $stepLabel.Text=if($Index -eq 4){$product + '  /  PRÊT'}else{$product + '  /  ÉTAPE '+($Index+1)+' SUR 4'}
     $previous.Visible=$Index -gt 0 -and $Index -lt 4; $cancel.Visible=$Index -lt 4
     $next.Text=if($Index -eq 3){'Installer'}elseif($Index -eq 4){'Fermer'}else{'Suivant'}
     $feedback.Text=''; $pages[$Index].SelectNextControl($null,$true,$true,$true,$false) | Out-Null
     if($Index -eq 3){$review.Text="Dossier : $($destination.Text)`r`nNode.js : $(if($download.Checked){'copie portable à télécharger'}else{'exécutable déjà disponible'})`r`nBionic : $($api.Text)`r`nCompagnon : port $($port.Text) (niveau de securite existant conserve)`r`nVerification HTTPS : port $($proofPort.Text)`r`n`r`nLes conversations d un autre dossier ne sont pas transférées."}
+}
+
+function Set-CompletionText {
+    $complete.Text="$product installé dans :`r`n$($script:state.Result.Root)`r`n`r`n$($script:state.Result.Message)`r`n`r`nSur le téléphone : même Wi-Fi, puis adresse et code dans ACCES-PRIVE.txt."
 }
 
 $timer=New-Object Windows.Forms.Timer; $timer.Interval=150
@@ -140,7 +180,7 @@ $timer.Add_Tick({
         if($script:state.Worker.HadErrors){throw $script:state.Worker.Streams.Error[0]}
         $script:state.Result=$items[$items.Count-1]
         Show-Step 4
-        $complete.Text="Compagnon installé dans :`r`n$($script:state.Result.Root)`r`n`r`n$($script:state.Result.Message)`r`n`r`nSur le telephone : meme Wi-Fi, puis adresse et code dans ACCES-PRIVE.txt."
+        Set-CompletionText
     } catch { $feedback.Text='Installation non terminée : '+$_.Exception.Message+' Tu peux corriger puis réessayer.' }
     finally { $script:state.Worker.Dispose(); $script:state.Token.Dispose(); $script:state.Busy=$false; $next.Enabled=$true; $previous.Enabled=$true; $cancel.Enabled=$true; $cancel.Text='Annuler' }
 })
@@ -183,7 +223,20 @@ Show-Step 0
 if($PreviewDirectory){
     $null=New-Item -ItemType Directory -Path $PreviewDirectory -Force
     $form.Opacity=0; $form.ShowInTaskbar=$false; $form.Show()
-    foreach($index in 0..3){Show-Step $index;[Windows.Forms.Application]::DoEvents();$form.PerformLayout();$bitmap=New-Object Drawing.Bitmap($form.Width,$form.Height);$form.DrawToBitmap($bitmap,(New-Object Drawing.Rectangle(0,0,$form.Width,$form.Height)));$bitmap.Save((Join-Path $PreviewDirectory ('installation-'+$index+'.png')));$bitmap.Dispose()}
+    $script:state.Result=@{Root=$PSScriptRoot;Port=8769;Message='Aperçu uniquement : aucune installation ni configuration appliquée.'}
+    foreach($index in 0..4){
+        Show-Step $index; if($index -eq 4){Set-CompletionText}
+        [Windows.Forms.Application]::DoEvents(); $form.PerformLayout(); $pages[$index].PerformLayout(); [Windows.Forms.Application]::DoEvents()
+        $bitmap=New-Object Drawing.Bitmap($form.Width,$form.Height); $form.DrawToBitmap($bitmap,(New-Object Drawing.Rectangle(0,0,$form.Width,$form.Height)))
+        $bitmap.Save((Join-Path $PreviewDirectory ('installation-'+$index+'.png'))); $bitmap.Dispose()
+        if($index -eq 4){
+            Write-Output ('Completion scroll visible: '+$pages[$index].VerticalScroll.Visible+'; content: '+$pages[$index].DisplayRectangle.Height+'; viewport: '+$pages[$index].ClientSize.Height)
+            $pages[$index].AutoScrollPosition=New-Object Drawing.Point(0,$pages[$index].VerticalScroll.Maximum)
+            [Windows.Forms.Application]::DoEvents()
+            $bitmap=New-Object Drawing.Bitmap($form.Width,$form.Height); $form.DrawToBitmap($bitmap,(New-Object Drawing.Rectangle(0,0,$form.Width,$form.Height)))
+            $bitmap.Save((Join-Path $PreviewDirectory 'installation-4-bottom.png')); $bitmap.Dispose()
+        }
+    }
     $form.Close()
 }else{$null=$form.ShowDialog()}
 $timer.Dispose();$form.Dispose()

@@ -51,7 +51,7 @@ function Get-BionicInstallFiles {
     $manifest = Read-BionicJson (Join-Path $root 'release-manifest.json')
     $seen = @{}
     foreach ($relative in $manifest.files) {
-        if ($relative -notmatch '^[a-zA-Z0-9_.@/-]+$' -or $relative -match '(^|/)(\.{1,2}|data|runtime|dist|node_modules|\.git)(/|$)' -or $relative -match '(^|/)(config\.local\.json|ACCES-PRIVE\.txt|\.env)' -or $relative -match '\.(pem|key|pfx|p12|crt|cer|der|zip|bin)$' -or $relative -match '(^|/)(security|certificate-exports)(/|$)' -or $seen.ContainsKey($relative)) { throw 'Inventaire de distribution invalide.' }
+        if ($relative -notmatch '^[a-zA-Z0-9_.@/-]+$' -or $relative -match '(^|/)(\.{1,2}|data|runtime|dist|node_modules|\.git)(/|$)' -or $relative -match '(^|/)(config\.local\.json|config\.launchers\.local\.json|ACCES-PRIVE\.txt|\.env)' -or $relative -match '\.(pem|key|pfx|p12|crt|cer|der|zip|bin)$' -or $relative -match '(^|/)(security|certificate-exports)(/|$)' -or $seen.ContainsKey($relative)) { throw 'Inventaire de distribution invalide.' }
         $seen[$relative] = $true
         $file = Join-Path $root $relative
         $cursor = $file
@@ -64,6 +64,27 @@ function Get-BionicInstallFiles {
         $relative
     }
     if ($seen.Count -lt 10 -or -not $seen.ContainsKey('server.mjs') -or -not $seen.ContainsKey('Demarrer.ps1')) { throw 'Archive incomplete : extrais tous les fichiers avant de lancer Installer.cmd.' }
+}
+
+function Get-BionicInstallActionPath {
+    param([string]$Root, [ValidateSet('guide-fr','guide-en','servers')][string]$Action)
+    $folder = Assert-BionicInstallPath $Root
+    $relative = switch ($Action) {
+        'guide-fr' { 'docs/installation.md' }
+        'guide-en' { 'docs/en/guide.md' }
+        'servers' { 'Configurer-serveurs.ps1' }
+    }
+    $manifest = Read-BionicJson (Join-Path $folder 'release-manifest.json')
+    if ($null -eq $manifest -or @($manifest.files) -cnotcontains $relative) { throw 'Ce fichier ne fait pas partie de cette distribution. Extrais de nouveau le paquet complet.' }
+    $file = Join-Path $folder $relative
+    $cursor = $file
+    while ($cursor.Length -gt $folder.Length) {
+        $item = Get-Item -LiteralPath $cursor -Force -ErrorAction Stop
+        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Un lien remplace ce fichier de distribution. Verifie le dossier sur le PC.' }
+        $cursor = [IO.Path]::GetDirectoryName($cursor)
+    }
+    if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'Fichier de distribution absent. Extrais de nouveau le paquet complet.' }
+    return $file
 }
 
 function Get-BionicNodeDownload {

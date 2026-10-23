@@ -39,7 +39,9 @@ async function fixture(t) {
     }
     throw Error('Unexpected synthetic image transport: ' + url);
   };
-  const imageService = await createComfyImages({ directory: path.join(root, 'data', 'comfy-generations'), enabled: true, fetchImpl: fetchImages, pollMs: 10 });
+  // Each test drives history changes with finish()/refresh(). A background poll
+  // could start before the completion flag and coalesce the explicit refresh.
+  const imageService = await createComfyImages({ directory: path.join(root, 'data', 'comfy-generations'), enabled: true, fetchImpl: fetchImages, pollMs: 60_000 });
   let forceUncertain = false, pending = false, effect = 0, reserve, release, cookie, nonce;
   const service = { ...imageService, lifecycleStatus: () => forceUncertain ? { active: 0, uncertain: 1 } : imageService.lifecycleStatus() };
   const supervisor = {

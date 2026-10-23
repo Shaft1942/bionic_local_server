@@ -16,11 +16,13 @@ async function fixture(t) {
   const base=await fs.mkdtemp(path.join(os.tmpdir(),'bionic-install-test-'));
   t.after(async()=>{assert.equal(path.dirname(base),path.resolve(os.tmpdir()));assert(path.basename(base).startsWith('bionic-install-test-'));await fs.rm(base,{recursive:true,force:true});});
   const source=path.join(base,'source');await fs.mkdir(source);
-  const files=['server.mjs','Demarrer.ps1','release-manifest.json',...Array.from({length:7},(_,i)=>`public-${i}.txt`)];
-  for(const f of files)await fs.writeFile(path.join(source,f),'Synthetic public source.');
+  const files=['server.mjs','Demarrer.ps1','release-manifest.json','docs/installation.md','docs/en/guide.md','Configurer-serveurs.ps1',...Array.from({length:7},(_,i)=>`public-${i}.txt`)];
+  for(const f of files){await fs.mkdir(path.dirname(path.join(source,f)),{recursive:true});await fs.writeFile(path.join(source,f),'Synthetic public source.');}
   await fs.writeFile(path.join(source,'release-manifest.json'),JSON.stringify({files}));
   await fs.mkdir(path.join(source,'data'));await fs.writeFile(path.join(source,'data/private.txt'),'PRIVATE_INSTALLATION_CANARY');
   await fs.writeFile(path.join(source,'config.local.json'),JSON.stringify({port:3001,python:'custom-python',extraRoots:[],customSetting:'preserve-me'}));
+  await fs.writeFile(path.join(source,'config.launchers.local.json'),'SYNTHETIC_PRIVATE_LAUNCHER_PROFILE');
+  await fs.writeFile(path.join(source,'data/comfy-settings.json'),'SYNTHETIC_PRIVATE_IMAGE_PREFERENCES');
   return {base,source,target:path.join(base,'new installation')};
 }
 const install=(source,target,extra='')=>`Install-BionicCompanion -Source ${q(source)} -Destination ${q(target)} -Port 3002 -ApiUrl 'http://localhost:1235/v1' -NodePath ${q(process.execPath)} -DownloadNode $false ${extra}`;
@@ -53,16 +55,22 @@ test('new installation copies only public sources and records a reusable Node pa
   assert.deepEqual(config,{port:3002,certificateProofPort:3003,apiUrl:'http://localhost:1235'});
   assert.equal(result.CertificateProofPort,3003);
   await assert.rejects(fs.access(path.join(target,'data/private.txt')));
+  await assert.rejects(fs.access(path.join(target,'config.launchers.local.json')));
+  await assert.rejects(fs.access(path.join(target,'data/comfy-settings.json')));
   assert.equal(await fs.realpath(JSON.parse(await fs.readFile(path.join(target,'runtime/node-path.json'),'utf8')).path),await fs.realpath(process.execPath));
   assert.equal(await fs.realpath(ps(`Get-BionicNode -Root ${q(target)}`)),await fs.realpath(process.execPath));
   assert(!(await fs.readdir(base)).some(n=>n.startsWith('.bionic-install-')));
 });
 test('in-place configuration preserves private bytes and unknown settings and backs up configuration',{skip:!windows},async t=>{
   const {source}=await fixture(t);const original=await fs.readFile(path.join(source,'config.local.json'));
+  const launcher=await fs.readFile(path.join(source,'config.launchers.local.json'));
+  const imagePreferences=await fs.readFile(path.join(source,'data/comfy-settings.json'));
   ps(`${install(source,source)} | Out-Null`);
   assert.equal(await fs.readFile(path.join(source,'data/private.txt'),'utf8'),'PRIVATE_INSTALLATION_CANARY');
   const config=JSON.parse(await fs.readFile(path.join(source,'config.local.json'),'utf8'));
   assert.equal(config.customSetting,'preserve-me');assert.equal(config.python,'custom-python');assert.equal(config.port,3002);
+  assert.deepEqual(await fs.readFile(path.join(source,'config.launchers.local.json')),launcher);
+  assert.deepEqual(await fs.readFile(path.join(source,'data/comfy-settings.json')),imagePreferences);
   const backups=await fs.readdir(path.join(source,'runtime/install-backups'),{recursive:true});
   const backup=backups.find(n=>n.endsWith('config.local.json'));assert(backup);
   assert.deepEqual(await fs.readFile(path.join(source,'runtime/install-backups',backup)),original);
@@ -92,7 +100,7 @@ test('cancellation before commit removes staging and leaves no installed folder'
 });
 test('closed source inventory rejects traversal and private files before copying',{skip:!windows},async t=>{
   const {source,target}=await fixture(t);const file=path.join(source,'release-manifest.json');const m=JSON.parse(await fs.readFile(file,'utf8'));
-  for(const illegal of ['../outside.txt','data/private.txt','runtime/node-path.json','config.local.json']){await fs.writeFile(file,JSON.stringify({files:[...m.files,illegal]}));assert.equal(ps(reject(install(source,target))),'rejected');await assert.rejects(fs.access(target));}
+  for(const illegal of ['../outside.txt','data/private.txt','runtime/node-path.json','config.local.json','config.launchers.local.json']){await fs.writeFile(file,JSON.stringify({files:[...m.files,illegal]}));assert.equal(ps(reject(install(source,target))),'rejected');await assert.rejects(fs.access(target));}
 });
 test('junction destinations cannot redirect installation outside the selected real folder',{skip:!windows},async t=>{
   const {base,source}=await fixture(t);const outside=path.join(base,'outside');await fs.mkdir(outside);const link=path.join(base,'link');await fs.symlink(outside,link,'junction');
@@ -115,4 +123,29 @@ test('certificate proof port is configurable, retained on reconfiguration, and c
  for(const port of [3002,1235,-1,65536])assert.equal(ps(reject(install(source,source,'-CertificateProofPort '+port))),'rejected');
  assert.equal(ps(`function Test-BionicPortOpen {param($Port) return $Port -eq 42111}; ${reject(install(source,source,'-CertificateProofPort 42111'))}`),'rejected');
  assert.deepEqual(await fs.readFile(path.join(source,'config.local.json')),original);
+});
+
+
+test('post-install actions use the installed public guides and server setup, refusing absent or unlisted files',{skip:!windows},async t=>{
+  const {source,target}=await fixture(t);ps(install(source,target));
+  for(const [action,relative] of [['guide-fr','docs/installation.md'],['guide-en','docs/en/guide.md'],['servers','Configurer-serveurs.ps1']]){
+    const actual=ps(`Get-BionicInstallActionPath -Root ${q(target)} -Action ${q(action)}`);
+    assert.equal(await fs.realpath(actual),await fs.realpath(path.join(target,relative)));
+    assert(!path.relative(target,actual).startsWith('..'));
+  }
+  assert.equal(ps(reject(`Get-BionicInstallActionPath -Root ${q(target)} -Action ${q("../outside")}`)),'rejected');
+  await fs.unlink(path.join(target,'Configurer-serveurs.ps1'));
+  assert.equal(ps(reject(`Get-BionicInstallActionPath -Root ${q(target)} -Action servers`)),'rejected');
+  const manifestPath=path.join(target,'release-manifest.json'),manifest=JSON.parse(await fs.readFile(manifestPath,'utf8'));
+  manifest.files=manifest.files.filter(file=>file!=='docs/en/guide.md');await fs.writeFile(manifestPath,JSON.stringify(manifest));
+  assert.equal(ps(reject(`Get-BionicInstallActionPath -Root ${q(target)} -Action guide-en`)),'rejected');
+});
+
+test('post-install actions refuse a guide folder redirected by a junction',{skip:!windows},async t=>{
+  const {base,source}=await fixture(t),outside=path.join(base,'outside'),link=path.join(source,'docs/en');
+  await fs.mkdir(outside);await fs.writeFile(path.join(outside,'guide.md'),'OUTSIDE_SYNTHETIC_GUIDE');
+  assert(!path.relative(base,link).startsWith('..'));
+  await fs.rename(link,path.join(source,'docs/en-original'));await fs.symlink(outside,link,'junction');
+  assert.equal(ps(reject(`Get-BionicInstallActionPath -Root ${q(source)} -Action guide-en`)),'rejected');
+  assert.equal(await fs.readFile(path.join(outside,'guide.md'),'utf8'),'OUTSIDE_SYNTHETIC_GUIDE');
 });

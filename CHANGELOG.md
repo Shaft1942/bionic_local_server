@@ -5,6 +5,7 @@ Les entrées décrivent les évolutions du produit. Les comptes rendus de travai
 ## 2.5.0 — 2026-10-23
 
 - Interface **français/anglais**, choix mémorisé par navigateur et indépendant de la langue des conversations, prompts et fichiers. README et guide d’usage anglais ajoutés ; documentation réorganisée, synthétisée et débarrassée des traces internes.
+- Assistant d’installation Windows actualisé : version affichée, accès aux guides français/anglais et configuration explicite des serveurs après installation. Le profil privé des lanceurs est exclu des sources copiées et conservé lors d’une reconfiguration sur place.
 - Images ComfyUI : **1 à 5 images par demande**, file commune, choix de conserver/décharger le modèle texte ou de répondre entre les images, préférences par demande et brouillon. Annulation des images encore locales, relance à graine identique ou nouvelle, aperçu, galerie et téléchargement ZIP. **Livrables → Génération** rassemble les images du projet.
 - **Serveurs sur le PC** : configuration locale, suivi et commandes manuelles Bionic/ComfyUI avec confirmations, contrôle d’identité et récupération sans rejeu. Les travaux connus ou incertains et les attentes GPU protègent les opérations incompatibles.
 - Projets locaux et adoption explicite de dossiers/droits ; pagination des messages, index dérivé et cache borné. Historiques natifs toujours en lecture seule.
