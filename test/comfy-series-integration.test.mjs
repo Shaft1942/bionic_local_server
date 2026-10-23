@@ -42,9 +42,9 @@ const scenes=label=>[
 ];
 const publicModel={id:'synthetic-series',name:'Synthetic series model',type:'llm',tools:true,contextLength:8192,reasoning:{allowedOptions:[]}};
 
-async function fixture(t,{builtInComfy=false,forceSeries=false}={}){
+async function fixture(t,{builtInComfy=false,forceSeries=false,controlledText=false}={}){
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'comfy-series-http-test-'));
-  const state={loaded:true,inferences:[],posts:[],completed:new Set(),unloads:[],modelAdmissions:[]};
+  const state={loaded:true,inferences:[],posts:[],completed:new Set(),unloads:[],modelAdmissions:[],textStreams:new Map()};
   const inFlight=()=>state.posts.filter(post=>!state.completed.has(post.id)).length;
   const modelService={
     async list(){return[{...publicModel,loaded:state.loaded,loadedInstances:state.loaded?[{id:'synthetic-loaded-instance'}]:[]}];},
@@ -58,6 +58,24 @@ async function fixture(t,{builtInComfy=false,forceSeries=false}={}){
     const userText=typeof user?.content==='string'?user.content:JSON.stringify(user?.content);
     const label=/SCENARIO-[A-Z]+/.exec(userText)?.[0]??'SCENARIO-DEFAULT';
     state.inferences.push({body,label,activeImages:inFlight()});
+    if(controlledText&&userText.includes('HOLD-TEXT')){
+      const control={aborted:false,finished:false};
+      const stream=new ReadableStream({start(controller){
+        const packet=event=>controller.enqueue(new TextEncoder().encode('data: '+JSON.stringify(event)+'\n\n'));
+        const abort=()=>{if(control.finished||control.aborted)return;control.aborted=true;controller.error(Object.assign(new Error('Synthetic aborted stream'),{name:'AbortError'}));};
+        control.finish=()=>{
+          if(control.finished||control.aborted)return;
+          control.finished=true;options.signal.removeEventListener('abort',abort);
+          packet({choices:[{delta:{content:' Suite finale complète.'},finish_reason:'stop'}]});
+          packet({choices:[],usage:{prompt_tokens:80,completion_tokens:128}});
+          controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));controller.close();
+        };
+        options.signal.addEventListener('abort',abort,{once:true});
+        state.textStreams.set(label,control);
+        if(options.signal.aborted)abort();else packet({choices:[{delta:{content:'Début de réponse contrôlée.'}}]});
+      }});
+      return new Response(stream);
+    }
     let choices;
     if(last.role==='tool'||userText.includes('TEXT-ONLY'))choices=[{delta:{content:'Réponse synthétique disponible.'},finish_reason:'stop'}];
     else{
@@ -192,9 +210,9 @@ for(const policy of ['keep','unload'])test(`HTTP ${policy} policy ${policy==='ke
   if(policy==='unload'){assert(f.state.posts.every(post=>post.loaded===false));assert.equal(f.state.inferences.at(-1).activeImages,0);assert.equal(f.state.loaded,true);}
 });
 
-test('a text conversation awaiting an unload image lot receives queued headers immediately and starts after the lot',async t=>{
+for(const policy of ['unload','alternate'])test(`a text conversation awaiting ${policy} images receives queued headers immediately and measured admission time`,async t=>{
   const f=await fixture(t);
-  assert.equal((await f.request('/api/comfy/settings',{modelPolicy:'unload'})).status,200);
+  assert.equal((await f.request('/api/comfy/settings',{modelPolicy:policy})).status,200);
   await f.send('SCENARIO-A');await until(()=>f.state.posts.length===1);
   const requestId=randomUUID();
   const response=await bounded(f.request('/api/chat',{projectId:'p1',model:publicModel.id,requestId,text:'TEXT-ONLY SCENARIO-TEXT',imageAccess:false,imageCount:1,fileProfile:'none'}),'waiting conversation did not send HTTP headers before image completion');
@@ -205,12 +223,17 @@ test('a text conversation awaiting an unload image lot receives queued headers i
   await completeSeries(f);
   const events=await bounded(stream.remaining(),'waiting conversation did not finish after the images');
   assert.equal(events[0].type,'start');assert.equal(events[0].id,queued.id);assert.equal(events[0].requestId,requestId);
+  const metrics=events.find(event=>event.type==='done')?.metrics;
+  assert(metrics.queueSeconds>=0.09,'the deliberate blocked admission is measured');
+  assert(metrics.totalSeconds>=metrics.queueSeconds);assert(metrics.totalSeconds>metrics.responseSeconds,'total includes admission, engine timing stays separate');
+  const saved=await(await f.request('/api/conversation?'+new URLSearchParams({projectId:'p1',id:queued.id}))).json();
+  assert.deepEqual(saved.messages.at(-1).metrics,metrics);
   assert(events.some(event=>event.type==='done'));assert(!events.some(event=>event.type==='error'));assert.equal(f.state.inferences.length,2);assert.equal(f.state.inferences.at(-1).activeImages,0);
 });
 
-test('Stop while waiting behind an unload image lot ends the queued stream without starting another inference',async t=>{
+for(const policy of ['unload','alternate'])test(`Stop while waiting behind ${policy} images ends the queued stream without starting another inference`,async t=>{
   const f=await fixture(t);
-  assert.equal((await f.request('/api/comfy/settings',{modelPolicy:'unload'})).status,200);
+  assert.equal((await f.request('/api/comfy/settings',{modelPolicy:policy})).status,200);
   await f.send('SCENARIO-A');await until(()=>f.state.posts.length===1);
   const requestId=randomUUID();
   const response=await bounded(f.request('/api/chat',{projectId:'p1',model:publicModel.id,requestId,text:'TEXT-ONLY SCENARIO-TEXT',imageAccess:false,imageCount:1,fileProfile:'none'}),'waiting conversation did not send HTTP headers');
@@ -221,4 +244,62 @@ test('Stop while waiting behind an unload image lot ends the queued stream witho
   assert(events.some(event=>event.type==='error'));assert(!events.some(event=>event.type==='start'||event.type==='done'));
   assert.equal(f.state.inferences.length,1);assert.equal(f.app.gpuScheduler.snapshot().activeImages,1);
   await completeSeries(f);await wait(30);assert.equal(f.state.inferences.length,1);
+});
+
+for(const ending of ['complete','stop'])test(`HTTP alternate preserves an active text stream between images until ${ending} and later text stays behind the next image`,async t=>{
+  const f=await fixture(t,{controlledText:true});
+  assert.equal((await f.request('/api/comfy/settings',{modelPolicy:'alternate'})).status,200);
+  const turn=await f.send('SCENARIO-A');await until(()=>f.state.posts.length===1);
+  const requestId=randomUUID();
+  const response=await bounded(f.request('/api/chat',{
+    projectId:'p1',model:publicModel.id,requestId,text:'TEXT-ONLY HOLD-TEXT SCENARIO-LONG',imageAccess:false,imageCount:1,fileProfile:'none',
+    outputPreferences:{maxOutputTokens:512,applyToAllSessions:false},
+  }),'long text request must acknowledge admission waiting');
+  const long=ndjson(response),queued=await bounded(long.next(),'long text must report queued before the image boundary');
+  assert.equal(queued.type,'queued');assert.equal(f.state.inferences.length,1);
+  f.state.completed.add(f.state.posts[0].id);
+  await until(()=>f.state.textStreams.has('SCENARIO-LONG'),'long text must start after the first image');
+  const initial=[];
+  while(!initial.some(event=>event.type==='delta'))initial.push(await bounded(long.next(),'long text must stream its first fragment'));
+  const started=initial.find(event=>event.type==='start');assert.equal(started.id,queued.id);
+  assert.equal(f.state.inferences[1].body.max_tokens,512,'the selected output preference must remain unchanged');
+  assert.equal(f.state.inferences[1].activeImages,0);
+  await until(()=>f.app.gpuScheduler.snapshot().queuedImages===1,'the next image must reserve its place while text is active');
+  const laterRequestId=randomUUID();
+  const laterResponse=await bounded(f.request('/api/chat',{
+    projectId:'p1',model:publicModel.id,requestId:laterRequestId,text:'TEXT-ONLY SCENARIO-LATER',imageAccess:false,imageCount:1,fileProfile:'none',
+  }),'later text must acknowledge waiting behind the next reserved image');
+  const later=ndjson(laterResponse),laterQueued=await bounded(later.next(),'later text must receive its queue receipt');
+  assert.equal(laterQueued.type,'queued');
+  await wait(70);
+  assert.equal(f.state.posts.length,1,'a long open stream must not be cut short to advance the second image');
+  assert.equal(f.state.inferences.length,2,'later text must not jump ahead of the reserved second image');
+  assert.equal(f.app.gpuScheduler.snapshot().activeModels,1);
+  const control=f.state.textStreams.get('SCENARIO-LONG');
+  assert.equal(control.finished,false);assert.equal(control.aborted,false);
+  if(ending==='stop')assert.equal((await f.request('/api/cancel',{projectId:'p1',requestId})).status,200);
+  else control.finish();
+  const remaining=await bounded(long.remaining(),'finishing or stopping the active stream must release the image');
+  if(ending==='stop'){
+    assert.equal(control.aborted,true);assert(remaining.some(event=>event.type==='error'&&event.outcome==='stopped'));
+    assert(!remaining.some(event=>event.type==='done'));
+  }else{
+    assert.equal(control.finished,true);assert(remaining.some(event=>event.type==='done'));
+    assert(remaining.some(event=>event.type==='delta'&&event.text.includes('Suite finale complète.')));
+  }
+  await until(()=>f.state.posts.length===2,'the second image must start once text releases its lease');
+  assert.equal(f.state.inferences.length,2,'the second image must precede the later conversation');
+  f.state.completed.add(f.state.posts[1].id);
+  const laterEvents=await bounded(later.remaining(),'later text must get its turn after the second image');
+  assert(laterEvents.some(event=>event.type==='start'));assert(laterEvents.some(event=>event.type==='done'));
+  assert.equal(f.state.inferences[2].label,'SCENARIO-LATER');assert.equal(f.state.inferences[2].activeImages,0);
+  await until(()=>f.state.posts.length===3,'the third image must not be starved by later text');
+  f.state.completed.add(f.state.posts[2].id);
+  await until(()=>f.app.gpuScheduler.snapshot().activeImages===0,'the completed series must release its image lease');
+  assert.equal(f.state.posts.length,3);assert(f.state.posts.every(post=>post.priorRunning===0));assert.equal(f.state.unloads.length,0);
+  const textChat=await(await f.request('/api/conversation?'+new URLSearchParams({projectId:'p1',id:queued.id}))).json();
+  const reply=textChat.messages.at(-1);assert(reply.text.startsWith('Début de réponse contrôlée.'));
+  assert.equal(reply.outcome,ending==='stop'?'stopped':'completed');
+  const imageChat=await(await f.request('/api/conversation?'+new URLSearchParams({projectId:'p1',id:turn.start.id}))).json();
+  assert(imageChat.messages.at(-1).imageGenerations.every(job=>job.status==='succeeded'));
 });

@@ -275,3 +275,61 @@ test('unload requires a model service but keep works without one', async () => {
   (await scheduler.acquireImages({ policy: 'keep' }))();
   scheduler.close();
 });
+
+test('alternate waits for earlier predictions and blocks newer ones without listing or unloading models', async t => {
+  const { scheduler, operations } = fixture(t);
+  const earlier = await scheduler.acquireModel();
+  let imageStarted = false;
+  const image = scheduler.acquireImages({ policy: 'alternate' }).then(release => { imageStarted = true; return release; });
+  let modelStarted = false;
+  const model = scheduler.acquireModel().then(release => { modelStarted = true; return release; });
+  await tick(); assert.equal(imageStarted, false); assert.equal(modelStarted, false);
+  earlier();
+  const releaseImage = await image;
+  assert.equal(scheduler.snapshot().imagePolicy, 'alternate');
+  await tick(); assert.equal(modelStarted, false);
+  releaseImage(); (await model)();
+  assert.deepEqual(operations, []);
+});
+
+test('alternate admits the queued model wave but later text cannot starve the next image', async t => {
+  const { scheduler, operations } = fixture(t);
+  const first = await scheduler.acquireImages({ policy: 'alternate' });
+  const wave = [scheduler.acquireModel(), scheduler.acquireModel()];
+  let nextStarted = false;
+  const next = scheduler.acquireImages({ policy: 'alternate' }).then(release => { nextStarted = true; return release; });
+  let laterStarted = 0;
+  const later = Array.from({ length: 5 }, () => scheduler.acquireModel().then(release => { laterStarted++; return release; }));
+  first();
+  const [firstText, secondText] = await Promise.all(wave);
+  await tick(); assert.equal(nextStarted, false); assert.equal(laterStarted, 0);
+  firstText(); await tick(); assert.equal(nextStarted, false, 'every admitted prediction keeps its complete lease');
+  secondText();
+  const nextImage = await next;
+  assert.equal(nextStarted, true); assert.equal(laterStarted, 0);
+  nextImage();
+  for (const release of await Promise.all(later)) release();
+  assert.equal(laterStarted, 5); assert.deepEqual(operations, []);
+});
+
+test('a cancelled alternate reservation removes the barrier and has no model side effects', async t => {
+  const { scheduler, operations } = fixture(t);
+  const first = await scheduler.acquireImages({ policy: 'keep' });
+  const controller = new AbortController();
+  const rejected = assert.rejects(scheduler.acquireImages({ policy: 'alternate', signal: controller.signal }), { status: 409 });
+  const model = scheduler.acquireModel();
+  controller.abort(); await rejected;
+  (await model)(); first();
+  assert.equal(scheduler.snapshot().queuedImages, 0);
+  assert.deepEqual(operations, []);
+});
+
+test('alternate needs no model management API and close keeps active ownership until release', async () => {
+  const scheduler = createGpuScheduler();
+  const release = await scheduler.acquireImages({ policy: 'alternate' });
+  const rejected = assert.rejects(scheduler.acquireModel(), { status: 503 });
+  scheduler.close(); await rejected;
+  assert.equal(scheduler.snapshot().activeImages, 1);
+  release();
+  assert.equal(scheduler.snapshot().activeImages, 0);
+});

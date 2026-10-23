@@ -113,6 +113,17 @@ test('text model policy defaults to keep and participates in dirty state, cancel
   await f.settings.close();await f.open();assert.equal(f.element('comfy-model-policy').value,'unload');assert.equal(f.settings.hasUnsaved(),false);
 });
 
+test('alternate policy is saved and restored without converting it to keep or claiming concurrent rendering',async()=>{
+  let saved={...defaultComfy,enabled:true};
+  const f=fixture((route,options)=>route==='/api/comfy/settings'?options?.method==='POST'?(saved={...saved,...JSON.parse(options.body)}):structuredClone(saved):undefined);
+  await f.open();f.element('comfy-model-policy').value='alternate';f.fire('comfy-model-policy','change');assert.equal(f.settings.hasUnsaved(),true);
+  await f.fire('comfy-settings-form','submit');assert.equal(saved.modelPolicy,'alternate');assert.equal(f.settings.hasUnsaved(),false);
+  await f.settings.close();await f.open();assert.equal(f.element('comfy-model-policy').value,'alternate');
+  f.settings.imagePermission();assert.match(f.element('image-settings-help').textContent,/attendent la fin de l’image en cours/);
+  assert.match(f.element('image-settings-help').textContent,/entre deux images/);assert.doesNotMatch(f.element('image-settings-help').textContent,/pendant un rendu|simultané/);
+  f.element('comfy-model-policy').value='keep';f.fire('comfy-model-policy','change');await f.fire('comfy-cancel');assert.equal(f.element('comfy-model-policy').value,'alternate');
+});
+
 test('queue recovery is hidden unless the server explicitly reports a paused queue',async()=>{
   const f=fixture();await f.open();assert.equal(f.element('comfy-queue-paused').hidden,true);
   await f.fire('comfy-queue-resume');assert.equal(f.writes.filter(write=>write.route==='/api/comfy/queue/resume').length,0);

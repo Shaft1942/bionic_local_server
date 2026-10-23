@@ -570,6 +570,7 @@ async function drainChat(state, first, response) {
   }
 }
 async function generateChat(res, chat, item, request) {
+  let queuedMs = Math.max(0, Date.now() - item.queuedAt);
   const { text, fileAccess, attachments } = item;
   let selectedModel;
   const webAccess=item.webAccess===true,webApproval=item.webApproval===true,scriptAccess=item.scriptAccess===true,fileProfile=normalizeFileProfile(item);
@@ -585,12 +586,14 @@ async function generateChat(res, chat, item, request) {
   let releaseUpstream = () => {};
   let admitted = false;
   const admitModel = async () => {
+    const admissionStartedAt = Date.now();
     const release = await inferenceGate.acquire(controller.signal);
     let releaseGpu=()=>{};
     admitted = true;
     releaseUpstream = () => { admitted = false; releaseGpu(); release(); };
     try {
       releaseGpu=await gpuScheduler.acquireModel({signal:controller.signal});
+      queuedMs += Date.now() - admissionStartedAt;
       // Keep the GPU reservation until any non-cancellable cold load settles.
       // Refresh after admission, including queued turns and tool continuations.
       selectedModel = modelService.forInference ? await modelService.forInference(item.model) : (await models()).find(model => model.id === item.model);
@@ -610,7 +613,7 @@ async function generateChat(res, chat, item, request) {
     const userMessageId = randomUUID();
     const outputPreference = item.outputPreference || modelPreferences.resolve(item.model, chat);
     const gpuState=gpuScheduler.snapshot();
-    if((gpuState.imagePolicy==='unload'||gpuState.queuedImages>0)&&!detached&&!res.destroyed){
+    if((['unload','alternate'].includes(gpuState.imagePolicy)||gpuState.queuedImages>0)&&!detached&&!res.destroyed){
       res.writeHead(200,{'Content-Type':'application/x-ndjson; charset=utf-8','Cache-Control':'no-store','X-Accel-Buffering':'no'});
       res.write(JSON.stringify({type:'queued',id:chat.id,name:chat.name,requestId:data.requestId,phase:'waiting-model'})+'\n');
       responseStarted=earlyReceipt=true;
@@ -719,6 +722,8 @@ async function generateChat(res, chat, item, request) {
       reply.finishedAt = chat.generation.finishedAt = Date.now(); reply.outcome = 'completed';
       chat.messages.find(message => message.requestId === data.requestId && message.role === 'user').requestStatus = 'completed';
       reply.metrics = phases.length === 1 ? phases[0] : { inputTokens: phases.reduce((n,m) => n + (m.inputTokens || 0), 0), outputTokens: phases.reduce((n,m) => n + (m.outputTokens || 0), 0), reasoningTokens: phases.reduce((n,m) => n + (m.reasoningTokens || 0), 0), responseSeconds: (performance.now() - startedAt) / 1000, firstFragmentSeconds: phases[0]?.firstFragmentSeconds, generationPhases: phases.length };
+      reply.metrics.totalSeconds = (reply.finishedAt - item.queuedAt) / 1000;
+      reply.metrics.queueSeconds = queuedMs / 1000;
       chat.updatedAt = Date.now(); await persist();
       emit({ type: 'done', id: chat.id, replyId: reply.id, finishedAt: reply.finishedAt, outcome: reply.outcome, limited: !!reply.limited, truncated: !!reply.truncated, finishReason: reply.finishReason, outputBudget: reply.outputBudget, metrics: reply.metrics, contextReceipt: reply.contextReceipt });
     } catch (e) {

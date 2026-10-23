@@ -16,7 +16,7 @@ Les erreurs de validation survenues avant la création d’un job restent expliq
 par le parcours conversationnel habituel.
 
 Cette optimisation évite le chevauchement provoqué par ce tour d’outils ; elle ne
-réserve pas le GPU face aux autres chats, instances du compagnon ou applications.
+réserve pas à elle seule le GPU. La politique ci-dessous coordonne les chats de cette instance ; les autres instances et applications restent indépendantes.
 Elle ne décharge pas automatiquement les modèles Bionic ou ComfyUI.
 
 Dans **Outils → Modèle d’image**, choisir Krea 2 Turbo ou Hassaku XL pour le prochain
@@ -104,6 +104,12 @@ Dans **Paramètres → Images et ComfyUI**, choisir la gestion du modèle texte 
 
 - **Conserver le modèle texte** (valeur initiale) : les autres conversations peuvent
   répondre pendant les images. La concurrence GPU/mémoire peut ralentir le rendu.
+- **Répondre entre les images** : le modèle reste chargé. Les prédictions déjà
+  admises terminent avant l’image ; les réponses texte en attente passent ensuite
+  entre deux images de la série. Le sampler finit son image avant de céder la place.
+  Les nouvelles réponses ne dépassent pas l’image suivante déjà réservée. Les lots
+  d’images restent FIFO. Une réponse longue retarde l’image suivante ; la mémoire
+  du modèle texte reste occupée et aucun délai fixe n’est garanti.
 - **Décharger avant les images** : le lot attend les inférences en cours, décharge
   les instances LLM chargées dans Bionic avec confirmation, puis bloque les nouvelles
   inférences de ce compagnon jusqu'à la fin du lot. Le modèle sera rechargé à la
@@ -128,9 +134,17 @@ sont `{images: [{prompt, seed, format?}, ...]}` (exactement trois éléments).
 L'action renvoie `imageGenerations`, et chaque job ajoute `seriesId`, `seriesIndex`,
 `seriesTotal`, `queuePosition`, `queuedLocally` et `modelPolicy`. Le suivi et les
 images conservent leurs routes authentifiées et leurs propriétaires projet/chat/message.
-`POST /api/comfy/settings` accepte `modelPolicy: "keep" | "unload"` ; les anciens
+`POST /api/comfy/settings` accepte `modelPolicy: "keep" | "alternate" | "unload"` ; les anciens
 réglages migrent vers `keep`. `POST /api/comfy/queue/resume` reçoit `{}` et ne resoumet
 jamais un job incertain. Les limites et erreurs sont distinctes d'une réussite image.
+
+Les réponses texte terminées conservent les mesures du moteur et ajoutent
+`metrics.totalSeconds` depuis l’enregistrement de la demande (file, chargement,
+calcul et outils inclus), ainsi que `metrics.queueSeconds` pour l’attente initiale
+dans le chat et les admissions modèle. Cette dernière mesure exclut le chargement
+du modèle et les accords humains. La durée affichée privilégie `totalSeconds`, avec
+repli sur `responseSeconds` pour les anciens messages. Les cartes images montrent
+la durée d’exécution ComfyUI lorsqu’elle est connue, distincte de leur attente.
 
 Cette fonction est indépendante des outils fichiers, Internet et scripts ; elle
 n’affaiblit pas leurs validations. Les conversations natives Bionic restent en

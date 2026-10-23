@@ -60,7 +60,7 @@ const textDraftStore = createMessageDraftStore({ storage: { getItem: key => loca
 const chats = new Map(), drafts = readDrafts(), jobs = readJobs();
 const projectTree = createProjectTree({
   container: $('sessions'), node, icon,
-  getView: () => ({ authenticated: state.authenticated, authEpoch: state.authEpoch, revision: conversationMove.revision, projectId: state.projectId, currentId: state.chat?.id, viewKey: state.viewKey, search: $('search').value, disabled: state.uploading || conversationMove.busy, pending: [...jobs.values()].filter(job => !job.id).map(job => ({ projectId: job.projectId, id: 'pending:' + job.requestId, name: job.chat?.name || 'Envoi au PC…', source: 'web', generation: { status: 'running' }, pending: job })), jobs: [...jobs.values()].map(job => [job.requestId, job.projectId, job.id, job.status]) }),
+  getView: () => ({ authenticated: state.authenticated, authEpoch: state.authEpoch, revision: conversationMove.revision, projectId: state.projectId, currentId: state.chat?.id, viewKey: state.viewKey, search: $('search').value, disabled: state.uploading || conversationMove.busy, pending: [...jobs.values()].filter(job => !job.id).map(job => ({ projectId: job.projectId, id: 'pending:' + job.requestId, name: job.chat?.name || 'Envoi au PC…', source: 'web', generation: { status: 'running' }, pending: job })), jobs: [...jobs.values()].map(job => [job.requestId, job.projectId, job.id, job.status, job.phase]) }),
   fetchSessions: projectId => api('/api/sessions?projectId=' + encodeURIComponent(projectId)),
   renderSession: renderSessionRow,
   onSelectProject: projectId => selectProject(projectId).catch(e => error(e.message)),
@@ -104,7 +104,7 @@ function readJobs() {
 function rememberJobs() {
   try {
     localStorage.removeItem('bm_pending_reply');
-    const saved = [...jobs.values()].map(({ requestId, projectId, id, createdAt, status, viewKey }) => ({ requestId, projectId, id, createdAt, status, viewKey }));
+    const saved = [...jobs.values()].map(({ requestId, projectId, id, createdAt, status, viewKey, phase }) => ({ requestId, projectId, id, createdAt, status, viewKey, ...(phase==='waiting-model'?{phase}:{} ) }));
     if (saved.length) localStorage.setItem('bm_pending_replies', JSON.stringify(saved)); else localStorage.removeItem('bm_pending_replies');
   } catch {}
 }
@@ -442,7 +442,8 @@ function renderSessionRow(s, projectId) {
     const active = [...jobs.values()].filter(job => job.projectId === projectId && job.id === s.id);
     const queued = Math.max(s.queueCount || s.queue?.filter(item => item.status === 'queued').length || 0, active.filter(job => job.status === 'queued').length);
     const running = s.generation?.status === 'running' || active.some(job => job.status !== 'queued');
-    const label = s.generation?.awaitingApproval ? 'À valider' + (queued ? ' · '+queued+' en attente' : '') : running ? 'Réponse en cours' + (queued ? ` · ${queued} en attente` : '') : queued ? `${queued} en attente` : s.source === 'web' ? (s.origin?.kind==='fork' ? 'Branche' : s.origin ? 'Suite web' : 'Chat web') : 'Bionic';
+    const waitingGpu=s.generation?.phase==='waiting-model'||active.some(job=>job.phase==='waiting-model');
+    const label = s.generation?.awaitingApproval ? 'À valider' + (queued ? ' · '+queued+' en attente' : '') : waitingGpu ? 'En attente du GPU' : running ? 'Réponse en cours' + (queued ? ` · ${queued} en attente` : '') : queued ? `${queued} en attente` : s.source === 'web' ? (s.origin?.kind==='fork' ? 'Branche' : s.origin ? 'Suite web' : 'Chat web') : 'Bionic';
     button.classList.toggle('session-active', running || queued > 0);
     const meta = node('span', 'session-meta'); meta.append(node('span', s.source === 'web' ? 'web-label' : '', label), node('span', '', shortDate(s.updatedAt)));
     button.append(meta); button.addEventListener('click', async () => {
@@ -593,13 +594,16 @@ function groupMessageExtras(article, message, role) {
     summary.append(node('span','message-extras-label','Détails du tour'));
     if(message.metrics){
       const m=message.metrics,format=value=>new Intl.NumberFormat('fr-FR',{maximumFractionDigits:1}).format(value);
-      const duration=Number.isFinite(m.responseSeconds)&&m.responseSeconds>=0?format(m.responseSeconds)+' s':'— s';
+      const hasTotal=Number.isFinite(m.totalSeconds)&&m.totalSeconds>=0,total=hasTotal?m.totalSeconds:m.responseSeconds;
+      const duration=Number.isFinite(total)&&total>=0?format(total)+' s':'— s';
       const tokens=Number.isSafeInteger(m.outputTokens)&&m.outputTokens>=0?format(m.outputTokens)+' tokens':'— tokens';
       const rate=Number.isFinite(m.tokensPerSecond)&&m.tokensPerSecond>0?(m.rateSource==='observed'?'≈ ':'')+format(m.tokensPerSecond)+' tok/s':'— tok/s';
       const measures=node('span','message-turn-measures'),time=node('span','message-turn-duration',duration),throughput=node('span','message-turn-throughput',tokens+' · '+rate);
-      time.title='Durée totale de la réponse'+(duration.startsWith('—')?' indisponible':'');
+      time.title=(hasTotal?'Durée totale depuis l’envoi':'Durée du tour, hors attente et chargement initiaux')+(duration.startsWith('—')?' indisponible':'');
       throughput.title='Tokens générés et débit'+(m.rateSource==='observed'?' estimé sur le flux reçu':'');
-      measures.append(time,throughput);summary.append(measures);
+      measures.append(time);
+      if(Number.isFinite(m.queueSeconds)&&m.queueSeconds>0){const wait=node('span','message-turn-wait','dont '+format(m.queueSeconds)+' s d’attente');wait.title='Attente avant admission, hors chargement du modèle';measures.append(wait);}
+      measures.append(throughput);summary.append(measures);
     }
   }
   const content = node('div','message-extras-content');
@@ -657,13 +661,15 @@ function addMessage(message, parent = $('messages'), renderBody = true) {
     const summary = [];
     if (rate) summary.push((m.rateSource === 'observed' ? '≈ ' : '') + number(m.tokensPerSecond) + ' tokens/s');
     if (Number.isSafeInteger(m.outputTokens)) summary.push(number(m.outputTokens) + ' tokens générés');
-    if (summary.length || Number.isFinite(m.responseSeconds)) {
+    if (summary.length || Number.isFinite(m.totalSeconds) || Number.isFinite(m.responseSeconds) || Number.isFinite(m.queueSeconds)&&m.queueSeconds>0) {
       const details = node('details', 'message-metrics');
       details.append(node('summary', '', summary.join(' · ') || 'Mesures du tour'));
       const explanations = [];
       if (rate) explanations.push(m.rateSource === 'observed' ? 'Débit approché sur le flux reçu, hors attente initiale. Il inclut le raisonnement transmis.' : 'Débit de génération communiqué par Bionic.');
-      if (Number.isFinite(m.firstFragmentSeconds)) explanations.push('Premier fragment reçu après ' + number(m.firstFragmentSeconds) + ' s.');
-      if (Number.isFinite(m.responseSeconds)) explanations.push('Durée totale : ' + number(m.responseSeconds) + ' s.');
+      if (Number.isFinite(m.firstFragmentSeconds)) explanations.push('Premier fragment de génération après ' + number(m.firstFragmentSeconds) + ' s, hors attente initiale.');
+      if (Number.isFinite(m.totalSeconds)&&m.totalSeconds>=0) explanations.push('Durée totale depuis l’envoi : ' + number(m.totalSeconds) + ' s.');
+      if (Number.isFinite(m.queueSeconds)&&m.queueSeconds>0) explanations.push('Attente avant admission : ' + number(m.queueSeconds) + ' s, hors chargement du modèle.');
+      if (Number.isFinite(m.responseSeconds)&&m.responseSeconds>=0) explanations.push('Traitement du tour : ' + number(m.responseSeconds) + ' s, hors attente et chargement initiaux.');
       if (Number.isSafeInteger(m.inputTokens)) explanations.push((m.generationPhases > 1 ? 'Tokens traités en entrée : ' : 'Contexte transmis : ') + number(m.inputTokens) + ' tokens.');
       if (m.generationPhases > 1) explanations.push(m.generationPhases + ' étapes de génération, avec les appels d’outils.');
       if (m.reasoningTokens > 0) explanations.push('Dont raisonnement : ' + number(m.reasoningTokens) + ' tokens générés.');
@@ -683,13 +689,14 @@ function scrollBottom() { $('messages').scrollTop = $('messages').scrollHeight; 
 function renderQueue(chat, parent = $('messages')) {
   const queue = [...(chat?.queue || []).filter(item => ['queued', 'interrupted', 'error'].includes(item.status)), ...(draftForView().failed || [])];
   for (const job of currentJobs()) {
-    if (job.payload && !chat?.messages?.some(message => message.requestId === job.requestId) && !queue.some(item => item.requestId === job.requestId)) queue.push({ ...job.payload, status: job.status === 'submitting' ? 'submitting' : 'queued' });
+    if (job.payload && !chat?.messages?.some(message => message.requestId === job.requestId) && !queue.some(item => item.requestId === job.requestId)) queue.push({ ...job.payload, phase:job.phase, status: job.status === 'submitting' ? 'submitting' : 'queued' });
   }
   for (const item of queue) {
     const article = node('article', 'message queued-message');
     article.dataset.messageKey = 'queue:' + item.requestId;
     const interrupted = item.status === 'interrupted' || item.status === 'error', submitting = item.status === 'submitting';
-    const role=node('div', 'message-role', interrupted ? 'Message non exécuté · à reprendre' : submitting ? 'Envoi au PC…' : 'Message en attente');article.append(role);
+    const waitingGpu=item.phase==='waiting-model'||currentJobs().some(job=>job.requestId===item.requestId&&job.phase==='waiting-model');
+    const role=node('div', 'message-role', interrupted ? 'Message non exécuté · à reprendre' : submitting ? 'Envoi au PC…' : waitingGpu?'Message en attente du GPU':'Message en attente dans ce chat');article.append(role);
     const content = node('div', 'message-body'); content.dataset.messageRole = 'user'; renderText(content, item.text || ''); article.append(content);
     if(item.text){const copy=messageCopyControl('Copier mon prompt');copy.dataset.workspaceFocus='message-copy:'+article.dataset.messageKey;const actions=node('div','message-actions');actions.append(copy);role.append(actions);}
     if (item.attachments?.length) article.append(node('p', 'message-footer', item.attachments.length + ' fichier' + (item.attachments.length > 1 ? 's joints' : ' joint')));
@@ -906,7 +913,8 @@ function setSending() {
   document.querySelectorAll('.session,.project-toggle,.project-select,.project-more').forEach(b => b.disabled = state.uploading || conversationMove.busy);
   const queued = Math.max(state.chat?.queue?.filter(item => item.status === 'queued').length || 0, active.filter(job => job.status === 'queued').length);
   $('composer-activity').hidden = !state.sending;
-  const activityText = state.chat?.generation?.awaitingApproval ? 'Un outil attend ta validation dans ce chat. Tu peux continuer à écrire.' : unresolved ? 'Envoi au PC… Tu peux préparer ton prochain message.' : (running ? 'Réponse en cours sur le PC.' : '') + (queued ? ` ${queued} message${queued > 1 ? 's' : ''} en attente.` : '') + ' Tu peux écrire ou ouvrir un autre chat.';
+  const waitingGpu=state.chat?.generation?.phase==='waiting-model'||active.some(job=>job.phase==='waiting-model');
+  const activityText = state.chat?.generation?.awaitingApproval ? 'Un outil attend ta validation dans ce chat. Tu peux continuer à écrire.' : unresolved ? 'Envoi au PC… Tu peux préparer ton prochain message.' : waitingGpu?'Réponse en attente du GPU. Tu peux écrire ou ouvrir un autre chat.' : (running ? 'Réponse en cours sur le PC.' : '') + (queued ? ` ${queued} message${queued > 1 ? 's' : ''} en attente.` : '') + ' Tu peux écrire ou ouvrir un autre chat.';
   setText($('composer-activity'), activityText);
   $('composer-note').textContent = state.sending ? 'Les messages de ce chat seront traités dans l’ordre. Les réponses continuent si tu quittes le navigateur.' : unassignedProject() ? 'Sans projet : les outils de fichiers sont désactivés.' : currentFileProfile()==='write' ? 'Prochain envoi : lecture ciblée et modifications directes autorisées, avec sauvegardes.' : currentFileProfile()==='read' ? 'Prochain envoi : outils fichiers en lecture seule.' : 'Prochain envoi : outils fichiers désactivés.';
   if(companionSettings.enabled()&&$('agent-images').checked) $('composer-note').textContent += $('image-count').value==='3'?' Trois images différentes seront préparées, puis rendues dans la file commune.':' ComfyUI peut générer une image ; son rendu continue après la réponse.';
@@ -930,7 +938,10 @@ function cacheChat(chat, projectId) {
 }
 function adoptJobs(chat, projectId) {
   const requestId = chat.generation?.requestId || (chat.generation?.status === 'running' ? chat.messages?.findLast(message => message.requestId)?.requestId : null);
-  if (requestId && chat.generation?.status === 'running' && !jobs.has(requestId)) jobs.set(requestId, { requestId, projectId, id: chat.id, createdAt: chat.generation.startedAt || Date.now(), status: 'running' });
+  if (requestId && chat.generation?.status === 'running') {
+    if(!jobs.has(requestId))jobs.set(requestId, { requestId, projectId, id: chat.id, createdAt: chat.generation.startedAt || Date.now(), status: 'running',phase:chat.generation.phase });
+    else if(chat.generation.phase)jobs.get(requestId).phase=chat.generation.phase;
+  }
   for (const item of chat.queue || []) if (item.status === 'queued' && !jobs.has(item.requestId)) jobs.set(item.requestId, { requestId: item.requestId, projectId, id: chat.id, createdAt: item.queuedAt || Date.now(), status: 'queued' });
   rememberJobs();
 }
@@ -953,7 +964,7 @@ async function recoverReplies() {
         const receipt = await api('/api/chat-request?' + new URLSearchParams({ projectId: job.projectId, requestId: job.requestId }));
         if (epoch !== state.authEpoch || revision !== conversationMove.revision || !state.authenticated) return;
         if (receipt.id) bindJob(job, receipt.id);
-        job.status = receipt.status || job.status;
+        job.status = receipt.status || job.status;if(receipt.phase)job.phase=receipt.phase;
         if (job.id) snapshots.set(chatKey(job.projectId, job.id), { projectId: job.projectId, id: job.id });
         if (!['queued', 'running', 'starting', 'preparing', 'submitting', 'reconnecting'].includes(job.status)) {
           jobs.delete(job.requestId);
@@ -1063,7 +1074,7 @@ async function send(event) {
         if (job.epoch !== state.authEpoch || !state.authenticated) return;
         if (e.contextReceipt) { const reply = replyForJob(localChatForJob(job), requestId); if (reply) reply.contextReceipt = e.contextReceipt; }
         if (e.type === 'start' || e.type === 'queued') {
-          bindJob(job, e.id, e.name); job.status = e.type === 'queued' ? 'queued' : 'running';
+          bindJob(job, e.id, e.name); job.status = e.type === 'queued' ? 'queued' : 'running';job.phase=e.phase||(e.type==='start'?'model':undefined);
           const current = localChatForJob(job);
           current.id = e.id; current.name = e.name || current.name; current.source = 'web'; current.model = data.model;
           current.reasoningByModel = { ...current.reasoningByModel, [data.model]: e.reasoning || data.reasoning }; current.fileAccess = e.fileAccess ?? data.fileAccess; current.fileProfile = e.fileProfile ?? data.fileProfile; current.webApproval=e.webApproval??data.webApproval;
@@ -1074,7 +1085,7 @@ async function send(event) {
             const existingReply = replyForJob(current, requestId);
             if (existingReply) { existingReply.id ||= e.replyId; existingReply.contextReceipt = e.contextReceipt || existingReply.contextReceipt; }
             else current.messages.push({ role: 'assistant', id: e.replyId, text: '', localRequestId: requestId, contextReceipt: e.contextReceipt });
-            current.generation = { status: 'running', requestId, replyId: e.replyId };
+            current.generation = { status: 'running', requestId, replyId: e.replyId,phase:e.phase||'model' };
           }
           cacheChat(current, job.projectId); redrawJob(job, true); rememberJobs(); setSending();
         } else if (e.type === 'delta') {
@@ -1092,7 +1103,7 @@ async function send(event) {
           const reply = replyForJob(localChatForJob(job), requestId); if (reply && e.contextReceipt) reply.contextReceipt = e.contextReceipt;
           redrawJob(job, true);
         } else if (e.type === 'error') { if (jobIsVisible(job)) error(e.message); }
-        else if (e.type === 'done') { const reply=replyForJob(localChatForJob(job),requestId);if(reply)Object.assign(reply,{truncated:e.truncated,finishReason:e.finishReason,outputBudget:e.outputBudget,limited:e.limited});if(e.limited&&!e.truncated&&jobIsVisible(job))toast('Limite d’actions atteinte.');redrawJob(job,true); }
+        else if (e.type === 'done') { const reply=replyForJob(localChatForJob(job),requestId);if(reply)Object.assign(reply,{truncated:e.truncated,finishReason:e.finishReason,outputBudget:e.outputBudget,limited:e.limited,metrics:e.metrics??reply.metrics});job.phase=undefined;if(e.limited&&!e.truncated&&jobIsVisible(job))toast('Limite d’actions atteinte.');redrawJob(job,true); }
       }
     }
   } catch (e) {

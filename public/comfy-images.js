@@ -15,7 +15,10 @@ function createImageGenerationView({api,node,getState,redraw}) {
       const download=node('a','file-action','Télécharger l’image');download.href=url(job,chat,message,true);download.download='ComfyUI-'+job.id+'.png';figure.append(download);
     }
     if(job.error)figure.append(node('p','generated-image-error',job.error));
-    figure.append(node('figcaption','generated-image-meta',(job.workflowLabel||(job.workflowId==='hassaku_illustrious'?'Hassaku XL Illustrious v34':'Krea2 Turbo'))+' · '+job.width+' × '+job.height+' · seed '+job.seed));
+    const duration=Number.isFinite(job.executionDurationMs)&&job.executionDurationMs>=0?' · ComfyUI : '+new Intl.NumberFormat('fr-FR',{maximumFractionDigits:1}).format(job.executionDurationMs/1000)+' s':'';
+    figure.append(node('figcaption','generated-image-meta',(job.workflowLabel||(job.workflowId==='hassaku_illustrious'?'Hassaku XL Illustrious v34':'Krea2 Turbo'))+' · '+job.width+' × '+job.height+' · seed '+job.seed+duration));
+    const policy={keep:'Modèle texte conservé : une conversation peut calculer pendant le rendu.',alternate:'Réponses entre les images : le texte attend pendant chaque rendu.',unload:'Déchargement avant les images : les réponses texte attendent la fin du lot.'}[job.modelPolicy];
+    if(policy)figure.append(node('p','generated-image-meta','Mode de cette demande · '+policy));
     if(job.loras?.length)figure.append(node('p','generated-image-meta','LoRA : '+job.loras.map(lora=>lora.name+' ('+lora.strength+')').join(' · ')));
     const details=node('details','generated-image-prompt');details.append(node('summary','','Prompt utilisé'),node('p','',job.prompt));figure.append(details);
     return figure;

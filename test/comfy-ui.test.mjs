@@ -39,3 +39,14 @@ test('series cards identify their image and queue position without exposing anot
   const invalid=f.view.card({...job,seriesIndex:99,seriesTotal:3,queuePosition:-1},f.state.chat,message);
   assert.doesNotMatch(invalid.children[0].text,/Série|Position/);
 });
+
+test('cards show measured ComfyUI duration and the policy frozen for their own image',()=>{
+  const f=fixture(),message={id:'reply'};
+  const card=f.view.card({...job,status:'succeeded',image:{},modelPolicy:'alternate',executionDurationMs:43580},f.state.chat,message);
+  assert.match(card.children.find(child=>child.tag==='figcaption').text,/ComfyUI : 43,6 s/);
+  assert.match(card.children.find(child=>child.text.startsWith('Mode de cette demande')).text,/le texte attend pendant chaque rendu/);
+  for(const executionDurationMs of [undefined,-1,Infinity]){
+    const missing=f.view.card({...job,executionDurationMs},f.state.chat,message);
+    assert.doesNotMatch(missing.children.find(child=>child.tag==='figcaption').text,/ComfyUI :/);
+  }
+});
