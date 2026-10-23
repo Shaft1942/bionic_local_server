@@ -1,105 +1,85 @@
+[Français](README.md) · [English](README.en.md)
+
 # Bionic Mobile — compagnon local
 
-**Candidat local 2.5.0-beta.2**, cumulatif : [lanceur Bionic et ComfyUI](docs/local-services.md) dans Paramètres → Serveurs sur le PC et toutes les [fonctions images de la 2.4.1-beta.2](docs/comfyui.md), notamment quantité 1–5, mémoire par demande, annulation, relance et galerie/ZIP. Les fonctions de la v2.4.0-beta.3 sont conservées. Cette mention ne désigne pas une publication GitHub.
+**Version 2.5.0** · Discutez avec les modèles de votre PC et retrouvez vos projets depuis le navigateur de votre téléphone, sur votre réseau local.
 
-Utilisez les modèles de votre PC, consultez vos projets Bionic et continuez une conversation depuis le navigateur de votre téléphone, sur votre réseau local.
-
-Ce projet communautaire est indépendant de Bionic. Bionic et ses modèles ne sont pas inclus. Le compagnon utilise l’API locale de Bionic et un adaptateur de lecture de ses fichiers internes.
-
-La préversion [**2.4.0-beta.3**](https://github.com/Shaft1942/bionic_local_server/releases/tag/v2.4.0-beta.3) apporte les interactions des fenêtres, le guide certificats, les évolutions de fiabilité/ressources/stockage et l'interface français/anglais. Le choix de langue dans les paramètres reste indépendant des réponses du modèle. Pour la recevoir, choisir Bêta dans Paramètres → Maintenance → Mises à jour, puis vérifier les mises à jour. Voir [le périmètre et ses limites](docs/beta-2.4.md). La stable téléchargeable ci-dessous reste la 2.3.0.
-
-La **2.1.0** avait apporté : certificats gérés depuis le navigateur du téléphone, contexte actualisé lors du changement de modèle et module de nettoyage ComfyUI distribué. Le curseur de tokens reste dans les paramètres, jusqu’à 5 millions. Voir la [validation 2.1](docs/v2.1-validation.md) et le [parcours certificats](docs/certificats-utilisation.md).
-
-La **2.0.0** ajoute les plafonds de réponses par modèle/conversation, avec saisie et slider jusqu’à 5 000 000 tokens, ComfyUI optionnel avec HassakuXL/Krea2 et deux LoRA par modèle, ainsi que les projets repliables.
-Voir le [guide V2](docs/v2-utilisation.md), le [plan et les décisions](docs/v2-plan.md),
-les [métaprompts exécutés](docs/v2-metaprompts.md) et le [registre de validation](docs/v2-validation.md).
-La distribution 2.0.0 conserve l’assistant Windows et les mises à jour proposées avec sauvegarde des données.
-
-## Quelle version télécharger ?
-
-La **stable 2.3.0** reprend le contenu validé de 2.2.1-beta.4 : paramètres par rubrique, Maintenance et Aide séparées, guide revu avec raccourcis vers les réglages, lecture des conversations améliorée et configuration ComfyUI guidée avec nettoyage mémoire facultatif. Les certificats, les réglages de modèles et les protections de mise à jour sont conservés.
-
-Téléchargez **`bionic-mobile-v2.3.0.zip`** depuis [la Release 2.3.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v2.3.0), avec `SHA256SUMS.txt`. **Node.js 24 ou ultérieur est requis** : l’assistant peut réutiliser une installation existante ou, avec votre accord, télécharger une copie portable officielle. Node.js n’est pas inclus dans le ZIP. Aucun Docker requis.
-
-Depuis une installation compatible 1.9.0 ou ultérieure, la 2.3.0 peut être proposée directement par les mises à jour, y compris depuis 2.1.0 et les bêtas 2.2.1. Le canal Stable reste choisi par défaut ; le canal Bêta se choisit dans **Paramètres → Maintenance → Mises à jour** et reçoit aussi cette stable plus récente. Aucun passage par une bêta n’est nécessaire. Depuis 1.8.0, suivez [la procédure manuelle](docs/sauvegarde-mise-a-jour.md). **Code → Download ZIP** fournit l’état de la branche choisie, qui peut différer d’une Release. Voir [les mises à jour proposées](docs/mises-a-jour.md) et les [preuves de validation](docs/v2.2-beta-validation.md).
-
-
-Le [bilan du lot d’audit](docs/choix-audit.md) décrit les choix intégrés et leurs limites. La [vérification](docs/verification.md) distingue les essais synthétiques locaux de la CI et des essais réels. Pour mettre à jour une installation existante, suivez [la procédure de sauvegarde](docs/sauvegarde-mise-a-jour.md).
+Le compagnon utilise l’API locale de Bionic et peut générer des images avec ComfyUI. Ce projet communautaire est indépendant de Bionic ; ni Bionic, ni ComfyUI, ni leurs modèles ne sont inclus.
 
 ## Ce que vous pouvez faire
 
-- Retrouver les projets et les conversations existants, puis démarrer une **suite web distincte**.
-- Classer les conversations dans un autre projet ou **Sans projet**, sans déplacer leurs fichiers ni modifier les historiques natifs Bionic.
-- Renommer ou supprimer un chat depuis ses options. Pour un historique natif, le nom et le masquage restent propres au compagnon ; l’original Bionic est préservé.
-- Choisir un modèle, régler l’effort lorsqu’il le prend en charge et consulter les mesures de génération disponibles.
-- Voir les instances chargées et les décharger pour libérer la mémoire du PC.
-- Lire, télécharger et modifier les fichiers texte du projet depuis le téléphone.
-- Choisir les outils de fichiers du modèle : **Aucun**, **Lecture** ou **Modification** ; retrouver la corbeille du projet même après suppression du chat source.
-- Activer la recherche et la lecture de pages Internet publiques, avec une option pour approuver chaque recherche et URL exacte avant envoi.
-- Faire proposer un script Python, Node.js ou PowerShell et **valider son code exact avant chaque exécution** sur le PC.
-- Créer une branche indépendante d’une conversation entière ou jusqu’à un message inclus, sans rejouer ses outils.
-- Importer des fichiers du téléphone dans le projet et joindre des textes, des documents ou des images compatibles au chat.
-- Quitter le navigateur pendant une réponse et retrouver la génération en cours à la réouverture, tant que le PC et les serveurs restent actifs.
-- Rédiger le message suivant, l’ajouter à la file de la conversation et ouvrir un autre chat pendant les réponses en cours.
-- Retrouver les réponses terminées depuis une absence, conserver des livrables et consulter le contexte réellement utilisé pour une nouvelle réponse.
-- Conserver volontairement les textes de messages non envoyés sur cet appareil pendant 1 heure, 24 heures ou 7 jours, ou seulement dans l’onglet.
+- Consulter les projets et conversations Bionic, puis continuer dans une **suite web distincte**, sans modifier les historiques natifs.
+- Créer des projets locaux, adopter un projet Bionic en choisissant ses dossiers autorisés, classer les chats et créer des branches.
+- Choisir le modèle, l’effort et la limite de réponse ; retrouver les générations en cours et mettre les messages suivants en file.
+- Joindre des documents ou images, consulter et modifier les fichiers texte, conserver des livrables et restaurer les fichiers de la corbeille.
+- Autoriser séparément les outils fichiers, le web et les scripts exécutés après validation de leur code exact.
+- Générer **1 à 5 images par demande** avec Krea 2 Turbo ou HassakuXL, régler deux LoRA par profil et choisir la gestion mémoire texte/images.
+- Annuler une image encore en attente locale, relancer un rendu avec la même graine ou une nouvelle, parcourir la galerie et télécharger un ZIP.
+- Démarrer, arrêter ou redémarrer les serveurs compatibles dans **Paramètres → Serveurs sur le PC**, après configuration explicite sur le PC.
+- Utiliser l’interface et son aide en **français ou en anglais**, avec un choix propre à chaque navigateur.
 
-**Les messages écrits ici ne sont pas ajoutés aux conversations natives de Bionic.** Les outils d’agent, MCP et compétences de Bionic ne sont pas hérités. Le compagnon fournit ses propres outils de fichiers, de web et de scripts, avec des autorisations distinctes.
+Les outils, MCP et compétences de Bionic ne sont pas hérités : le compagnon fournit ses propres outils et autorisations.
 
-## Démarrer sous Windows
+## Installer sous Windows
 
-1. Téléchargez le ZIP de [la stable 2.1.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v2.1.0) ou d'une [bêta publiée](https://github.com/Shaft1942/bionic_local_server/releases), selon le canal souhaité, puis extrayez entièrement l’archive.
-2. Double-cliquez sur **Installer.cmd**. Choisissez le dossier du compagnon et un Node.js compatible, ou cochez le téléchargement portable proposé.
-3. Dans **Bionic → API des modèles locaux**, activez le serveur. Reportez son adresse dans l’assistant ; le suffixe `/v1` est accepté et retiré automatiquement. Le bouton **Tester l’API** lit la liste des modèles sans génération ni déchargement.
-4. Vérifiez le récapitulatif puis cliquez sur **Installer**. Le raccourci et le démarrage sont proposés. L’accès au téléphone via le pare-feu est facultatif et demande l’accord Windows sur un réseau privé.
-5. Ouvrez **ACCES-PRIVE.txt** dans le dossier installé pour trouver votre code personnel et les adresses du PC et du téléphone. Le téléphone doit être connecté au même Wi-Fi.
+Il faut **Node.js 24 ou ultérieur**, Bionic avec son API locale et un dossier accessible en écriture. Docker et une installation de dépendances npm ne sont pas nécessaires pour utiliser le serveur.
 
-L’assistant ne transfère aucune conversation depuis un autre dossier. Pour reconfigurer une installation existante, arrêtez-la puis lancez son propre **Installer.cmd** et choisissez **Ce dossier**. Pour la mettre à jour, utilisez le parcours prévu à cet effet. Le [guide de l’assistant](docs/assistant-installation.md) détaille les choix et leurs limites ; le [parcours manuel](docs/installation.md#installation-manuelle) reste disponible.
+1. Téléchargez l’archive `bionic-mobile-v….zip` et `SHA256SUMS.txt` de la même version depuis les [Releases](https://github.com/Shaft1942/bionic_local_server/releases). Extrayez entièrement le ZIP. Les archives de sources GitHub peuvent différer du paquet de distribution.
+2. Lancez **Installer.cmd**. L’assistant propose le dossier, un Node.js existant ou le téléchargement d’une copie portable officielle, puis les réglages de connexion.
+3. Dans **Bionic → API des modèles locaux**, activez le serveur et reportez son adresse dans l’assistant. **Tester l’API** consulte les modèles sans lancer de génération.
+4. Installez puis démarrez le compagnon. L’ouverture du pare-feu est facultative ; elle demande un accord Windows et reste limitée au réseau privé et au sous-réseau local.
+5. Ouvrez **ACCES-PRIVE.txt** dans le dossier installé. Utilisez l’adresse du PC et son code personnel, puis l’adresse du téléphone sur le même réseau local.
 
-Aucune installation de dépendances npm n’est nécessaire pour exécuter le serveur. **Python est facultatif** : il sert à extraire le texte des documents PDF, DOCX et XLSX et à exécuter les scripts Python que vous validez. Le téléchargement des fichiers et les autres fonctions restent disponibles sans Python.
+Pour les étapes détaillées et le démarrage par `npm start`, voir [Installation](docs/installation.md). **Python est facultatif** : il sert à extraire DOCX/XLSX, les PDF avec `pypdf`, et à exécuter les scripts Python approuvés. Les PDF scannés ne bénéficient pas d’OCR.
 
-Le guide [Installation](docs/installation.md) détaille ces étapes et les options Python.
+## Choisir la langue
 
-## À savoir avant d’utiliser les fichiers
+Dans **Paramètres → Langue et brouillons → Langue de l’interface**, choisissez Français ou English. Le changement est immédiat et mémorisé dans ce navigateur, pour l’adresse utilisée. Un autre navigateur, port ou accès HTTPS possède son propre choix.
 
-Dans **Outils fichiers**, **Modification** autorise des opérations immédiates sur le PC et reste le réglage d’un nouveau chat ordinaire. **Lecture** permet de lister, chercher, inspecter et lire sans mutation par ces outils directs ; **Aucun** les désactive. Les anciens choix activé/désactivé restent respectivement Modification/Aucun. Les remplacements conservent une copie précédente et les retraits passent par une corbeille récupérable ; une sauvegarde indépendante de vos projets reste utile.
+Au premier accès, une langue du navigateur est utilisée si elle est prise en charge ; sinon, le français est choisi. **Ce réglage ne traduit ni vos messages, ni les réponses du modèle, ni les prompts, ni les fichiers.** Demandez au modèle la langue de réponse souhaitée dans votre message. Les diagnostics des moteurs et les outils Windows peuvent conserver leur langue d’origine.
 
-L’application n’envoie pas automatiquement toute votre bibliothèque au modèle. Les lectures par outil sont limitées à des extraits et à un budget par demande. Les fichiers que vous joignez explicitement font partie du contexte envoyé.
+Le [guide anglais](docs/en/guide.md) couvre l’installation et l’usage courant. Les autres guides détaillés sont principalement en français. Pour contribuer aux traductions, voir [Internationalisation](docs/internationalisation.md).
 
-**Internet et les scripts sont désactivés par défaut.** Le menu **Outils** permet de les activer pour les messages suivants. Les scripts approuvés s’exécutent avec les droits de votre compte, au-delà du seul dossier du projet : **ce n’est pas un bac à sable**. Une modification par script n’a pas de sauvegarde automatique garantie. Consultez le [guide des outils](docs/outils-agents.md) avant d’autoriser une proposition.
+## Utiliser les images et les serveurs
 
-**Valider chaque recherche et URL avant envoi** est volontaire et distinct de l’autorisation web. Dans ce mode, chaque envoi des outils web attend un accord exact et les redirections sont refusées. Cette option et le profil Lecture ne limitent pas le réseau ou les droits d’un script approuvé.
+Dans **Paramètres → Images et ComfyUI**, renseignez le serveur, vérifiez les modèles requis, puis activez et enregistrez. Le menu **Outils** du message permet de choisir le profil, **1 à 5 images** et la politique du modèle texte : **Conserver**, **Répondre entre les images** ou **Décharger avant les images**. Le choix est figé pour chaque demande.
 
-Un chat web illisible est préservé et signalé par un **inventaire partiel** ; les autres restent accessibles. Aucune réparation automatique n’est tentée. Le [guide de dépannage](docs/depannage.md) explique la récupération manuelle. Sous Windows, **Diagnostic.cmd** produit un diagnostic borné et **Deconnecter-appareils.cmd** invalide globalement les sessions sans arrêter les travaux ; un appareil connaissant le code peut se reconnecter.
+**Générer ce prompt directement** produit une seule image avec votre texte exact, sans préparation par le modèle de conversation. Le nettoyage ComfyUI facultatif intervient après chaque rendu ; il est distinct du déchargement des modèles texte. Voir [Images](docs/comfyui.md).
 
-Le premier démarrage utilise **HTTP** et un code d’accès pour un **réseau local de confiance**. Dans **Paramètres → Sécurité et accès → Sécurité des connexions**, depuis le téléphone ou le PC, préparez HTTPS, téléchargez l’autorité puis vérifiez la connexion avant activation. Depuis HTTPS, créez et téléchargez directement le certificat privé de chaque appareil, avec son mot de passe d’import, puis activez si souhaité le certificat client obligatoire (mTLS). L’import dans le système demande votre confirmation. Le port de vérification est configuré une fois dans l’assistant Windows ; **Certificats.cmd** reste un outil de récupération locale. Consultez le [parcours certificats](docs/certificats-utilisation.md).
+Le lanceur se prépare avec **Configurer-serveurs.cmd** sur le PC. Il pilote l’API Bionic sélectionnée et les instances ComfyUI Python qu’il contrôle ; il ne prend pas en charge une instance externe simplement parce qu’elle répond. Arrêter Bionic coupe son API sans fermer son application Desktop. Voir [Serveurs sur le PC](docs/local-services.md).
 
-N’exposez pas directement le compagnon sur Internet et n’ouvrez pas de redirection de port sur votre routeur. Lisez [Sécurité](SECURITY.md) avant de partager un accès.
+## Permissions et accès
+
+Dans **Outils fichiers**, **Modification** est le choix initial d’un nouveau chat ordinaire : les écritures autorisées sont immédiates, sans confirmation par fichier. Choisissez **Lecture** ou **Aucun** si vous n’en avez pas besoin. Les sauvegardes de remplacement et la corbeille ne remplacent pas une sauvegarde indépendante.
+
+Le web et les scripts sont désactivés par défaut. Vous pouvez demander un accord pour chaque recherche et URL. **Chaque script exige l’approbation de son code exact, puis s’exécute avec les droits du compte PC : ce n’est pas un bac à sable.** Les profils de fichiers ne limitent pas les droits d’un script approuvé.
+
+Le compagnon est destiné à un **réseau local de confiance**. HTTP ne chiffre pas le code, les messages et les fichiers. Dans **Paramètres → Sécurité et accès**, préparez HTTPS, puis éventuellement un certificat par appareil avec mTLS. Ne contournez pas les alertes de certificat et n’exposez pas directement ce port sur Internet.
+
+L’application ne fournit ni comptes séparés ni isolation entre utilisateurs autorisés. Gardez privés le code d’accès, `data/`, la configuration locale, les profils de lancement et les sauvegardes d’identité. Voir [Sécurité](SECURITY.md) et [Certificats](docs/certificats-utilisation.md).
+
+## Mettre à jour et sauvegarder
+
+Dans **Paramètres → Maintenance → Mises à jour**, choisissez Stable ou Bêta puis vérifiez les versions disponibles. L’installation demande votre accord ; les travaux actifs ou incertains peuvent la bloquer. Les checkouts Git se mettent à jour avec Git.
+
+Avant une mise à jour manuelle, attendez la fin des travaux, arrêtez le compagnon et sauvegardez ses données privées ainsi que les dossiers de projets séparément. Une sauvegarde complète de `data/` inclut l’identité de certificats et doit rester protégée. La langue et les brouillons conservés dans le navigateur ne font pas partie de cette copie serveur.
+
+Voir [Sauvegarde et mise à jour](docs/sauvegarde-mise-a-jour.md) et [Mises à jour proposées](docs/mises-a-jour.md).
 
 ## Documentation
 
 | Besoin | Guide |
 | --- | --- |
-| Installer et accéder depuis le téléphone | [Installation](docs/installation.md) |
-| Conversations, fichiers, modèles et reprise | [Utilisation](docs/utilisation.md) |
-| Recherche web, corbeille, validation des scripts et branches de conversations | [Outils des agents](docs/outils-agents.md) |
-| Ports, dossiers et variables d’environnement | [Configuration](docs/configuration.md) |
-| Page inaccessible, API ou documents indisponibles | [Dépannage](docs/depannage.md) |
-| Préserver ses données pendant une mise à jour | [Sauvegarde et mise à jour](docs/sauvegarde-mise-a-jour.md) |
-| Comprendre le code et lancer les vérifications | [Développement](docs/developpement.md) et [Contribution](CONTRIBUTING.md) |
-| Préparer un dépôt et une archive sans données privées | [Publication](docs/publication.md) |
-| Évolution du projet | [Journal des versions](CHANGELOG.md) |
-| Idées d’évolution et bonnes pratiques des interfaces d’IA | [20 pistes UX](docs/PISTES-UX.md) et [méta-prompts d’exploration](docs/metaprompts-exploration.md) |
-| Agents utilisés et portée des contrôles | [Méta prompts](docs/metaprompts.md) et [Vérification](docs/verification.md) |
-| Consignes exécutées pour les outils et les branches 1.8 | [Méta-prompts d’implémentation 1.8](docs/metaprompts-implementation-1.8.md) |
-| Choix d’audit retenus, critères, dépendances et limites du diff local | [Lot d’audit](docs/choix-audit.md) |
+| Trouver le bon parcours | [Index de la documentation](docs/README.md) |
+| Installer, discuter et gérer les fichiers | [Installation](docs/installation.md) · [Utilisation](docs/utilisation.md) |
+| Images, mémoire et contrôle des serveurs | [ComfyUI](docs/comfyui.md) · [Serveurs sur le PC](docs/local-services.md) |
+| Outils, permissions et accès sécurisé | [Outils](docs/outils-agents.md) · [Sécurité](SECURITY.md) |
+| Régler les connexions ou résoudre un problème | [Configuration](docs/configuration.md) · [Dépannage](docs/depannage.md) |
+| Contribuer ou préparer une distribution | [Contribution](CONTRIBUTING.md) · [Développement](docs/developpement.md) · [Publication](docs/publication.md) |
+| Consulter les changements | [Journal des versions](CHANGELOG.md) |
 
-## Compatibilité
+## Compatibilité et licence
 
-La base de validation est **Windows, Node.js 24+ et Bionic 1.1.8+10**. La lecture des projets dépend d’une structure interne Bionic, notamment SQLite ; elle peut nécessiter une adaptation après une mise à jour de Bionic. Le lancement par `npm start` est prévu sur les autres systèmes, mais leur fonctionnement complet n’est pas validé.
+La cible principale est **Windows avec Node.js 24+**. La lecture des projets Bionic dépend de ses formats internes et peut nécessiter une adaptation après une mise à jour. Sur macOS et Linux, le démarrage par `npm start` est prévu, mais le parcours complet n’est pas qualifié. La prise en charge des outils, de la vision et de l’effort dépend du modèle ; les performances dépendent du matériel et des moteurs.
 
-L’analyse d’images nécessite un modèle marqué **Vision**. L’effort, les appels d’outils et les statistiques dépendent du modèle et des réponses de l’API. Tous les modèles ne sont pas fiables pour modifier des fichiers.
-
-## Licence
-
-Le code du compagnon est fourni sous [licence MIT](LICENSE). Cette licence ne couvre ni Bionic, ni les modèles, ni les fichiers de vos projets.
+Le compagnon est sous [licence MIT](LICENSE). Cette licence ne couvre pas Bionic, ComfyUI, les modèles ou vos fichiers.

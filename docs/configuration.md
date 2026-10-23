@@ -1,18 +1,10 @@
 # Configuration
 
-Les [paramètres V2](v2-utilisation.md) permettent de régler les plafonds de réponse
-par modèle/conversation et de configurer ComfyUI sans modifier de fichier.
-Pour l’initialisation, `comfyEnabled` vaut `false`, `comfyUrl` vaut
-`http://127.0.0.1:8188` et `comfyWorkflowId` vaut `krea2_turbo`.
-Les variables équivalentes sont `BIONIC_COMFY_ENABLED`, `BIONIC_COMFY_URL` et
-`BIONIC_COMFY_WORKFLOW_ID`. Les préférences enregistrées dans l’UI sont ensuite
-prioritaires, dans `data/comfy-settings.json`. Voir [le contrat ComfyUI](comfyui.md).
+[Documentation](README.md) · [Installation](installation.md) · [Dépannage](depannage.md)
 
-[Retour au README](../README.md)
+Les réglages courants se font dans **Paramètres** : plafonds de réponse, images/ComfyUI, sécurité et maintenance. Le [guide d’utilisation](utilisation.md) explique leur portée. La langue de l’interface se choisit par navigateur ; elle ne règle ni celle des réponses ni celle des prompts.
 
-Le fichier **`config.example.json`** contient les valeurs de départ partageables. Copiez-le en **`config.local.json`**, à la racine du compagnon. Ce second fichier est privé et ignoré par Git. Redémarrez le serveur après un changement.
-
-Le fichier `data/config.json` est différent : il est généré pour l’authentification. Ne le remplacez pas par le fichier d’exemple et ne l’éditez pas pour changer les ports.
+Pour l’initialisation, copiez **config.example.json** en **config.local.json** à la racine du compagnon. Ce fichier est privé et ignoré par Git. Les variables d’environnement sont prioritaires ; redémarrez après leur modification ou celle du fichier. **data/config.json** contient l’authentification générée : ne le remplacez pas par l’exemple.
 
 ## Réglages usuels
 
@@ -25,28 +17,34 @@ Le fichier `data/config.json` est différent : il est généré pour l’authent
   "python": "",
   "extraRoots": [],
   "maxConcurrentInferences": 0,
-  "requestTimeoutMs": 180000
+  "resourcePolicy": "exclusive",
+  "shutdownTimeoutMs": 15000,
+  "requestTimeoutMs": 180000,
+  "comfyUrl": "http://127.0.0.1:8188",
+  "comfyEnabled": false,
+  "comfyWorkflowId": "krea2_turbo"
 }
 ```
 
-| Champ | Signification |
+| Champ | Usage |
 | --- | --- |
-| `port` | Port HTTP du compagnon. Par défaut : `8769`. Choisissez un autre port s’il est déjà utilisé. |
-| `certificateProofPort` | Port TLS dédié aux vérifications de certificats. Distinct du port principal, entre 1 et 65535 ; par défaut le port principal + 1 (ou −1 si 65535). Il n’écoute que pendant une préparation, dix minutes maximum. L’assistant Windows configure son autorisation réseau une fois. |
-| `apiUrl` | Adresse de l’API Bionic sur ce PC, sans `/v1` final. L’exemple utilise `1235` ; vérifiez le port dans Bionic. Seules les adresses de boucle locale sont autorisées. |
-| `bionicRoot` | Dossier de données Bionic. Vide : détection dans `.lmstudio/apps/bionic` du compte utilisateur. Ce n’est pas le dossier de `Bionic.exe`. |
-| `python` | Exécutable Python destiné à l’extraction de documents et aux scripts Python validés. Vide : `python` sous Windows, `python3` ailleurs. Sans Python, ces deux usages sont indisponibles ; les autres fonctions restent disponibles. |
-| `extraRoots` | Dossiers supplémentaires visibles manuellement dans l’explorateur de fichiers. Tableau vide par défaut. |
-| `maxConcurrentInferences` | Plafond des appels modèle simultanés du compagnon, entier de `0` à `32`. `0` par défaut : régulation désactivée. Un plafond positif admet les appels en FIFO et libère le créneau pendant un accord humain ; il ne pilote ni le GPU ni les autres clients Bionic. |
-| `requestTimeoutMs` | Durée maximale de réception d’un corps HTTP, de `30000` à `1800000` ms ; défaut `180000` ms. Elle borne notamment connexion, messages et imports, sans couper une génération déjà acceptée. Aucun essai Wi-Fi physique n’est déduit de cette valeur. |
+| `port` | Port du compagnon, 1–65535 ; défaut 8769 |
+| `certificateProofPort` | Port TLS distinct pour la preuve de certificat ; défaut port principal +1, ou −1 si 65535. Écoute seulement pendant une préparation, dix minutes maximum |
+| `apiUrl` | API Bionic HTTP en boucle locale, sans `/v1`, identifiant, paramètres ni fragment. Vérifiez le port dans Bionic |
+| `bionicRoot` | Dossier de données Bionic ; vide : `.lmstudio/apps/bionic` du compte. Ce n’est pas le dossier de `Bionic.exe` |
+| `python` | Interpréteur pour l’extraction de documents et les scripts Python validés ; vide : `python` sous Windows, `python3` ailleurs |
+| `extraRoots` | Dossiers supplémentaires pour l’exploration manuelle ; tableau vide au départ |
+| `maxConcurrentInferences` | Plafond des appels texte simultanés, 0–32 ; 0 désactive ce plafond. Ne contrôle pas les clients externes |
+| `resourcePolicy` | Coordination de base `exclusive` (défaut) ou `independent`. Le choix mémoire du lot d’images pilote aussi ses phases texte/images ; voir [ComfyUI](comfyui.md#modèle-texte-pendant-les-images) |
+| `shutdownTimeoutMs` | Délai d’arrêt du compagnon, 100–120000 ms ; défaut 15000 |
+| `requestTimeoutMs` | Réception d’un corps HTTP, 30000–1800000 ms ; défaut 180000. Ne coupe pas une génération déjà acceptée |
+| `comfyEnabled`, `comfyUrl`, `comfyWorkflowId` | Valeurs initiales ComfyUI ; désactivé, `http://127.0.0.1:8188`, `krea2_turbo`. Autre profil : `hassaku_illustrious` |
 
-N’utilisez pas l’adresse IP du téléphone ni une IP publique pour `apiUrl`. Le téléphone appelle le compagnon ; seul le compagnon contacte l’API Bionic locale. CORS n’est pas nécessaire pour ce trajet.
+Le téléphone appelle le compagnon, qui contacte Bionic sur le PC. CORS et l’exposition réseau de l’API Bionic ne sont pas nécessaires. Les préférences ComfyUI enregistrées dans l’interface sont ensuite prioritaires dans `data/comfy-settings.json` : [Images ComfyUI](comfyui.md).
 
-Les chemins peuvent contenir des espaces. En JSON, doublez les antislashs Windows ou utilisez des `/` : `"C:/MesProjets"`.
+Les chemins JSON peuvent utiliser `/` ou des antislashs doublés. Les profils du lanceur se règlent séparément sur le PC : [Serveurs sur le PC](local-services.md).
 
 ## Dossiers supplémentaires explicites
-
-Vous pouvez ajouter un dossier à l’explorateur manuel :
 
 ```json
 {
@@ -61,99 +59,65 @@ Vous pouvez ajouter un dossier à l’explorateur manuel :
 }
 ```
 
-Chaque dossier doit avoir un identifiant distinct, un nom et un chemin absolu existant. `writable: false` limite l’usage à la consultation ; `true` permet l’édition manuelle des textes compatibles. Ces dossiers sont disponibles depuis les projets du compagnon : ne choisissez pas un dossier personnel trop large. Ils n’élargissent pas le périmètre des outils directs de fichiers du modèle, qui restent dans le dossier de travail du projet Bionic. Un script validé dispose toutefois des droits du compte du PC et n’est pas limité à ce périmètre.
+Chaque dossier a un identifiant distinct et un chemin absolu. `writable: false` conserve la lecture seule ; `true` autorise l’édition manuelle des textes compatibles. Ces dossiers peuvent être accessibles depuis plusieurs projets : évitez une racine personnelle trop large. Ils n’élargissent pas la racine des outils directs du modèle. Un projet adopté utilise les dossiers explicitement confirmés lors de son adoption, plutôt qu’un ajout implicite d’accès.
 
 ## Variables d’environnement
 
-Les variables prennent le pas sur le fichier local. Elles sont utiles pour un lancement depuis un terminal ou un environnement personnel ; ne placez pas de secret dans un fichier versionné.
-
 | Variable | Réglage |
 | --- | --- |
-| `BIONIC_MOBILE_PORT` | Port du compagnon |
-| `BIONIC_MOBILE_CERTIFICATE_PROOF_PORT` | Prioritaire sur `certificateProofPort` ; même validation et nécessité d’une règle réseau correspondante |
-| `BIONIC_API_URL` | Adresse de l’API Bionic locale |
-| `BIONIC_API_TOKEN` | Jeton d’API si votre serveur Bionic en exige un |
-| `BIONIC_MOBILE_BIONIC_ROOT` | Dossier de données Bionic |
-| `BIONIC_MOBILE_PROJECT_REGISTRY` | Chemin explicite du registre de projets pour le service de fichiers ; par défaut dérivé du dossier Bionic |
-| `BIONIC_MOBILE_EXTRA_ROOTS` | Tableau JSON de dossiers supplémentaires |
-| `BIONIC_MOBILE_PYTHON` | Exécutable Python pour l’extraction et les scripts validés ; utilisez un chemin absolu pour imposer un interpréteur précis |
-| `BIONIC_MOBILE_NODE` | Exécutable Node.js utilisé par les lanceurs Windows |
-| `BIONIC_MOBILE_MAX_INFERENCES` | Prioritaire sur `maxConcurrentInferences`, mêmes valeurs de `0` à `32` |
-| `BIONIC_MOBILE_REQUEST_TIMEOUT_MS` | Prioritaire sur `requestTimeoutMs`, mêmes bornes en millisecondes |
-| `BIONIC_SEARCH_URL` | Endpoint HTTP(S) complet de recherche SearXNG, par exemple `http://127.0.0.1:8080/search`, sans identifiant, paramètres ni fragment |
-| `BIONIC_BRAVE_SEARCH_KEY` | Clé privée facultative pour Brave Search, utilisée seulement si aucun endpoint SearXNG n’est configuré |
-| `BIONIC_SEARCH_FALLBACK` | `brave` pour essayer DuckDuckGo Lite d’abord puis Brave en secours si une clé est définie ; vide par défaut |
+| `BIONIC_MOBILE_PORT` | `port` |
+| `BIONIC_MOBILE_CERTIFICATE_PROOF_PORT` | `certificateProofPort` ; règle de pare-feu correspondante nécessaire |
+| `BIONIC_API_URL` | `apiUrl` |
+| `BIONIC_API_TOKEN` | Jeton privé si Bionic l’exige |
+| `BIONIC_MOBILE_BIONIC_ROOT` | `bionicRoot` |
+| `BIONIC_MOBILE_PROJECT_REGISTRY` | Registre de projets pour les fichiers ; normalement dérivé du dossier Bionic |
+| `BIONIC_MOBILE_EXTRA_ROOTS` | Tableau JSON `extraRoots` |
+| `BIONIC_MOBILE_PYTHON` | Interpréteur Python |
+| `BIONIC_MOBILE_NODE` | Node.js utilisé par les lanceurs Windows |
+| `BIONIC_MOBILE_MAX_INFERENCES` | `maxConcurrentInferences` |
+| `BIONIC_MOBILE_RESOURCE_POLICY` | `resourcePolicy` |
+| `BIONIC_MOBILE_SHUTDOWN_TIMEOUT_MS` | `shutdownTimeoutMs` |
+| `BIONIC_MOBILE_REQUEST_TIMEOUT_MS` | `requestTimeoutMs` |
+| `BIONIC_COMFY_ENABLED` | Initialisation ComfyUI : `true`/`false` ou `1`/`0` |
+| `BIONIC_COMFY_URL` | URL initiale ComfyUI |
+| `BIONIC_COMFY_WORKFLOW_ID` | Profil initial ComfyUI |
+| `BIONIC_SEARCH_URL` | Endpoint SearXNG complet |
+| `BIONIC_BRAVE_SEARCH_KEY` | Clé privée Brave Search |
+| `BIONIC_SEARCH_FALLBACK` | `brave` pour le secours après DuckDuckGo, avec clé ; vide au départ |
 
-Le registre de projets interne est normalement `.internal/projects-registry.json` sous le dossier Bionic. Il est préférable de laisser sa détection automatique ; un registre de fichiers différent ne transforme pas une collection quelconque en projets natifs Bionic.
+Un plafond d’inférences compte chaque appel modèle, y compris après un outil, et libère son créneau pendant un accord humain. Le délai global d’un tour reste de trente minutes, attente et accord compris. La capacité réelle de Bionic et du GPU reste indépendante de ce réglage.
 
-Le plafond d’inférences compte chaque appel à l’API du modèle, y compris les appels suivants après un outil. La rédaction, la navigation et les messages acceptés restent disponibles. Le délai global d’un tour reste de **trente minutes, attente d’admission et accord humain compris** : libérer un créneau pendant l’accord ne suspend pas ce délai. Remettez le plafond à `0` et redémarrez votre copie pour retrouver l’admission sans plafond. La capacité réelle de Bionic et du modèle doit être vérifiée séparément.
-
-Exemple PowerShell pour tester un port différent pendant la session :
+Exemple pour un autre port dans un terminal PowerShell :
 
 ```powershell
 $env:BIONIC_MOBILE_PORT = '8775'
 npm start
 ```
 
-Si votre API Bionic requiert un jeton, définissez `BIONIC_API_TOKEN` dans votre environnement privé, sans le copier dans une issue, une capture ou une commande publiée. Consultez [Sécurité](../SECURITY.md) pour les données à conserver privées.
+Les jetons doivent rester dans l’environnement privé du serveur. Ne les placez pas dans le navigateur, le dépôt ou une commande destinée à être partagée.
 
 ## Certificats et transport du compagnon
 
-Le niveau HTTP/HTTPS/mTLS se gère dans **Paramètres → Sécurité et accès → Sécurité des connexions**, depuis le téléphone ou le PC, et non par
-un champ de `config.local.json` ou un retour automatique en HTTP. L’état privé
-est dans `data/security/` et son plancher dans `data/security-floor.json`.
-Ne pas copier ces fichiers depuis une autre installation ni les supprimer pour
-contourner un verrouillage. Le [guide certificats](certificats-utilisation.md)
-décrit la confiance initiale, la preuve TLS, les appareils et la récupération.
+Le niveau HTTP/HTTPS/mTLS se gère dans **Paramètres → Sécurité et accès → Sécurité des connexions**, sans champ de configuration ni retour automatique à HTTP. Le stockage de `data/security/` et le plancher `data/security-floor.json` sont privés : ne les supprimez pas pour contourner un verrouillage.
 
-Le port `port` reste celui de l’application après chaque confirmation. Une page
-de preuve utilise `certificateProofPort` pendant dix minutes maximum. Le pare-feu
-autorise ce port précis dans le même périmètre privé que le port principal. Un
-ancien dossier sans ce provisionnement affiche un diagnostic demandant une
-configuration unique dans l’assistant sur le PC. Le reçu local
-`runtime/certificate-network.json` est seulement un indicateur de configuration
-du réseau actuel ; il ne garantit pas la connectivité de l’appareil.
-La maintenance a son propre port HTTP éphémère, lié uniquement à `127.0.0.1`,
-décrit sans secret dans `runtime/transport.json`. Ce canal ne sert pas l’application.
-Les API Bionic et ComfyUI gardent leur configuration indépendante ; HTTPS du
-compagnon ne change pas leur transport.
+L’application conserve son port après confirmation. `certificateProofPort` sert seulement à la préparation temporaire. La maintenance possède un port HTTP éphémère sur **127.0.0.1 uniquement**, distinct de l’application. HTTPS du compagnon ne change pas le transport des API Bionic ou ComfyUI. Voir [Certificats](certificats-utilisation.md).
 
 ## Moteur de recherche des agents
 
-Le web est désactivé par défaut dans le chat. Lorsqu’il est autorisé pour un message, le choix du moteur suit cet ordre :
+Le web est désactivé dans un nouveau chat. Une fois autorisé, le moteur est choisi dans cet ordre :
 
-1. `BIONIC_SEARCH_URL` défini : SearXNG à l’adresse configurée.
-2. Sinon, `BIONIC_BRAVE_SEARCH_KEY` défini : Brave Search.
-3. Sinon : interface publique DuckDuckGo Lite, sans clé, [documentée pour les clients sans JavaScript](https://duckduckgo.com/duckduckgo-help-pages/features/non-javascript).
+1. `BIONIC_SEARCH_URL` : SearXNG à cet endpoint.
+2. Sinon `BIONIC_BRAVE_SEARCH_KEY` : Brave Search.
+3. Sinon DuckDuckGo Lite sans clé.
 
-Sans configuration de secours, un échec ne change pas de fournisseur. DuckDuckGo peut refuser les robots ou demander une vérification humaine, y compris sur Lite. Les HTTP 202/403/429 sont signalés comme des blocages : les recherches suivantes du même tour ne sont pas renvoyées au moteur ; la lecture d’une URL publique reste disponible. Un nouveau message peut réessayer. Les résultats vides ou illisibles restent des erreurs, jamais un succès inventé.
+Sans secours explicite, un échec ne change pas de fournisseur. Pour garder DuckDuckGo en premier et Brave en secours, définissez **BIONIC_SEARCH_FALLBACK=brave** et la clé Brave. SearXNG reste prioritaire et ne bascule pas. Le secours est tenté une fois après un échec exploitable, sans contourner un refus de sécurité ; avec validation web, il exige un nouvel accord avant transmission à Brave.
 
-Pour garder DuckDuckGo en premier et utiliser Brave seulement en secours, définissez **les deux variables serveur** `BIONIC_SEARCH_FALLBACK=brave` et `BIONIC_BRAVE_SEARCH_KEY`. Sans clé, le secours reste inactif. Sans la première variable, la clé continue de sélectionner Brave comme moteur principal. SearXNG conserve la priorité et ne bascule pas vers Brave.
+Les blocages DuckDuckGo 202/403/429 empêchent les recherches répétées dans le même tour, sans bloquer la lecture d’une URL publique. Un nouveau message peut réessayer.
 
-Le secours est tenté une seule fois après une erreur de recherche (réseau, délai, refus distant ou résultats inexploitables), jamais après une annulation ou un refus de sécurité. Avec la validation de chaque envoi, une **seconde demande d’accord** indique l’URL exacte de Brave avant toute transmission ; refuser cet accord n’envoie rien à Brave. Sans cette validation, l’autorisation web et la configuration du serveur autorisent le secours. Les actions réussies indiquent « secours Brave » et le fournisseur réel. La clé est envoyée uniquement à l’API Brave, sans suivre ses redirections. Consultez les [instructions officielles pour créer et conserver la clé](https://api-dashboard.search.brave.com/documentation/guides/authentication) ; les limites de votre abonnement restent applicables.
+Pour SearXNG, indiquez l’endpoint complet, par exemple `http://127.0.0.1:8080/search`, sans identifiants, paramètres ni fragment. Le compagnon ajoute `q` et `format=json` ; activez le format JSON dans les réglages SearXNG. L’endpoint configuré peut être local, mais ses redirections sont refusées et cela ne donne pas accès à d’autres pages privées. Voir [API SearXNG](https://docs.searxng.org/dev/search_api.html).
 
-Pour votre propre instance SearXNG, indiquez **l’endpoint complet**, normalement terminé par `/search`. Le compagnon ajoute lui-même `q` et `format=json`. Le format JSON doit être activé dans le `settings.yml` de SearXNG, en conservant vos autres réglages :
-
-```yaml
-search:
-  formats:
-    - html
-    - json
-```
-
-Une instance qui n’autorise pas le JSON peut répondre HTTP 403 ; de nombreuses instances publiques limitent cet accès. Voir l’[API de recherche SearXNG](https://docs.searxng.org/dev/search_api.html) et le [réglage `search.formats`](https://docs.searxng.org/admin/settings/settings_search.html#formats).
-
-Exemple de lancement PowerShell, pour une instance locale que vous avez installée séparément :
-
-```powershell
-$env:BIONIC_SEARCH_URL = 'http://127.0.0.1:8080/search'
-npm start
-```
-
-L’endpoint SearXNG explicitement configuré peut être local et utiliser un autre port ; ses redirections sont refusées. Cette exception n’ouvre pas la lecture de pages privées aux agents. Les URL de résultats restent filtrées comme des pages publiques. Utilisez un endpoint de confiance : les mots recherchés lui seront transmis.
-
-Ces deux variables de recherche se règlent **uniquement dans l’environnement du serveur**, pas comme nouveaux champs de `config.local.json`. Relancez le serveur pour les appliquer. Si vous utilisez `Demarrer.cmd`, il doit hériter du même environnement. Conservez toute clé Brave dans votre configuration privée ; ne la placez ni dans le navigateur, ni dans un fichier versionné, ni dans une archive. Les limites du web et des scripts sont décrites dans [Outils des agents](outils-agents.md).
+Ces réglages de recherche appartiennent à l’environnement serveur, pas à `config.local.json`. Les recherches et URL sont communiquées aux services concernés. Les limites et accords sont décrits dans [Outils et autorisations](outils-agents.md#internet-public).
 
 ## Changement de réseau ou de port
 
-Les adresses de connexion sont actualisées dans `ACCES-PRIVE.txt` au démarrage. Après un changement de réseau, relancez le compagnon et utilisez la nouvelle adresse. Si vous changez le port, vérifiez également la règle de pare-feu Windows. Le code d’accès existant est conservé tant que les données d’authentification le sont.
+Après un changement de réseau, relancez le compagnon et relisez les adresses de `ACCES-PRIVE.txt`. Si le port change, adaptez son autorisation réseau. Si le nom ou l’IP change en HTTPS, le certificat doit couvrir la nouvelle adresse : voir [Certificats](certificats-utilisation.md#si-la-vérification-échoue). Le code reste conservé tant que l’authentification de l’installation l’est.

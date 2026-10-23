@@ -1,21 +1,20 @@
 # Aide dans l’application
 
-Dans **Paramètres → Aide**, le guide intégré couvre le démarrage, les conversations et brouillons, les fichiers, les permissions web et scripts, ComfyUI, la connexion des appareils, le dépannage et les mises à jour. Ouvrir une rubrique ne déclenche aucun appel réseau ni changement de réglage. Les boutons conduisent aux paramètres concernés, sans exécuter l’action qu’ils désignent.
+Dans **Paramètres → Aide**, le guide intégré présente les conversations, brouillons, fichiers, autorisations, images, connexions et mises à jour. Les boutons ouvrent les paramètres concernés : consulter l’aide ne lance ni diagnostic, génération ou commande de serveur.
 
-Les capacités annoncées par le serveur figurent sous le guide. Elles décrivent les fonctions disponibles ; les permissions effectives restent celles du projet et du message.
+Les capacités annoncées décrivent les fonctions disponibles ; les droits effectifs restent ceux du projet et du message. **Paramètres → Maintenance** regroupe diagnostic et mises à jour ; **Sécurité et accès** permet de déconnecter cet appareil.
 
-**Paramètres → Maintenance** regroupe les mises à jour, le diagnostic de connexion et les indications de configuration avancée sur le PC. La déconnexion de cet appareil reste dans **Sécurité et accès**. L’aide est une rubrique distincte. Les écrans conservent leurs précisions près des contrôles : le guide explique les usages et les conséquences, sans remplacer les messages d’état.
+L’aide suit la langue de l’interface, **Français** ou **English**, choisie dans **Langue et brouillons**. Cela ne traduit pas les conversations, fichiers ou prompts et ne définit pas la langue du modèle.
 
 ## Documentation détaillée
 
-- [Outils, validations et branches](outils-agents.md)
-- [Images ComfyUI et nettoyage mémoire facultatif](comfyui.md)
-- [Certificats et connexion des appareils](certificats-utilisation.md)
-- [Utilisation générale](utilisation.md)
-- [Sécurité et données privées](../SECURITY.md)
-
-## Maintenir l’aide
-
-Le contenu public est rendu par `public/help.js`, avec `renderCompanionHelp({ container, node, navigate })`. Les sections utilisent les éléments natifs `details` et `summary`. Le rendu utilise du texte et des nœuds DOM, sans interprétation HTML des données du serveur. La navigation est fournie par le contrôleur des paramètres.
-
-Une modification de comportement doit être vérifiée dans son module propriétaire avant d’être annoncée dans ce guide. Les recettes ComfyUI, les permissions, les effets des scripts et les canaux de mise à jour demandent une attention particulière. Les preuves sur données synthétiques ne qualifient pas un téléphone, un modèle ni un service réel.
+- [Installer et connecter un appareil](installation.md)
+- [Utiliser projets, conversations, fichiers et livrables](utilisation.md)
+- [Choisir les outils et leurs autorisations](outils-agents.md)
+- [Générer et conserver des images ComfyUI](comfyui.md)
+- [Piloter Bionic et ComfyUI depuis le compagnon](local-services.md)
+- [Configurer HTTPS, mTLS et la récupération locale](certificats-utilisation.md)
+- [Dépanner une installation](depannage.md)
+- [Sauvegarder et mettre à jour](sauvegarde-mise-a-jour.md)
+- [Lire le guide en anglais](en/guide.md)
+- [Comprendre les limites de sécurité](../SECURITY.md)

@@ -20,6 +20,7 @@ export async function collectReleaseFiles(root = repositoryRoot) {
   const resolvedRoot = await realpath(root);
   const files = [];
   for (const relative of manifest.files) {
+    if (typeof relative === 'string' && /^(?:(?:agents|\.agents|work|reference)\/|docs\/(?:history\/|metaprompts[^/]*\.md$|v2-metaprompts\.md$))/i.test(relative)) throw new Error('Trace interne interdite dans la distribution.');
     if (typeof relative === 'string' && /(?:^|\/)config\.launchers\.local\.json$/i.test(relative)) throw new Error('Profil de lancement privé interdit dans la distribution.');
     if (typeof relative !== 'string' || relative.includes('\\') || /[:\x00-\x1f]/.test(relative) || path.posix.isAbsolute(relative) || relative.split('/').some(part => !part || part === '.' || part === '..') || excluded.test(relative)) throw new Error('Chemin interdit dans la liste de distribution.');
     let filename = resolvedRoot;

@@ -32,6 +32,7 @@ jobs:
       - run: node --test --test-concurrency=2 test/*.test.mjs
       - run: python -B test/comfy-memory-node.test.py
       - run: npm run check:export
+      - run: npm run check:docs
       - name: Construire le canal choisi
         env:
           RELEASE_CHANNEL: ${{ steps.version.outputs.channel }}
@@ -47,8 +48,8 @@ jobs:
           const archive = 'bionic-mobile-v' + pkg.version + '.zip';
           const beta = pkg.version.includes('-beta.');
           const notice = beta ? '**Version beta : version d’essai du canal beta, à choisir volontairement.**\n\n' : '';
-          const update = beta ? 'Depuis la stable 2.1.0, le premier accès à la beta nécessite la procédure manuelle du README, avec sauvegarde des données : cette stable ne possède pas encore le choix du canal. Après cette installation, choisissez beta dans les paramètres des mises à jour pour recevoir les préversions suivantes. ' : 'Depuis 1.9.0, utilisez les mises à jour proposées dans le compagnon. Les installations plus anciennes suivent la procédure manuelle du README, avec sauvegarde des données. ';
-          const notes = notice + '## Installation Windows\n\nTéléchargez **' + archive + '** ci-dessous, extrayez entièrement le ZIP puis double-cliquez sur **Installer.cmd**. L’assistant détecte Node.js ou propose son téléchargement portable avec votre accord. Bionic doit être installé séparément.\n\n## Nouveautés\n\n' + changes + '\n\n## Mise à jour\n\n' + update + 'Node.js 24 minimum ; le runtime portable n’est pas inclus dans le ZIP.\n\nL’archive ne contient ni conversations, ni clés, ni configuration personnelle. SHA256SUMS.txt et update-manifest.json sont joints pour le contrôle de l’archive et de sa compatibilité.\n';
+          const update = beta ? 'Choisissez Bêta dans Paramètres → Maintenance → Mises à jour si votre installation propose ce canal. Sinon, suivez la procédure manuelle du README avec sauvegarde des données. ' : 'Depuis 1.9.0, utilisez les mises à jour proposées dans le compagnon. Les installations plus anciennes suivent la procédure manuelle du README, avec sauvegarde des données. ';
+          const notes = notice + '## Installation Windows\n\nTéléchargez **' + archive + '** ci-dessous, extrayez entièrement le ZIP puis double-cliquez sur **Installer.cmd**. L’assistant détecte Node.js ou propose son téléchargement portable avec votre accord. Bionic doit être installé séparément. L’interface et les guides d’accueil sont disponibles en français et en anglais.\n\n## Nouveautés\n\n' + changes + '\n\n## Mise à jour\n\n' + update + 'Node.js 24 minimum ; le runtime portable n’est pas inclus dans le ZIP.\n\nL’archive ne contient ni conversations, ni clés, ni configuration personnelle. SHA256SUMS.txt et update-manifest.json sont joints pour le contrôle de l’archive et de sa compatibilité.\n';
           fs.writeFileSync('dist/RELEASE_NOTES.md', notes);
           NODE
       - name: Publier le ZIP et son empreinte

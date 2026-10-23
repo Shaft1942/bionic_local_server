@@ -1,54 +1,45 @@
 # Sécurité et données privées
 
-## Périmètre prévu
+[Documentation française](docs/README.md) · [English usage and safety](docs/en/guide.md)
 
-Bionic Mobile est un compagnon personnel pour un **réseau local de confiance**. Le niveau initial utilise HTTP : le code, les messages et les fichiers ne bénéficient pas d’un chiffrement de transport entre le téléphone et le PC. Une personne ayant accès au réseau ou au code peut présenter un risque pour ces données.
+## Périmètre
 
-**Paramètres → Connexion et appareils → Sécurité des connexions**, dans le navigateur du téléphone ou du PC, prépare HTTPS puis HTTPS avec certificat client obligatoire (mTLS). Une autorité propre à l’installation signe le serveur et une identité par appareil. La clé d’autorité et la clé serveur restent sur le PC. Depuis une session HTTPS authentifiée, l’export client PKCS#12 chiffré est téléchargeable une seule fois, pendant cinq minutes, lié à cette session et à son certificat mTLS éventuel. Le mot de passe est affiché une fois dans le panneau, effacé à sa fermeture, jamais stocké dans le navigateur ; l’export serveur reste en mémoire et expire. Aucune clé privée n’est servie en HTTP. L’import et la confiance de l’autorité se font explicitement dans le système de l’appareil ; il ne faut pas contourner un avertissement de certificat. Le bootstrap HTTP reste dépendant de la confiance du réseau : comparer l’empreinte de l’autorité avec celle affichée sur le PC par un canal fiable.
+Bionic Mobile est un compagnon personnel pour un **réseau local de confiance**. Il ne fournit ni comptes distincts, ni rôles, ni isolation entre utilisateurs : chaque appareil autorisé partage le périmètre du compagnon. N’exposez pas le port sur Internet, n’ajoutez pas de redirection NAT et n’utilisez pas un réseau public ou invité non maîtrisé.
 
-Chaque préparation ouvre uniquement une page de preuve sur un port TLS dédié configuré une fois, avec un ticket à usage unique valable dix minutes, transmis par POST dans le parcours navigateur. Les actions exigent une session, l’origine exacte et un nonce CSRF ; la passerelle autorise uniquement l’origine du candidat dans sa CSP. La confirmation ferme l’ancien accès réseau, invalide les sessions et persiste le niveau atteint. Une panne, une expiration ou une clé absente ne réactive jamais HTTP. En mTLS, la chaîne de confiance et le registre de l’appareil sont contrôlés ; les sessions sont liées au certificat présenté. La révocation ferme les connexions concernées ; la reprise TLS ne permet pas de contourner ce contrôle. Le parcours web empêche de retirer son propre certificat actif ou de supprimer tous les accès par révocations concurrentes. Un renouvellement conserve l’ancien certificat jusqu’au retrait explicite après import et vérification du remplaçant.
+Le navigateur contacte le compagnon ; les appels à l’API Bionic restent en boucle locale. Les outils web envoient les recherches et URL aux services concernés. Un accès chiffré ne protège pas contre un compte Windows compromis, un script approuvé ou un document piégeant un modèle.
 
-Le canal de maintenance HTTP distinct écoute uniquement sur `127.0.0.1`, avec des routes limitées et le secret d’administration local. Il ne sert ni l’application ni des archives privées ; il ne permet aucun reset de l’identité. La récupération totale nécessite l’outil local, serveur arrêté, et une confirmation explicite sur le PC. Elle renouvelle les accès et conserve les conversations, pièces jointes et fichiers projets. Les sauvegardes contenant l’ancienne autorité doivent rester privées. Une restauration manuelle complète d’un ancien dossier peut restaurer une ancienne identité ; les garanties applicatives ne remplacent pas la maîtrise du compte Windows et des sauvegardes.
+## Connexions et certificats
 
-Voir le [guide certificats](docs/certificats-utilisation.md) et le [choix de signature](docs/certificats-signature.md). Ces mécanismes n’ajoutent pas de rôles ni d’isolation entre les personnes autorisées : tout appareil admis partage toujours le périmètre du compagnon.
+Le premier accès utilise HTTP et un code aléatoire propre à l’installation. Sur ce transport, code, messages et fichiers ne sont pas chiffrés entre appareil et PC. Dans **Paramètres → Sécurité et accès → Sécurité des connexions**, préparez HTTPS, importez l’autorité publique et vérifiez l’adresse et son empreinte par un canal fiable avant activation. Ne contournez pas un avertissement de certificat.
 
-N’exposez pas directement le serveur sur Internet, n’ajoutez pas de redirection NAT et n’utilisez pas un Wi-Fi public ou invité non maîtrisé. Cette application ne fournit ni isolation entre utilisateurs, ni rôles, ni comptes séparés. Toute personne qui dispose du code accède au même périmètre du compagnon, avec les possibilités de lecture et d’écriture correspondantes.
+Les clés de l’autorité et du serveur restent sur le PC. Le certificat privé PKCS#12 d’un appareil se télécharge uniquement depuis une session HTTPS authentifiée, une seule fois pendant cinq minutes. Son mot de passe est affiché une fois puis effacé à la fermeture du panneau ; il n’est pas mis dans une URL ni stocké dans le navigateur. **La clé privée de l’autorité ne doit jamais être transférée sur un appareil.** Le certificat client obligatoire (mTLS) est facultatif et distinct de la confiance HTTPS.
 
-Le navigateur contacte le compagnon ; le compagnon appelle l’API Bionic en boucle locale. L’API Bionic n’a pas besoin d’être exposée au réseau. Le serveur rejette les adresses d’API distantes dans sa configuration normale. L’option web distincte permet des connexions sortantes du PC vers le moteur de recherche et les pages publiques demandées. Les recherches et URL sont donc communiquées aux services concernés ; ne les utilisez pas pour transmettre des secrets.
+La preuve de connexion utilise un port TLS distinct et un ticket à usage unique. Après confirmation d’une montée de sécurité, une panne, expiration ou clé manquante ne réactive pas automatiquement HTTP. Le canal de maintenance reste en boucle locale, avec des routes limitées et un secret d’administration ; il n’expose pas l’application ni les archives privées.
 
-## Protections présentes et limites
+En mTLS, la chaîne et le registre de l’appareil sont contrôlés et les sessions sont liées au certificat. Le renouvellement conserve l’ancien accès jusqu’au retrait explicite ; les révocations ferment les connexions concernées. La récupération totale exige une action locale explicite, serveur arrêté : elle renouvelle les accès en préservant les conversations et fichiers. Une restauration manuelle d’une ancienne sauvegarde peut restaurer une ancienne identité.
 
-- Un code aléatoire propre à l’installation, dont une empreinte est enregistrée pour la vérification ; le code lisible reste dans `ACCES-PRIVE.txt`.
-- Des sessions temporaires en cookie `HttpOnly` et `SameSite=Strict`, ainsi que des contrôles d’hôte, d’origine et de provenance réseau.
-- Des limites sur les requêtes, les imports, les lectures et les étapes d’outils.
-- Des chemins de fichiers contrôlés, des catégories sensibles masquées et le refus de liens de fichiers ou de sorties du dossier autorisé.
-- Des sauvegardes avant remplacement et une vérification de version avant l’écriture, pour limiter les écrasements en cas de changement concurrent.
-- La consultation des historiques natifs sans écriture ni migration de leurs bases.
-- Pour les outils web : adresses publiques contrôlées, résolution DNS vérifiée et connexion fixée à l’adresse contrôlée, redirections revérifiées, taille et durée bornées, extraction passive sans JavaScript. Seul un endpoint SearXNG explicitement configuré peut viser un moteur local ; cette confiance ne s’étend pas aux URL de pages choisies par le modèle.
-- Pour les scripts : options désactivées par défaut, accord humain lié au code exact, au projet et au chat, sans réutilisation après décision ou redémarrage. Les branches n’héritent d’aucune attente de validation ni d’aucun pouvoir de restauration du journal source.
+Consultez le [parcours certificats](docs/certificats-utilisation.md) pour l’import et le dépannage, et la [documentation technique](docs/certificats-signature.md) pour signature et stockage.
 
-Ces protections ne constituent pas un audit de sécurité exhaustif. Le logiciel, le système, Bionic, les modèles et les documents peuvent encore comporter des défauts. Le filtrage de noms de fichiers ne garantit pas qu’un document autorisé ne contient aucun secret.
+## Fichiers, outils et serveurs
 
-L’option de modification par le modèle est cochée par défaut dans un nouveau chat. Lorsqu’elle est active, les écritures autorisées sont **immédiates**, sans approbation par fichier. Un contenu de document peut aussi tromper un modèle malgré les consignes de séparation entre données et instructions. Utilisez un projet de test pour les documents non fiables, décochez cette option quand elle n’est pas nécessaire et conservez des sauvegardes indépendantes.
+- Les sessions utilisent un cookie `HttpOnly`, `SameSite=Strict`, et des contrôles d’hôte/origine. Les requêtes, lectures, imports et étapes d’outils sont bornés.
+- Les historiques natifs sont lus sans écriture. Les chemins autorisés, liens symboliques, catégories sensibles et versions de fichiers sont contrôlés ; des sauvegardes ou une corbeille accompagnent les mutations prévues.
+- **Modification** est le profil fichiers d’un nouveau chat ordinaire. Il autorise des écritures directes sans accord par fichier. Choisissez **Lecture** ou **Aucun** lorsque ces droits ne sont pas nécessaires, notamment face à un document non fiable.
+- Internet et scripts sont désactivés par défaut. La validation facultative des recherches/URL est distincte de l’autorisation web. L’extraction web est passive, sans JavaScript, avec contrôle des adresses et redirections.
+- **Chaque script exige un accord sur son code exact puis utilise les droits du compte PC : ce n’est pas un bac à sable.** Le dossier du projet, le profil Lecture et l’accord web ne limitent pas ses accès au PC/réseau. L’arrêt ou le délai ne garantit pas l’annulation des effets ou l’arrêt de descendants. Une sauvegarde indépendante reste nécessaire.
+- Le lanceur utilise des profils préparés sur le PC ; le modèle et le téléphone ne construisent pas de commandes libres. Il distingue identité, API et activité, refuse les contrôles incertains et protège les travaux suivis par le compagnon. Le réglage d’usage dédié est une convention : aucun verrou n’empêche un client externe de contacter le moteur.
+- Après une réponse perdue, un résultat incertain ou un redémarrage, les opérations ne sont pas automatiquement rejouées. Consultez le suivi avant toute nouvelle demande.
 
-L’option de scripts permet de proposer du code Python, Node.js ou PowerShell. **Chaque proposition exige un accord explicite, puis s’exécute avec les droits du compte du PC : ce n’est pas un bac à sable.** Le dossier de travail du projet ne limite pas ses accès aux fichiers ou au réseau. L’environnement transmis est réduit, mais le code approuvé peut lire les données accessibles au compte. L’expiration, les limites de durée et l’arrêt de processus ne garantissent ni l’annulation des modifications ni l’arrêt de descendants détachés. Le code et ses sorties sont conservés dans les conversations privées. Voir le [guide des outils](docs/outils-agents.md).
+Ces protections ne constituent pas un audit exhaustif. Le filtrage de fichiers ne garantit pas qu’un document autorisé ne contient aucun secret. Les outils et scripts sont détaillés dans [Outils](docs/outils-agents.md) ; les profils dans [Serveurs sur le PC](docs/local-services.md).
 
-## Ce qui ne doit pas être publié
+## Données exclues du dépôt et des archives
 
-Ne partagez pas :
+Ne partagez jamais `ACCES-PRIVE.txt`, `config.local.json`, `config.launchers.local.json`, `.env*`, jetons, clés ou exports PKCS#12. Gardez privés `data/`, `runtime/`, historiques natifs, registres de projets, sauvegardes, imports et captures personnelles. Les traces d’agents et relevés d’un poste restent hors du dépôt produit. Les exemples et fixtures sont fabriqués.
 
-- `ACCES-PRIVE.txt`, `config.local.json`, les fichiers `.env` et les jetons d’API.
-- `data/`, qui contient notamment les conversations web, l’authentification, des copies de pièces jointes et les sauvegardes de fichiers.
-- `runtime/`, les journaux, les sauvegardes privées et les traces d’exécution.
-- Les dossiers de données Bionic, les bases SQLite, les registres et métadonnées de projets personnels.
-- Les vrais fichiers de projets, y compris `Imports telephone/`, ou des captures montrant leur contenu.
+Le `.gitignore` ne retire pas un fichier déjà suivi. La [distribution](docs/publication.md) doit provenir de la liste fermée des sources revues, jamais d’une copie de l’installation active. Une sauvegarde contenant accès ou certificats exige la même protection que l’original.
 
-Le fichier `.gitignore` évite les ajouts accidentels habituels, mais ne retire pas un fichier déjà suivi par Git. Vérifiez les fichiers suivis et l’historique avant une publication. Les archives doivent provenir de la copie de distribution propre, jamais d’un dossier actif contenant vos données.
+Si un secret est exposé, arrêtez sa diffusion, retirez les copies publiques, renouvelez-le auprès du service propriétaire et examinez historique Git, releases et autres copies. Effacer le dernier fichier ne rend pas le secret à nouveau confidentiel.
 
-Si un secret est publié, retirez-le des sources et archives, renouvelez-le immédiatement, puis examinez aussi l’historique Git, les releases et les copies éventuelles. Une suppression dans le dernier commit ne suffit pas à le rendre secret de nouveau.
+## Signaler un problème
 
-## Signaler une vulnérabilité
-
-Pour [ce dépôt](https://github.com/Shaft1942/bionic_local_server), utilisez **Security → Advisories → Report a vulnerability** si le signalement privé est activé. Sinon, ouvrez une issue minimale demandant un canal confidentiel, **sans publier de secret, d’exploitation détaillée ni de données personnelles**.
-
-Un signalement utile contient la version du compagnon, de Bionic, de Node.js et du système, le périmètre concerné et une reproduction sur données fictives. Le projet ne promet pas de délai de traitement ni de maintenance rétroactive ; vérifiez les versions publiées et les notes de correction avant une mise à jour.
+Utilisez **Security → Advisories → Report a vulnerability** dans le [dépôt](https://github.com/Shaft1942/bionic_local_server) si ce parcours est disponible. Sinon, ouvrez une issue minimale demandant un canal privé, sans secret ni détail d’exploitation. Donnez versions, périmètre et reproduction fictive. Aucun délai de traitement n’est garanti.

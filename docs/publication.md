@@ -1,138 +1,56 @@
-# Publication sur GitHub
+# Préparer une distribution
 
-[Retour au README](../README.md)
+[Documentation](README.md) · [Développement](developpement.md) · [Sécurité](../SECURITY.md)
 
-## Canaux stable et beta
+Le dépôt produit contient les sources publiques, exemples neutres, guides actuels, licences et tests synthétiques. Il ne contient ni installation active, données, profils de lancement privés, sorties de tests, méta-prompts, rapports d’agents ou relevés d’un poste personnel. Un fichier retiré du dernier commit peut rester dans l’historique ; un secret exposé exige renouvellement et traitement de ses copies, selon [Sécurité](../SECURITY.md).
 
-Le canal **stable** est choisi par défaut dans les paramètres des mises à jour. Le canal **beta** est volontaire : il permet de recevoir les préversions en cours de préparation. Le réglage est conservé dans les données locales et reste indépendant du numéro de la version installée.
+## Version et canaux
 
-Les installations restées en `2.1.0` ne disposent pas du choix du canal. Elles peuvent recevoir directement la stable `2.3.0` par la mise à jour habituelle, puis choisir beta si souhaité. Une installation neuve conserve stable par défaut, même si son ZIP est une beta. Un premier passage manuel vers une préversion reste possible selon la procédure du README, avec sauvegarde des données.
-
-| Canal | Version et tag | Publication GitHub |
+| Canal | Version du paquet et tag | Release GitHub |
 | --- | --- | --- |
-| Stable | `X.Y.Z`, tag `vX.Y.Z` | Release normale, marquée comme dernière stable (`--latest`) |
-| Beta | `X.Y.Z-beta.N`, tag `vX.Y.Z-beta.N` | Préversion (`--prerelease`), jamais dernière stable (`--latest=false`) |
+| Stable | `X.Y.Z`, `vX.Y.Z` | Normale, dernière stable |
+| Bêta | `X.Y.Z-beta.N`, `vX.Y.Z-beta.N` | Préversion, jamais dernière stable |
 
-`N` est un entier positif sans zéro initial. Les autres préversions (`alpha`, `rc`), métadonnées de build et numéros avec zéro initial sont refusés. L'ordre est numérique : `2.2.0-beta.2 < 2.2.0-beta.10 < 2.2.0`. Une version stable et sa beta ne doivent jamais partager le même tag.
+`N` est un entier positif sans zéro initial. Les autres suffixes et métadonnées de build sont refusés. Chaque publication utilise une version et un tag nouveaux ; le tag correspond exactement à `package.json`. Le `CHANGELOG.md` contient une section pour ce numéro complet. Le choix de canal d’une installation reste indépendant du paquet installé ; voir [Mises à jour](mises-a-jour.md).
 
-Le canal beta peut également recevoir une stable plus récente. Revenir au canal stable change les prochaines versions recherchées ; cela ne réinstalle pas une version plus ancienne. Par exemple, une installation `2.2.0-beta.1` attend une stable ultérieure compatible, telle que `2.2.0`, si la dernière stable est encore `2.1.0`. Ce mécanisme conserve les contrôles de compatibilité et les protections des données de l'installateur.
+## Contrôler le candidat
 
-Pour construire et vérifier explicitement chaque canal :
-
-```sh
-# package.json déclare 2.2.0
-npm run release -- --channel stable
-
-# package.json déclare 2.2.0-beta.1
-npm run release -- --channel beta
-```
-
-Le canal demandé doit correspondre à `package.json`. Sans option, `npm run release` déduit le canal de cette version. Le workflow applique la même validation avant les tests et vérifie que le tag correspond exactement au paquet. Les notes du `CHANGELOG.md` doivent comporter une section pour le numéro complet, suffixe beta compris. Une préversion utilise une nouvelle version et un nouveau tag pour chaque livraison.
-
-## Contrat des mises à jour à partir de 1.9.0
-
-`npm run release` produit désormais trois pièces jointes : le ZIP, `SHA256SUMS.txt` et `update-manifest.json`. Le workflow de publication joint les trois à la Release ; une version sans ce manifeste reste téléchargeable manuellement mais n'est pas proposée automatiquement.
-
-Avant un tag, examinez `update-compatibility.json` : `schemaVersion: 1`, `minInstalledVersion`, borne `maxInstalledVersion` facultative, `nodeMajorMin`, `nodeMajorMax` et `platforms`. Ces champs sont une déclaration de compatibilité à vérifier par le mainteneur, pas une déduction fiable du seul numéro de version. Gardez la borne minimale de la plus ancienne version depuis laquelle la mise à jour directe a été validée ; n'imposez pas une version intermédiaire inutilement. Un changement incompatible doit relever cette borne ou annoncer une mise à jour manuelle. Le protocole inconnu sera refusé par les anciens vérificateurs.
-
-Le générateur ajoute au manifeste le canal explicite (`channel: "stable"` ou `channel: "beta"`), le numéro du paquet, le nom du ZIP et son SHA-256. Les anciens manifestes `schemaVersion: 1` sans canal restent acceptés pour les versions stables ; une beta exige un canal explicite concordant. Les bornes de compatibilité et la version installée utilisent le même ordre stable/beta. Ne modifiez pas ces champs à la main après génération. Le manifeste est une pièce jointe extérieure au ZIP afin d'éviter une empreinte circulaire. Avant publication, vérifiez les tests Windows/Ubuntu du commit choisi et un parcours d'installation depuis la version minimale annoncée, avec données synthétiques et récupération. Les empreintes vérifient la cohérence des pièces jointes ; elles ne constituent pas une signature indépendante du compte qui publie la Release.
-
-La publication de 1.9.0 est déclenchée volontairement par son tag après les contrôles de la branche. La Release 1.8.0 est conservée ; l'installation initiale de ce mécanisme depuis 1.8.0 nécessite une mise à jour manuelle.
-
-Ce guide concerne la **copie de distribution propre** du programme. Il ne faut pas publier le dossier d’une installation active contenant des conversations, codes, journaux ou sauvegardes.
-
-Le dépôt prévu est [Shaft1942/bionic_local_server](https://github.com/Shaft1942/bionic_local_server). La licence du compagnon est [MIT](../LICENSE). Elle n’inclut pas Bionic, les modèles ou les documents des utilisateurs.
-
-## Statut de distribution vérifié
-
-État historique relevé au début de l’audit, le **21 octobre 2026**, avant la préparation de la Release 1.8.0 :
-
-| Source | État observé |
-| --- | --- |
-| Dernière Release publiée | [v1.5.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.5.0) |
-| `main` examiné | [`5e92da3`](https://github.com/Shaft1942/bionic_local_server/commit/5e92da3fae6dccdb36738eb42ab4a0b1b2b00bf1), paquet 1.8.0 |
-| Lot `feat/choix-audit-bionic` | Modifications locales, numéro 1.8.0 conservé, non publiées |
-| Dernière CI publique examinée | [Run 39498935835](https://github.com/Shaft1942/bionic_local_server/actions/runs/39498935835) sur la référence auditée, en échec |
-
-Ces observations sont historiques et ne décrivent pas le dernier état du dépôt. Consultez [les Releases](https://github.com/Shaft1942/bionic_local_server/releases) et [les exécutions CI](https://github.com/Shaft1942/bionic_local_server/actions/workflows/ci.yml) pour la version choisie. Une archive construite localement est un artefact de vérification ; sa publication exige une CI Windows/Ubuntu verte sur le commit exact avant l’envoi du tag.
-
-## Vérifier la copie avant l’envoi
-
-Les sources, les tests fictifs, les lanceurs, la configuration d’exemple et la documentation peuvent être distribués. La copie ne doit contenir ni historique personnel, ni trace d’exécution réelle.
-
-À contrôler avant tout commit et dans l’archive finale :
-
-- Absence de `data/`, `runtime/`, `node_modules/`, `ACCES-PRIVE.txt`, `config.local.json`, `diagnostic-bionic.json`, fichiers `.env`, journaux, captures privées et sauvegardes. `dist/` n’entre pas dans sa propre archive.
-- Absence de bases ou registres personnels Bionic, projets réels, imports du téléphone et captures montrant des conversations réelles.
-- Absence de jetons, codes, noms de compte Windows, chemins privés et adresses propres à la machine d’origine dans les sources ou l’historique.
-- Configuration d’exemple neutre : aucun dossier supplémentaire ouvert par défaut, aucun chemin vers un runtime privé, aucun code prérempli.
-- Licence, version et liens de documentation cohérents ; limites fonctionnelles explicites.
-- Vérifications automatisées réussies et lancement depuis une extraction propre, sans utiliser le runtime de la machine de développement par un chemin personnel codé en dur.
-
-Un scan automatique aide à détecter des motifs connus, mais ne prouve pas l’absence de toute donnée privée. Relisez la liste réelle des fichiers à publier. `.gitignore` n’efface pas les secrets déjà suivis et ne filtre pas une archive créée en copiant un dossier entier.
-
-## Préparer le dépôt
-
-Dans un dépôt déjà cloné, examinez les modifications avant de les indexer :
+Travaillez depuis une copie propre des sources sélectionnées, jamais par copie d’une installation contenant ses données. Examinez diff, index, licences et liens français/anglais.
 
 ```sh
 git status --short
 git diff
-git ls-files
-```
-
-Si le dépôt distant contient déjà des commits, récupérez son état et conservez son historique. N’utilisez pas un envoi forcé pour remplacer un historique sans examen. Si vous partez d’un dossier neuf, initialisez son historique uniquement avec les fichiers de distribution revus.
-
-Avant l’envoi, exécutez les contrôles décrits dans [Développement](developpement.md) :
-
-```sh
 npm run check
 npm test
 npm run check:export
+npm run check:docs
 ```
 
-Inspectez aussi les fichiers indexés, qui sont ceux du prochain commit :
+La liste fermée `release-manifest.json` définit les fichiers autorisés dans Git et le ZIP. Tout ajout ou retrait doit être intentionnel et cohérent avec l’index. L’export refuse chemins privés, liens symboliques, formats de données/clé et motifs connus d’accès ; ce scan ne remplace pas une revue du contenu. `.gitignore` n’efface pas un fichier déjà suivi.
+
+La CI de branche ou de pull request vérifie Windows et Ubuntu, Node.js 24. Avant le tag, exigez son succès sur le commit exact et vérifiez les parcours d’installation/mise à jour correspondant aux bornes annoncées avec données synthétiques. Les modèles et systèmes non exercés ne sont pas compatibles du seul fait d’une archive construite.
+
+## Construire et inspecter
 
 ```sh
-git diff --cached --stat
-git diff --cached
+npm run release -- --channel stable
+# Pour un paquet X.Y.Z-beta.N : npm run release -- --channel beta
 ```
 
-Les identités de commit sont des métadonnées publiques. Choisissez votre identité Git selon votre préférence, par exemple une adresse GitHub de confidentialité, sans recopier une identité personnelle depuis un autre projet.
+Le canal demandé doit correspondre à `package.json`. Sans option, il est déduit de la version. Le dossier `dist/` reçoit :
 
-## Créer une archive téléchargeable
+- `bionic-mobile-v<version>.zip` : sources publiques sous un dossier versionné ;
+- `SHA256SUMS.txt` : empreinte du ZIP ;
+- `update-manifest.json` : version, canal, archive, empreinte et compatibilité.
 
-Le projet fournit une construction depuis une **liste fermée de fichiers autorisés**, déclarée dans `release-manifest.json` :
+Comparez inventaire du ZIP et manifeste, chaque entrée et ses sources, CRC et SHA-256. Le manifeste de mise à jour reste extérieur au ZIP pour éviter une empreinte circulaire. L’extraction ne doit contenir aucun code d’accès préexistant, profil privé, `data/`, `runtime/` ou journal. Un essai de démarrage et migration utilise un dossier neuf ou une ancienne installation synthétique.
 
-```sh
-npm run release
-```
+`update-compatibility.json` déclare protocole, versions installées acceptées, Node.js et plateformes. Sa borne minimale est une déclaration à vérifier, pas une conséquence du numéro de version. Ne la relevez pas sans nécessité et ne promettez pas un saut non qualifié. Les empreintes prouvent la cohérence des pièces jointes, pas une signature indépendante du compte éditeur.
 
-L’archive est écrite dans `dist/`. Vérifiez le résultat des contrôles et son contenu avant tout envoi. N’archivez pas à la place un dossier lancé puis rempli de données privées. Si vous ajoutez un fichier nécessaire au lancement ou à la documentation, vérifiez qu’il est inclus dans la liste de distribution. Les outils de développement, y compris le smoke navigateur, peuvent être distribués comme sources ; leurs dépendances et résultats locaux ne le sont pas.
+## Publication GitHub
 
-Extrayez l’archive obtenue dans un dossier vierge et vérifiez au minimum :
+La construction locale ne publie rien. Une publication autorisée consiste à envoyer le tag du commit vérifié. `.github/workflows/release.yml` valide le tag, lance les contrôles, construit l’archive puis crée la Release avec les trois pièces jointes. Une bêta utilise `--prerelease --latest=false` ; une stable utilise `--latest`.
 
-1. Le README, la licence, les guides, les scripts et tous les fichiers nécessaires au lancement sont présents.
-2. Aucun dossier de données, code préexistant ou élément personnel n’est inclus.
-3. Le démarrage crée une authentification propre à cette extraction, et non un code livré dans l’archive.
-4. L’utilisateur peut configurer son propre port Bionic et ses chemins sans modifier le code.
+Les notes décrivent le résultat, l’installation, la mise à jour et les limites. Les guides annoncent les fonctions de la version sans affirmer sa publication avant son existence. Après publication, téléchargez les pièces jointes et vérifiez version, inventaire, empreintes et détection par le canal attendu.
 
-Comparez aussi l’inventaire exact du ZIP au manifeste, les octets aux sources, son CRC et son SHA-256. Pour un essai de mise à jour, fabriquez une ancienne installation synthétique avec authentification, chats, classement, livrables et sauvegardes ; copiez uniquement ses données dans l’extraction neuve et comparez leurs empreintes avant le lancement. Vérifiez ensuite l’accès et les données préservées. Un résultat sur fixtures ne vaut pas migration d’une installation personnelle.
-
-Les fichiers générés pendant cette validation restent dans le dossier de test ; ne les réintégrez pas dans la release.
-
-## Publier une version
-
-Une publication future nécessite une instruction distincte, un numéro de version décidé, une CI verte sur le commit exact et une archive contrôlée. Créez alors un tag correspondant à `package.json`, une note de version et l’archive propre en pièce jointe, avec son empreinte SHA-256. Ne réutilisez pas un ancien tag pour distribuer un nouveau diff.
-
-La note doit dire ce qui est nouveau, comment installer et mettre à jour, ce qui a été testé et les limitations connues. Les versions de Bionic et les systèmes non vérifiés ne doivent pas être présentés comme compatibles par défaut.
-
-Le workflow `release.yml` automatise cette procédure lors de l’envoi d’un tag `v*` : il vérifie que le tag correspond à une version stable ou beta valide du paquet, lance les tests, construit l’archive depuis le manifeste et crée la Release du canal choisi avec le ZIP, `SHA256SUMS.txt` et `update-manifest.json`. Une beta est publiée comme préversion sans déplacer la dernière stable. L’envoi de ce tag déclenche donc une publication téléchargeable ; ne l’effectuez qu’après revue des sources. Les vérifications ordinaires des branches et pull requests disposent seulement d’un accès en lecture au dépôt.
-
-GitHub peut distribuer le code et les archives, mais **GitHub Pages n’héberge pas le serveur Node.js de cette application**. Chaque personne télécharge et exécute sa propre copie sur son PC avec Bionic. Aucun serveur central n’est nécessaire à cette distribution.
-
-## Après publication
-
-Ouvrez la page publique et téléchargez l’archive publiée pour contrôler ce que reçoivent réellement les utilisateurs. Ne publiez pas de captures d’une installation personnelle pour illustrer la release ; utilisez seulement des données fictives préparées à cet effet.
-
-Si un élément privé apparaît malgré ces contrôles, appliquez la procédure de [Sécurité](../SECURITY.md) : retrait, renouvellement des secrets concernés et examen des autres copies, y compris l’historique et les releases.
+Les [Releases](https://github.com/Shaft1942/bionic_local_server/releases) et [exécutions CI](https://github.com/Shaft1942/bionic_local_server/actions/workflows/ci.yml) donnent l’état distant. GitHub distribue les sources et archives ; GitHub Pages n’héberge pas ce serveur Node.js. Aucun envoi forcé ni réécriture d’historique ne découle d’un nettoyage documentaire.

@@ -1,37 +1,39 @@
-# Serveurs sur le PC — 2.5.0-beta.2
+# Serveurs sur le PC
 
-Le compagnon peut piloter une API Bionic explicitement sélectionnée et une instance ComfyUI Python qu'il lance lui-même. Ouvre **Paramètres → Serveurs sur le PC** pour consulter leur état. Démarrer est manuel ; Arrêter et Redémarrer demandent confirmation et refusent une activité connue ou incertaine. Aucune commande n'est envoyée au modèle.
+[Installation](installation.md) · [Images ComfyUI](comfyui.md) · [Dépannage](depannage.md)
+
+**Paramètres → Serveurs sur le PC** permet de démarrer, arrêter ou redémarrer une API Bionic explicitement configurée et une instance ComfyUI Python lancée par le compagnon. Les modèles ne sont pas chargés pour vérifier l’état. **Arrêter** et **Redémarrer** demandent confirmation et refusent une activité connue ou incertaine.
 
 ## Préparer une installation
 
-Sur le PC du compagnon, lance `Configurer-serveurs.cmd`. L'assistant local enregistre un profil dans `config.launchers.local.json` après validation des chemins. Il ne télécharge, ne démarre et n'arrête aucun moteur. Ensuite, utilise **Relire la configuration** dans les paramètres. Le fichier d'exemple est volontairement désactivé.
+Sur le PC, lancez **Configurer-serveurs.cmd**. L’assistant valide les chemins puis enregistre `config.launchers.local.json`. Il ne télécharge, ne démarre et n’arrête aucun moteur. Dans les paramètres, utilisez ensuite **Relire la configuration**. Le fichier d’exemple reste désactivé.
 
-Les deux API doivent être en boucle locale. Les adresses utilisées restent celles des connexions du compagnon : `apiUrl` et l'URL effective enregistrée de ComfyUI. Un profil de lancement ne modifie pas ces connexions. ComfyUI sur un autre PC reste utilisable selon les règles existantes, en observation uniquement pour le lanceur.
+Les API pilotées doivent être en boucle locale et correspondre aux connexions déjà utilisées par le compagnon : `apiUrl` pour Bionic et l’URL enregistrée de ComfyUI. Le profil de lancement ne les modifie pas. ComfyUI sur un autre PC reste utilisable pour générer, mais ne peut pas être piloté par ce lanceur.
 
-Le profil demande un **usage dédié au compagnon** : les clients externes et les commandes manuelles peuvent contourner l'admission du compagnon. Ce réglage est une convention d'utilisation, pas un verrou universel du moteur. N'annonce pas une absence de travaux externes sur la seule base d'une liste de modèles ou d'une file vide.
+Choisissez un **usage dédié au compagnon**. C’est une convention : des clients externes peuvent contourner son admission. Une file vide ou une liste de modèles ne garantit pas l’absence de travail extérieur.
 
 ### Bionic
 
-Sélectionne le CLI officiel `lms.exe`, le chemin exact de son fichier de contrôle Bionic `http-server.json` et, pour le démarrage à froid, `Bionic.exe`. Le fichier de contrôle reste à son emplacement natif ; son contenu n'est pas copié dans le compagnon, le téléphone ou les arguments du programme. Le CLI lit ses propres credentials via son mécanisme normal. L'override sélectionne cet hôte sans repli vers une autre application.
+Sélectionnez le CLI officiel `lms.exe`, le fichier de contrôle Bionic `http-server.json` exact et, pour le démarrage à froid, `Bionic.exe`. Le fichier de contrôle reste dans son emplacement natif ; ses credentials ne sont pas copiés sur le téléphone ni dans les arguments. Le CLI utilise son mécanisme normal d’accès, sans repli vers une autre application.
 
-**Arrêter Bionic coupe son API HTTP, sans fermer le Desktop.** Redémarrer relance cette API. Aucun modèle n'est chargé volontairement pour vérifier l'état. L'application peut conserver ses propres préférences de démarrage. Une API déjà active ailleurs reste externe : le compagnon ne la prend pas automatiquement sous son contrôle.
+**Arrêter Bionic coupe son API HTTP et laisse le Desktop ouvert.** Redémarrer relance cette API. Une API déjà active hors du contrôle du compagnon reste externe ; elle n’est pas adoptée automatiquement.
 
 ### ComfyUI
 
-Sélectionne le Python de l'installation, son `main.py` et le dossier contenant cette entrée. Le lancement passe par un hôte Python fixe du compagnon, avec contrôle local authentifié et sans shell ni arguments libres. Une instance Comfy Desktop déjà ouverte n'est ni adoptée ni fermée.
+Sélectionnez le Python de l’installation, son `main.py` et le dossier correspondant. Le lancement utilise un hôte Python fourni avec contrôle local authentifié ; il n’accepte ni shell ni arguments libres. Une instance Comfy Desktop déjà ouverte n’est ni adoptée ni fermée.
 
-L'arrêt coopératif déclenche l'interruption dans le processus Python contrôlé ; il ne repose pas sur un kill de PID. Sous Windows, le périmètre est contrôlé avec un Job Object utilisé pour le comptage, sans fermeture forcée ni kill à la disparition du compagnon. Des descendants encore actifs ou un périmètre non vérifiable rendent l'arrêt indisponible. Les versions/distributions non qualifiées doivent rester décrites comme telles.
+L’arrêt est coopératif et limité au processus contrôlé. Des descendants encore actifs ou un périmètre de processus non vérifiable rendent l’arrêt indisponible. Une distribution ou version différente peut nécessiter une qualification spécifique.
 
 ## Progression et récupération
 
-L'API prête, le processus lancé et le modèle chargé sont trois informations différentes. Fermer les paramètres laisse une opération acceptée continuer sur le PC. Après une coupure, le navigateur retrouve son reçu par GET ; il ne renvoie pas automatiquement une commande. Un timeout n'autorise pas un second lancement.
+**API prête**, **processus lancé** et **modèle chargé** sont trois informations distinctes. Fermer les paramètres n’annule pas une opération acceptée. Après une coupure de connexion, le navigateur retrouve son état sans renvoyer automatiquement la commande. Un timeout n’autorise pas un second lancement.
 
-Un arrêt non confirmé ne devient jamais « arrêté ». Au redémarrage du compagnon, un reçu privé ne suffit pas à reprendre le contrôle : un contrôleur authentifié et une identité vérifiable sont requis. La reconnexion à un hôte Python vivant est possible ; si son endpoint a disparu et que le nouveau compagnon ne possède plus la preuve OS de sortie, l'état peut rester indéterminé. Vérifie alors l'installation sur le PC ; ne supprime pas un journal d'opération ambigu pour provoquer un rejeu.
+Une opération sans arrêt confirmé reste **indéterminée**. Après redémarrage du compagnon, un reçu enregistré ne suffit pas à reprendre le contrôle : une identité vérifiable et un contrôleur authentifié restent nécessaires. Si l’état reste ambigu, vérifiez l’installation sur le PC. Ne supprimez pas un journal pour provoquer un rejeu ; aucun bouton de fermeture forcée n’est fourni.
 
-Les demandes texte/images, relances, reprises de file, attentes d'accord, chargements de modèles et mises à jour sont protégés par une admission commune. Les attentes et réservations de l'ordonnanceur GPU comptent aussi comme travaux actifs. Les consultations restent disponibles pendant les opérations. Les inconnues persistées bloquent les commandes susceptibles de perdre un travail ; aucun bouton Forcer n'est livré.
+Les générations texte/images, attentes, accords humains, chargements de modèles et mises à jour participent aux contrôles d’activité. Une opération susceptible de perdre un travail est refusée pendant ces états. Les consultations restent disponibles.
 
-## Séparation et distribution
+## Portée et données privées
 
-Le téléphone ne peut ni créer une recette de commande, ni changer un exécutable, des arguments ou l'environnement. Les profils, états de contrôle et reçus secrets sont exclus de Git, de la distribution et des outils fichiers. Les scripts expressément approuvés par l'humain conservent les droits du compte PC ; le lanceur ne leur ajoute pas un bac à sable.
+Le téléphone ne peut pas choisir un autre exécutable, inventer une commande ou changer l’environnement de lancement. Les profils, états et reçus de contrôle sont privés et exclus de Git et de la distribution.
 
-Le candidat réunit le lanceur de la 2.4.2-beta.1 et les fonctions images de la 2.4.1-beta.2, avec les résolutions FR/EN et de coordination de l'assemblage local 2.5. Il conserve les fonctionnalités de la v2.4.0-beta.3 : paramètres, version discrète, canaux de mise à jour, projets et conversations. Le curseur 1–5 concerne les demandes conversationnelles avec outils ; Générer ce prompt directement conserve une image exacte sans préparation par un modèle texte. Annulation locale, relance, galerie/ZIP et Livrables → Génération sont présents. Les contrats sont extensibles ; aucun moteur supplémentaire n'est fourni. La preuve de qualification datée du lanceur reste historique ; les vérifications synthétiques du nouvel assemblage ne valent pas nouvel essai d'un moteur, d'un téléphone ou d'un rendu réel.
+Le lanceur ne fournit ni modèle, ni moteur supplémentaire, ni isolation du PC. Les scripts que vous approuvez dans une conversation conservent les droits de votre compte : voir [Outils et autorisations](outils-agents.md).
