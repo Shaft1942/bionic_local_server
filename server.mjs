@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { promises as defaultFS } from 'node:fs';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { setTimeout as wait } from 'node:timers/promises';
 import { createInferenceGate } from './lib/inference-gate.mjs';
 import { receiveBody } from './lib/request-body.mjs';
 import { runDiagnostics } from './lib/diagnostics.mjs';
@@ -31,6 +32,15 @@ import { clientFingerprint, requireCertificateTransport, startCertificateTranspo
 import { createCertificateWeb } from './lib/certificate-web.mjs';
 
 const APP_VERSION = JSON.parse(await defaultFS.readFile(new URL('./package.json', import.meta.url), 'utf8')).version;
+
+const ACTIVE_IMAGE_STATUSES = new Set(['submitting', 'queued', 'running']);
+function imageTurnStatus(jobs) {
+  if (jobs.some(job => job.status === 'unknown')) return 'Le résultat de la soumission à ComfyUI est incertain. Vérifie le suivi avant toute nouvelle demande ; aucune image n’a été relancée.';
+  if (jobs.every(job => job.status === 'failed')) return 'La génération a échoué. Consulte le détail dans la carte de suivi de l’image.';
+  if (jobs.every(job => job.status === 'succeeded')) return 'L’image est disponible dans la conversation.';
+  if (jobs.some(job => job.status === 'submitting')) return 'La demande d’image est en cours d’envoi à ComfyUI. Son suivi apparaîtra automatiquement ici.';
+  return 'La génération est lancée dans ComfyUI. L’image apparaîtra automatiquement ici.';
+}
 
 export async function createCompanion(options = {}) {
 const fs = options.fs || defaultFS;
@@ -644,6 +654,7 @@ async function generateChat(res, chat, item, request) {
         if (!availableTools.length || response.finishReason === 'length') throw fail(502, 'Le modèle a produit un appel d’outil incomplet ou non autorisé. Cet appel n’a pas été exécuté.');
         if (round === 9 || actionCount + response.calls.length > 24) throw fail(409, 'Limite d’actions atteinte. Les opérations déjà réalisées sont conservées et visibles dans le chat.');
         context.messages.push({ role: 'assistant', content: response.text || null, tool_calls: response.calls });
+        const roundImages = [];
         for (const call of response.calls) {
           emit({ type: 'action-start', name: call.function.name });
           let intent;
@@ -658,12 +669,32 @@ async function generateChat(res, chat, item, request) {
           addToolRead(context.receipt, action, read);
           for(const excerpt of reads||[])addToolRead(context.receipt,action,excerpt);
           addExternalContext(context.receipt,action,external);
-          if(action.imageGeneration){const images=reply.imageGenerations||=[];const index=images.findIndex(job=>job.id===action.imageGeneration.id);if(index<0)images.push(action.imageGeneration);else images[index]=action.imageGeneration;}
+          if(action.imageGeneration){const images=reply.imageGenerations||=[];const index=images.findIndex(job=>job.id===action.imageGeneration.id);if(index<0)images.push(action.imageGeneration);else images[index]=action.imageGeneration;roundImages.push(action.imageGeneration);}
           reply.actions.push(action); chat.updatedAt = Date.now(); await persist();
           emit({ type: 'action', action, contextReceipt: context.receipt });
           context.messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
         }
+        if (controller.signal.aborted) throw fail(409, 'Demande arrêtée.');
         if (reply.text && !reply.text.endsWith('\n\n')) { reply.text += '\n\n'; emit({ type: 'delta', text: '\n\n' }); }
+        if (roundImages.length) {
+          let imageJobs = roundImages;
+          const imageOnly = roundImages.length === response.calls.length;
+          if (!imageOnly) {
+            // A mixed tool batch still needs a model summary, but not during sampling.
+            chat.generation.phase = 'waiting-image'; dirty = true;
+            while (imageJobs.some(job => ACTIVE_IMAGE_STATUSES.has(job.status)) && !imageJobs.some(job => job.status === 'unknown')) {
+              await wait(250, undefined, { signal: controller.signal });
+              imageJobs = roundImages.map(job => comfyImages.get(job.id));
+            }
+          }
+          if (imageOnly || imageJobs.some(job => job.status === 'unknown')) {
+            const message = imageTurnStatus(imageJobs);
+            reply.text += message; emit({ type: 'delta', text: message });
+            reply.finishReason = 'stop'; reply.completionSource = 'image-status';
+            done = true;
+            break;
+          }
+        }
         metrics = createGenerationMetrics(); upstream = await requestModel();
       }
       if (!done) throw fail(409, 'La demande a atteint sa limite d’étapes. Les actions réalisées restent visibles.');

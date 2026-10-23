@@ -6,6 +6,19 @@ puis demander une image en langage naturel. Un modèle compatible avec les appel
 d’outils est nécessaire. L’image et son bouton de téléchargement apparaissent dans
 le message de l’assistant. Le rendu continue lorsque le navigateur est fermé.
 
+Après un appel d’outil consacré à l’image, le compagnon affiche lui-même la
+confirmation et termine la réponse texte, sans rappeler le modèle de conversation
+pendant le rendu. Le suivi et l’affichage de l’image continuent automatiquement.
+Si le modèle renvoie un lot mêlant image et autres outils, la synthèse texte attend
+la fin du rendu. Une soumission au résultat incertain termine le tour avec un
+message de vérification, sans nouvel appel du modèle ni renvoi de l’image.
+Les erreurs de validation survenues avant la création d’un job restent expliquées
+par le parcours conversationnel habituel.
+
+Cette optimisation évite le chevauchement provoqué par ce tour d’outils ; elle ne
+réserve pas le GPU face aux autres chats, instances du compagnon ou applications.
+Elle ne décharge pas automatiquement les modèles Bionic ou ComfyUI.
+
 Dans **Outils → Modèle d’image**, choisir Krea 2 Turbo ou Hassaku XL pour le prochain
 message. Le choix est conservé avec le brouillon et la conversation. Dans
 **Paramètres → ComfyUI**, chaque modèle dispose de deux emplacements LoRA facultatifs

@@ -1,5 +1,9 @@
 # Journal des versions
 
+## Non publié
+
+- Images ComfyUI : confirmation de lancement produite par le compagnon sans seconde inférence de conclusion. Les lots mêlant image et autres outils attendent la fin du rendu avant leur synthèse texte ; les soumissions incertaines ne sont pas relancées.
+
 ## 2.3.0 — 2026-10-23
 
 - Publication stable du contenu validé de 2.2.1-beta.4, sans changement fonctionnel supplémentaire. Les préversions restent disponibles dans l’historique GitHub.
