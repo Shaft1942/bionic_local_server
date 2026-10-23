@@ -1,6 +1,6 @@
 # Langues de l’interface
 
-Préparation de la 2.4 bêta : français et anglais. Dans Paramètres → Conversations et affichage → Langue de l’interface, le choix est appliqué immédiatement et enregistré dans ce navigateur, pour cette origine. HTTPS, un autre nom d’hôte ou un autre navigateur possèdent leur propre préférence. Au premier accès, les langues du navigateur sont consultées ; une variante régionale reconnue rejoint sa langue de base. Si aucune langue n’est reconnue, l’interface utilise le français.
+Préparation de la 2.4 bêta : français et anglais. Dans Paramètres → Langue et brouillons → Langue de l’interface, le choix est appliqué immédiatement et enregistré dans ce navigateur, pour cette origine. HTTPS, un autre nom d’hôte ou un autre navigateur possèdent leur propre préférence. Au premier accès, les langues du navigateur sont consultées ; une variante régionale reconnue rejoint sa langue de base. Si aucune langue n’est reconnue, l’interface utilise le français.
 
 La langue de l’interface ne fait pas partie des requêtes au modèle : aucun ajout au prompt, consigne système, changement des conversations ou traduction des réponses. Les noms, fichiers, extraits, code et textes saisis restent inchangés. Les formulaires et le message en cours restent ouverts lors d’un changement. Si le navigateur refuse le stockage, le choix reste utilisable dans l’onglet et les paramètres signalent qu’il n’est pas mémorisé.
 

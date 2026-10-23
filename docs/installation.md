@@ -37,7 +37,7 @@ Au premier démarrage, ouvrez **ACCES-PRIVE.txt** dans le dossier de l’applica
 2. Connectez le téléphone au même réseau local. Évitez le Wi-Fi invité, qui peut isoler les appareils.
 3. Ouvrez **l’adresse du téléphone inscrite dans ACCES-PRIVE.txt**, avec son protocole et son port exacts. Au premier démarrage, elle utilise HTTP ; une installation déjà sécurisée conserve HTTPS. `localhost` sur le téléphone désigne le téléphone, pas le PC.
 4. Si le PC répond mais pas le téléphone, vérifiez que le réseau Windows est **privé**, puis lancez **Autoriser-reseau.cmd**. La demande Windows sert à créer une règle de pare-feu limitée au réseau privé et au sous-réseau local.
-5. Saisissez le code d’accès, puis préparez HTTPS depuis **Paramètres → Connexion et appareils** avant d’installer l’application sur l’écran d’accueil.
+5. Saisissez le code d’accès, puis préparez HTTPS depuis **Paramètres → Sécurité et accès** avant d’installer l’application sur l’écran d’accueil.
 
 Ne redirigez pas ce port vers Internet. L’accès fonctionne sur le réseau local de confiance ; il ne constitue pas un service public multi-utilisateur. Un redémarrage du serveur ferme les sessions de connexion : le même code permet de se reconnecter.
 
@@ -47,7 +47,7 @@ Pour supprimer l’autorisation réseau, exécutez `Retirer-autorisation-reseau.
 
 Le [guide des certificats](certificats-utilisation.md) détaille les écrans Android, iPhone/iPad et Windows, la comparaison d’empreinte et les erreurs de connexion.
 
-1. Dans **Connexion et appareils**, choisissez **Préparer HTTPS** en conservant le nom ou l’IP réellement utilisé par le téléphone.
+1. Dans **Sécurité et accès**, choisissez **Préparer HTTPS** en conservant le nom ou l’IP réellement utilisé par le téléphone.
 2. Téléchargez **l’autorité du compagnon** (`bionic-autorite.crt`). Comparez son empreinte SHA-256 avec celle affichée sur le PC, puis installez-la comme autorité de confiance sur le téléphone. L’installation système est nécessaire ; un téléchargement seul ne suffit pas.
 3. Ouvrez **Vérifier la connexion sécurisée**, puis confirmez dans la page de preuve uniquement si le navigateur ne présente aucune alerte de certificat. Revenez à l’adresse HTTPS du compagnon et reconnectez-vous.
 4. Une fois l’adresse HTTPS ouverte sans alerte, utilisez le menu du navigateur pour installer l’application ou ajouter un raccourci. L’offre d’installation dépend du navigateur ; elle ne remplace pas le contrôle du certificat. Le PC et le compagnon doivent toujours rester allumés.

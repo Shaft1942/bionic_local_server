@@ -4,7 +4,7 @@ Dans **Paramètres → Aide**, le guide intégré couvre le démarrage, les conv
 
 Les capacités annoncées par le serveur figurent sous le guide. Elles décrivent les fonctions disponibles ; les permissions effectives restent celles du projet et du message.
 
-**Paramètres → Maintenance** regroupe les mises à jour, le diagnostic de connexion et les indications de configuration avancée sur le PC. La déconnexion de cet appareil reste dans **Connexion et appareils**. L’aide est une rubrique distincte. Les écrans conservent leurs précisions près des contrôles : le guide explique les usages et les conséquences, sans remplacer les messages d’état.
+**Paramètres → Maintenance** regroupe les mises à jour, le diagnostic de connexion et les indications de configuration avancée sur le PC. La déconnexion de cet appareil reste dans **Sécurité et accès**. L’aide est une rubrique distincte. Les écrans conservent leurs précisions près des contrôles : le guide explique les usages et les conséquences, sans remplacer les messages d’état.
 
 ## Documentation détaillée
 

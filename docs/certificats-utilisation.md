@@ -1,6 +1,6 @@
 # Certificats : configuration depuis le navigateur
 
-Le compagnon commence en HTTP. Ouvrir **Paramètres → Connexion et appareils → Sécurité des connexions**
+Le compagnon commence en HTTP. Ouvrir **Paramètres → Sécurité et accès → Sécurité des connexions**
 sur le téléphone ou le PC. Le lien `/?settings=security` ouvre directement cette
 section après connexion ; **Accès sécurisés** dans l’assistant Windows ouvre
 la même interface. Aucune opération de ce parcours ne sollicite Bionic ou ComfyUI.

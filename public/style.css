@@ -194,7 +194,7 @@
 .settings-current{margin:20px 0 28px}
 .settings-current h3{margin-top:0}
 .settings-current>.settings-actions{margin-bottom:12px}
-.settings-drafts{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+.settings-language,.settings-drafts{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
 .settings-body .settings-scope{color:var(--ink);font-weight:600}
 .settings-body .settings-dirty{color:#755014;font-weight:600}
 .settings-body .settings-pc-config{margin:28px 0 0;border-top:1px solid var(--line);padding-top:12px;font-size:14px}

@@ -99,7 +99,7 @@ Si votre API Bionic requiert un jeton, définissez `BIONIC_API_TOKEN` dans votre
 
 ## Certificats et transport du compagnon
 
-Le niveau HTTP/HTTPS/mTLS se gère dans **Paramètres → Connexion et appareils → Sécurité des connexions**, depuis le téléphone ou le PC, et non par
+Le niveau HTTP/HTTPS/mTLS se gère dans **Paramètres → Sécurité et accès → Sécurité des connexions**, depuis le téléphone ou le PC, et non par
 un champ de `config.local.json` ou un retour automatique en HTTP. L’état privé
 est dans `data/security/` et son plancher dans `data/security-floor.json`.
 Ne pas copier ces fichiers depuis une autre installation ni les supprimer pour

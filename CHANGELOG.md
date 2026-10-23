@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.4.0-beta.2 — 2026-10-23
+
+- Le choix de langue de l’interface apparaît sous son libellé, avec la même disposition verticale que la conservation des messages non envoyés.
+- Les rubriques deviennent « Langue et brouillons » et « Sécurité et accès », avec intitulés, descriptions, aide et guides cohérents en français et en anglais.
+- Contenu de la bêta 1 conservé ; canal Bêta uniquement, stable 2.3.0 inchangée.
+
 ## 2.4.0-beta.1 — 2026-10-23
 
 - Fermeture des fenêtres et menus au clic extérieur, clavier/focus conservés ; action d'actualisation/reconnexion en haut seulement.
