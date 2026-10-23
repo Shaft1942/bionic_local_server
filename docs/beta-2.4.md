@@ -1,6 +1,6 @@
 # Version 2.4 bêta
 
-Date : 23 octobre 2026. Base vérifiée : stable 2.3.0, commit `f3158fc7e377861feb6069ef2312997a5734bf7a`. Préversion : `2.4.0-beta.2`, distribuée sur le canal Bêta, sans changement de la stable. Ce document décrit le lot intégré ; il ne constate pas une installation ou un gain de performance sur un moteur réel.
+Date : 23 octobre 2026. Base vérifiée : stable 2.3.0, commit `f3158fc7e377861feb6069ef2312997a5734bf7a`. Préversion : `2.4.0-beta.3`, distribuée sur le canal Bêta, sans changement de la stable. Ce document décrit le lot intégré ; il ne constate pas une installation ou un gain de performance sur un moteur réel.
 
 ## Interactions
 

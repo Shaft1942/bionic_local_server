@@ -24,6 +24,9 @@ function initUpdates({ api, isAuthenticated = () => true, toast = () => {}, befo
     $('updates-badge').hidden = !available;
     $('settings-maintenance-nav').classList.toggle('update-available', available);
     $('updates-version').textContent = data ? BionicI18n.t('components.updates.installed', { version: data.currentVersion, channel: channelLabel(data.installedChannel) }) : BionicI18n.t('components.updates.loading');
+    $('settings-version').textContent = data?.currentVersion ? 'v' + data.currentVersion : '';
+    $('settings-version').hidden = !data?.currentVersion;
+    $('settings-version').setAttribute('aria-label', data?.currentVersion ? $('updates-version').textContent : '');
     const installing = state.restarting || ['preparing', 'installing', 'restarting'].includes(data?.installation?.status);
     $('updates-status').textContent = installing ? data?.installation?.message || BionicI18n.t('components.updates.installing') : state.busy ? BionicI18n.t(state.action) : data?.checking ? BionicI18n.t('components.updates.checking') : next ? next.version === data?.ignoredVersion ? BionicI18n.t('components.updates.ignored') : BionicI18n.t('components.updates.available', { version: next.version }) : data ? BionicI18n.t('components.updates.noUpdate', { channel: channelLabel(data.channel) }) : '';
     $('updates-candidate').hidden = !next;

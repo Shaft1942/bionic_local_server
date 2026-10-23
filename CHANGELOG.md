@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.4.0-beta.3 — 2026-10-23
+
+- La version installée est visible dès l’ouverture des paramètres, dans l’en-tête près du titre, avec une typographie secondaire discrète. Sur mobile, elle reste visible dans chaque rubrique.
+- Le numéro vient du serveur, reste indépendant du canal choisi et de la mise à jour proposée, et bénéficie du libellé accessible français/anglais existant. Aucune requête supplémentaire.
+- Contenu de la bêta 2 conservé ; canal Bêta uniquement, stable 2.3.0 inchangée.
+
 ## 2.4.0-beta.2 — 2026-10-23
 
 - Le choix de langue de l’interface apparaît sous son libellé, avec la même disposition verticale que la conservation des messages non envoyés.
