@@ -17,6 +17,7 @@
   <script src="/comfy-images.js" defer></script>
   <script src="/certificates.js" defer></script>
   <script src="/settings.js" defer></script>
+  <script src="/message-text.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -66,6 +67,7 @@
       <section id="info" class="info-panel" aria-labelledby="info-title" hidden><header class="info-panel-header"><h2 id="info-title">Comment fonctionne ce compagnon ?</h2><button id="info-close" class="icon-button" type="button" aria-label="Fermer l’aide" title="Fermer l’aide"></button></header><div id="info-body" class="info-panel-body"><p>Les historiques natifs restent lus sans modification. Les réponses écrites ici forment des conversations web distinctes sur ce PC.</p><p>Lorsque l’option de modification est cochée, le modèle dispose d’outils pour lire, créer et modifier les textes du dossier de travail de ce projet. Les actions sont enregistrées dans le chat. Les remplacements conservent une copie précédente que tu peux rétablir.</p><p>« Importer un fichier » copie les fichiers de ton appareil dans « Imports telephone », au sein du projet. Les formats lisibles sont joints au prochain message, dans la limite de quatre pièces jointes. Pour analyser une image PNG, JPEG ou WebP, choisis un modèle marqué Vision.</p><p>« Fichiers du projet » reste disponible pour consulter et éditer les fichiers manuellement. Le niveau de protection de la connexion est indiqué dans les paramètres.</p></div></section>
       <div id="banner" class="banner" hidden></div>
       <div id="messages" class="messages" tabindex="0" aria-label="Messages de la conversation"><div class="welcome"><img src="/icon.svg" width="48" height="48" alt=""><h2>Le fil de tes idées.</h2><p>Ouvre une conversation Bionic ou commence un nouveau chat dans le projet de ton choix.</p><p class="welcome-detail">Les originaux restent dans Bionic.<br>Les suites web restent sur ce PC.</p></div></div>
+      <div id="reply-follow-bar" class="reply-follow-bar" hidden><button id="reply-follow" class="file-action" type="button" aria-controls="messages">Revenir à la réponse</button></div>
       <div id="message-error" class="message-error" role="alert" hidden></div>
       <form id="composer" class="composer">
         <div id="attachments" class="attachments" aria-label="Fichiers joints au prochain message" hidden></div>

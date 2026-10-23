@@ -82,6 +82,12 @@ Une installation de développement existante peut être réutilisée avec `PLAYW
 
 Le smoke n’est **pas activé automatiquement en CI**. Playwright n’est pas une dépendance d’exécution et aucun navigateur n’est nécessaire au lancement du serveur. Un viewport de 320 px n’est pas un téléphone physique, un clavier natif, un lecteur d’écran ni un test Wi-Fi.
 
+### Lecture des conversations
+
+`node --test test/message-text.test.mjs` vérifie le rendu DOM passif, les liens, listes/tableaux, bornes sur textes malformés et la copie exacte, y compris CRLF et code non clôturé. `node scripts/browser-reading.mjs` exerce ensuite l'interface à 320, 390 et 1280 px : contenus mêlés, refus d'une validation, états d'erreur, image, presse-papiers simulé, streaming NDJSON contrôlé, sélection/focus/détails, défilement et accès au plafond du bon modèle/chat. Toutes les requêtes sont interceptées ; aucun serveur utilisateur ni moteur n'est contacté. Les variables de runtime et de captures ci-dessus sont réutilisées.
+
+Le nouveau module `public/message-text.js` est servi par la liste explicite d'actifs statiques ; le test HTTP de `test/server.test.mjs` vérifie cette route et son type JavaScript sans ouvrir de port. Les sources/tests/smoke font partie du manifeste fermé de distribution. Le renderer est un sous-ensemble volontaire du Markdown, pas une implémentation exhaustive de CommonMark ; HTML brut et images Markdown distantes restent du texte passif.
+
 ### Mesurer les parcours des chats
 
 ```sh

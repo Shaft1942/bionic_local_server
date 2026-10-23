@@ -472,46 +472,63 @@ async function selectProject(projectId, { clearSearch = false } = {}) {
   renderSessions(); scheduleRecovery();
   return true;
 }
-function inlineText(el, text) {
-  // Only our own DOM nodes are created. Source messages never become HTML.
-  const rx = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g;
-  let end = 0;
-  for (const match of text.matchAll(rx)) {
-    el.append(document.createTextNode(text.slice(end, match.index)));
-    const token = match[0];
-    if (token[0] === '`') el.append(node('code', '', token.slice(1, -1)));
-    else if (token.startsWith('**')) el.append(node('strong', '', token.slice(2, -2)));
-    else { const link = /^\[([^\]]+)\]\((.+)\)$/.exec(token); const a = node('a', '', link[1]); a.href = link[2]; a.target = '_blank'; a.rel = 'noopener noreferrer'; el.append(a); }
-    end = match.index + token.length;
-  }
-  el.append(document.createTextNode(text.slice(end)));
+const renderedMessageText = new WeakMap(), pendingMessageText = new Map(), responseModels = new Map();
+let readingView = null, followingReply = true;
+function readingInteraction(container) {
+  const active = document.activeElement;
+  if (container.contains(active) && active.matches('button,input,textarea,select,summary,a,[contenteditable="true"],[role="textbox"]')) return true;
+  const selected = window.getSelection();
+  return !!selected && !selected.isCollapsed && (container.contains(selected.anchorNode) || container.contains(selected.focusNode));
 }
 function renderText(container, text) {
-  container.replaceChildren();
-  const chunks = text.split(/(```[^\n]*\n[\s\S]*?(?:```|$))/g);
-  for (const chunk of chunks) {
-    if (!chunk) continue;
-    if (chunk.startsWith('```')) { const pre = node('pre'); pre.append(node('code', '', chunk.slice(chunk.indexOf('\n') + 1).replace(/```$/, '').trimEnd())); container.append(pre); continue; }
-    for (const paragraph of chunk.split(/\n\s*\n/)) {
-      if (!paragraph.trim()) continue;
-      const heading = /^(#{1,4})\s+(.+)$/.exec(paragraph.trim());
-      if (heading) { const h = node(heading[1].length <= 2 ? 'h2' : 'h3'); inlineText(h, heading[2]); container.append(h); }
-      else if (paragraph.split('\n').every(line => /^\s*[-*]\s/.test(line))) { const list = node('ul'); for (const line of paragraph.split('\n')) { const li = node('li'); inlineText(li, line.replace(/^\s*[-*]\s+/, '')); list.append(li); } container.append(list); }
-      else { const p = node('p'); inlineText(p, paragraph); container.append(p); }
-    }
+  if (renderedMessageText.get(container) === text) { pendingMessageText.delete(container); return; }
+  // Keep the actual selected/focused DOM alive until reading or copying ends.
+  if (container.isConnected && readingInteraction(container)) { pendingMessageText.set(container, text); return; }
+  pendingMessageText.delete(container);
+  BionicMessageText.render(container, text, { role: container.dataset.messageRole });
+  renderedMessageText.set(container, text);
+}
+function flushMessageText() {
+  const follow = followingReply && !readingInteraction($('messages'));
+  for (const [container, text] of pendingMessageText) {
+    if (!container.isConnected) pendingMessageText.delete(container);
+    else if (!readingInteraction(container)) renderText(container, text);
   }
+  if (follow) scrollBottom(); else updateReplyFollow();
+}
+function nearReplyBottom() {
+  const messages = $('messages');
+  return messages.clientHeight ? messages.scrollHeight - messages.scrollTop - messages.clientHeight < 64 : followingReply;
+}
+function updateReplyFollow() {
+  const waiting = [...pendingMessageText.keys()].some(container => container.isConnected);
+  $('reply-follow-bar').hidden = !state.authenticated || nearReplyBottom() && !waiting || !$('messages').querySelector('.message');
+}
+function responseModelKey(message) { return JSON.stringify([state.projectId, message.requestId || message.localRequestId || '']); }
+function addBudgetWarning(article, message) {
+  const warning = node('section', 'message-truncated');
+  warning.append(node('strong', '', 'Réponse coupée au plafond de tokens'), node('p', '', 'Un script ou document peut être incomplet. Vérifie le plafond avant de poursuivre.'));
+  if (message.outputBudget) warning.append(node('p', 'message-budget', 'Plafond de cet appel : ' + new Intl.NumberFormat('fr-FR').format(message.outputBudget.maxOutputTokens) + ' tokens.'));
+  const model = responseModels.get(responseModelKey(message));
+  const available = model && state.status?.models?.some(item => item.id === model);
+  if (!available) warning.append(node('p', 'message-budget-target', (model ? 'Modèle de cette réponse indisponible.' : 'Modèle de cette réponse non relevé.') + ' Choisis le modèle du prochain envoi dans les paramètres.'));
+  const button = node('button', 'file-action message-budget-open', 'Régler le plafond'); button.type = 'button';
+  button.dataset.workspaceFocus = 'budget:' + (message.id || message.localRequestId || message.requestId || '');
+  button.addEventListener('click', event => companionSettings.openOutput(event, available ? model : null));
+  warning.append(button); article.append(warning);
 }
 function addFileAction(article, action, message) {
   const foreignProject = action.projectId && action.projectId !== state.projectId;
   let log = article.querySelector('.actions-log');
-  if (!log) { log = node('details', 'actions-log'); log.append(node('summary', '', 'Actions sur les fichiers'), node('div', 'action-rows')); article.append(log); }
+  if (!log) { log = node('details', 'actions-log'); log.dataset.disclosureKey = 'actions'; log.append(node('summary', '', 'Actions sur les fichiers'), node('div', 'action-rows')); article.append(log); }
   const row = node('div', 'action-row' + (action.ok ? '' : ' action-failed'));
+  if (action.id) row.dataset.actionId = action.id;
   row.append(node('strong', '', action.ok || action.name==='run_project_script' ? action.message : 'Action en erreur'), node('span', '', (action.path||'')+(action.destination?' vers '+action.destination:'')));
   for(const source of action.webResults || (action.url?[{title:action.url,url:action.url}]:[])){
     try{const url=new URL(source.url);if(!['https:','http:'].includes(url.protocol))continue;const link=node('a','tool-source',action.name==='read_web_page'?'Page source · '+url.host:source.title||source.url);link.href=url.href;link.target='_blank';link.rel='noopener noreferrer';row.append(link);}catch{}
   }
-  if(action.outbound){const sent=node('details','outbound-receipt');sent.append(node('summary','','Données envoyées au web'),node('p','','Hôte : '+(action.outbound.host||'moteur configuré')),node('pre','',JSON.stringify(action.outbound,null,2)));row.append(sent);}
-  if(action.stdout||action.stderr){const output=node('details','tool-output');output.append(node('summary','','Sortie du script'),node('pre','',(action.stdout||'')+(action.stderr?'\n'+action.stderr:'')));row.append(output);}
+  if(action.outbound){const sent=node('details','outbound-receipt');sent.dataset.disclosureKey='outbound:'+action.id;sent.append(node('summary','','Données envoyées au web'),node('p','','Hôte : '+(action.outbound.host||'moteur configuré')),node('pre','',JSON.stringify(action.outbound,null,2)));row.append(sent);}
+  if(action.stdout||action.stderr){const output=node('details','tool-output');output.dataset.disclosureKey='output:'+action.id;output.append(node('summary','','Sortie du script'),node('pre','',(action.stdout||'')+(action.stderr?'\n'+action.stderr:'')));row.append(output);}
   if(!foreignProject&&action.ok&&action.trashId){const restore=node('button','file-action restore-action',action.restored?'Fichier restauré':'Restaurer le fichier');restore.type='button';restore.disabled=state.sending||!!action.restored;if(action.restored)restore.dataset.restored='true';restore.addEventListener('click',async()=>{restore.disabled=true;try{await api('/api/file/restore-trash',{method:'POST',body:JSON.stringify({projectId:state.projectId,chatId:state.chat.id,actionId:action.id})});action.restored=true;restore.textContent='Fichier restauré';restore.dataset.restored='true';}catch(e){error(e.message);restore.disabled=false;}});row.append(restore);}
   if (!action.ok) row.append(node('p', '', action.executed ? 'Ce script a été exécuté : des changements peuvent déjà avoir été enregistrés sur le PC.' : action.message));
   if (action.ok && /^(?:replace_project_text|write_project_file)$/.test(action.name)) log.open = true;
@@ -536,7 +553,7 @@ function addFileAction(article, action, message) {
     row.append(restore);
   }
   log.querySelector('.action-rows').append(row);
-  log.querySelector('summary').textContent = 'Actions de l’agent · ' + log.querySelectorAll('.action-row').length;
+  log.querySelector('summary').textContent = 'Activité · ' + log.querySelectorAll('.action-row').length + ' action(s)';
 }
 function addToolApproval(article,approval,chat) {
   const web=approval.kind==='web', panel=node('section','tool-approval');panel.dataset.approvalId=approval.id;
@@ -550,11 +567,12 @@ function addToolApproval(article,approval,chat) {
 }
 
 function groupMessageExtras(article, message, role) {
-  const auxiliary = [...article.children].filter(child => child.matches('.actions-log,.message-fork,.message-metrics,.context-receipt,.pin-control,.message-effort'));
+  const auxiliary = [...article.children].filter(child => child.matches('.actions-log,.message-fork,.message-metrics,.context-receipt,.pin-control,.message-effort,.message-budget:not(.message-budget-adjusted)'));
   const failed = (message.actions || []).some(action => action.ok === false);
   const grouped = auxiliary.filter(child => {
     if (!failed || !child.matches('.actions-log') || !child.querySelector('.action-rows')) return true;
     child.classList.add('action-warning');
+    child.open = true;
     child.querySelector('summary').textContent = 'Action de l’agent en erreur · ' + (message.actions || []).filter(action => action.ok === false).length;
     return false;
   });
@@ -562,7 +580,7 @@ function groupMessageExtras(article, message, role) {
   const details = node('details', 'message-extras'); details.dataset.disclosureKey = 'message-extras';
   const summary = node('summary'); summary.dataset.workspaceFocus = 'message-extras:' + (message.id || message.localRequestId || message.requestId || '');
   if (message.role === 'user') { summary.append(icon('more'), node('span','sr-only','Actions de ce message')); summary.title = 'Actions de ce message'; }
-  else summary.append(document.createTextNode('Détails et actions'));
+  else summary.append(document.createTextNode('Détails du tour'));
   const content = node('div','message-extras-content');
   for (const child of grouped) { if (!child.dataset.disclosureKey) child.dataset.disclosureKey = child.classList[0]; content.append(child); }
   details.append(summary, content);
@@ -570,7 +588,7 @@ function groupMessageExtras(article, message, role) {
   if (message.role === 'user') details.addEventListener('focusout', event => { if (event.relatedTarget && !details.contains(event.relatedTarget)) details.open = false; });
   if (message.role === 'user') role.append(details); else article.append(details);
 }
-function addMessage(message) {
+function addMessage(message, parent = $('messages'), renderBody = true) {
   const article = node('article', 'message ' + message.role);
   if (message.id) { article.dataset.messageId = message.id; article.tabIndex = -1; }
   if (message.requestId || message.localRequestId) article.dataset.requestId = message.requestId || message.localRequestId;
@@ -578,7 +596,8 @@ function addMessage(message) {
   const role = node('div', 'message-role', message.role === 'user' ? 'Toi' : 'Assistant');
   if (message.fromBionic) role.append(node('span', 'origin-tag', 'historique Bionic'));
   else if(message.fromFork)role.append(node('span','origin-tag','copié du fil source'));
-  const content = node('div', 'message-body'); renderText(content, message.text || '');
+  const content = node('div', 'message-body'); content.dataset.messageRole = message.role;
+  if (renderBody) renderText(content, message.text || '');
   article.append(role, content);
   if (message.attachments?.length) {
     const files = node('div', 'message-attachments');
@@ -602,8 +621,8 @@ function addMessage(message) {
   if(message.id&&!(message.role==='assistant'&&(message.complete===false||state.chat?.generation?.status==='running'&&state.chat.generation.replyId===message.id))){const fork=node('button','message-fork','Créer une branche depuis ici');fork.type='button';fork.addEventListener('click',()=>forkChat(message.id));article.append(fork);}
   const footer = [];
   if (message.reasoning && EFFORT_LABELS[message.reasoning]) article.append(node('p', 'message-footer message-effort', 'Effort : ' + EFFORT_LABELS[message.reasoning].toLocaleLowerCase('fr')));
-  if (message.truncated) article.append(node('p','message-truncated','Réponse coupée au plafond de tokens. Un script ou document peut être incomplet. Ajuste le plafond dans Paramètres avant de poursuivre.'));
-  if (message.outputBudget) { const b=message.outputBudget; article.append(node('p','message-budget','Plafond de cet appel : '+new Intl.NumberFormat('fr-FR').format(b.maxOutputTokens)+' tokens'+(b.adjusted?' · réduit pour tenir dans le contexte estimé':'')+'.')); }
+  if (message.truncated) addBudgetWarning(article, message);
+  if (message.outputBudget && !message.truncated) { const b=message.outputBudget; article.append(node('p','message-budget'+(b.adjusted?' message-budget-adjusted':''),'Plafond de cet appel : '+new Intl.NumberFormat('fr-FR').format(b.maxOutputTokens)+' tokens'+(b.adjusted?' · réduit pour tenir dans le contexte estimé':'')+'.')); }
   if (message.interrupted || message.limited&&!message.truncated) footer.push(message.interrupted ? 'Réponse interrompue.' : 'Limite d’actions atteinte. Les opérations réalisées restent visibles.');
   if (footer.length) article.append(node('p', 'message-footer', footer.join(' · ')));
   if (message.metrics && message.role === 'assistant') {
@@ -633,19 +652,20 @@ function addMessage(message) {
     if (!running && message.text) { const pin = workspace.pinControl(message, state.chat); if (pin) article.append(pin); }
   }
   groupMessageExtras(article, message, role);
-  $('messages').append(article); return content;
+  parent.append(article); return content;
 }
-function scrollBottom() { $('messages').scrollTop = $('messages').scrollHeight; }
-function renderQueue(chat) {
+function scrollBottom() { $('messages').scrollTop = $('messages').scrollHeight; followingReply = true; updateReplyFollow(); }
+function renderQueue(chat, parent = $('messages')) {
   const queue = [...(chat?.queue || []).filter(item => ['queued', 'interrupted', 'error'].includes(item.status)), ...(draftForView().failed || [])];
   for (const job of currentJobs()) {
     if (job.payload && !chat?.messages?.some(message => message.requestId === job.requestId) && !queue.some(item => item.requestId === job.requestId)) queue.push({ ...job.payload, status: job.status === 'submitting' ? 'submitting' : 'queued' });
   }
   for (const item of queue) {
     const article = node('article', 'message queued-message');
+    article.dataset.messageKey = 'queue:' + item.requestId;
     const interrupted = item.status === 'interrupted' || item.status === 'error', submitting = item.status === 'submitting';
     article.append(node('div', 'message-role', interrupted ? 'Message non exécuté · à reprendre' : submitting ? 'Envoi au PC…' : 'Message en attente'));
-    const content = node('div', 'message-body'); renderText(content, item.text || ''); article.append(content);
+    const content = node('div', 'message-body'); content.dataset.messageRole = 'user'; renderText(content, item.text || ''); article.append(content);
     if (item.attachments?.length) article.append(node('p', 'message-footer', item.attachments.length + ' fichier' + (item.attachments.length > 1 ? 's joints' : ' joint')));
     const actions = node('div', 'queue-actions');
     if (interrupted) {
@@ -676,14 +696,91 @@ function renderQueue(chat) {
         catch (e) { toast(e.message); remove.disabled = false; }
       }); actions.append(remove);
     }
-    article.append(actions); $('messages').append(article);
+    article.append(actions); parent.append(article);
   }
+}
+function messageDisclosures(article) {
+  const counts = new Map();
+  return [...article.querySelectorAll('details')].map(detail => {
+    const base = detail.dataset.disclosureKey || detail.className || 'details';
+    const index = counts.get(base) || 0; counts.set(base, index + 1);
+    return { detail, key: base + ':' + index };
+  });
+}
+function captureMessageSelection() {
+  const selected = window.getSelection();
+  if (!selected || selected.isCollapsed || !selected.rangeCount) return null;
+  function point(target, offset) {
+    const element = target.nodeType === 1 ? target : target.parentElement;
+    const article = element?.closest('.message[data-message-key]');
+    if (!article || !$('messages').contains(article)) return null;
+    const scope = element.closest('[data-action-id],[data-approval-id],[data-image-job-id],details[data-disclosure-key],.message-body') || article;
+    const kind = scope.dataset.actionId ? 'actionId' : scope.dataset.approvalId ? 'approvalId' : scope.dataset.imageJobId ? 'imageJobId' : scope.dataset.disclosureKey ? 'disclosureKey' : scope.classList.contains('message-body') ? 'body' : 'article';
+    const candidate = element.closest('pre,code,p,li,td,th,summary,h2,h3');
+    const leaf = candidate && scope.contains(candidate) ? candidate : scope;
+    const range = document.createRange(); range.setStart(leaf, 0); range.setEnd(target, offset);
+    return { messageKey: article.dataset.messageKey, kind, id: scope.dataset[kind], tag: leaf.tagName, index: leaf === scope ? -1 : [...scope.querySelectorAll(leaf.tagName)].indexOf(leaf), text: leaf.textContent, offset: range.toString().length };
+  }
+  const anchor = point(selected.anchorNode, selected.anchorOffset), focus = point(selected.focusNode, selected.focusOffset);
+  return anchor && focus ? { anchor, focus, text: selected.toString() } : null;
+}
+function restoreMessageSelection(saved) {
+  if (!saved) return;
+  const selected = window.getSelection();
+  if (!selected || selected.toString() === saved.text && !selected.isCollapsed) return;
+  function point(record) {
+    const article = [...$('messages').querySelectorAll('.message[data-message-key]')].find(item => item.dataset.messageKey === record.messageKey);
+    if (!article) return null;
+    const selectors = { actionId: '[data-action-id]', approvalId: '[data-approval-id]', imageJobId: '[data-image-job-id]', disclosureKey: '[data-disclosure-key]', body: '.message-body' };
+    const scope = record.kind === 'article' ? article : [...article.querySelectorAll(selectors[record.kind])].find(item => !record.id || item.dataset[record.kind] === record.id);
+    if (!scope) return null;
+    const leaf = record.index === -1 ? scope : scope.querySelectorAll(record.tag)[record.index];
+    if (!leaf || !leaf.textContent.startsWith(record.text)) return null;
+    const walker = document.createTreeWalker(leaf, 4); let offset = record.offset, target = walker.nextNode(), last;
+    while (target) { if (offset <= target.length) return [target, offset]; offset -= target.length; last = target; target = walker.nextNode(); }
+    return last ? [last, last.length] : [leaf, 0];
+  }
+  const anchor = point(saved.anchor), focus = point(saved.focus);
+  if (anchor && focus) selected.setBaseAndExtent(...anchor, ...focus);
+}
+function keepChildOrder(parent, children) {
+  let cursor = parent.firstChild;
+  for (const child of children) {
+    if (child === cursor) cursor = cursor.nextSibling;
+    else parent.insertBefore(child, cursor);
+  }
+  while (cursor) { const next = cursor.nextSibling; cursor.remove(); cursor = next; }
+}
+function reconcileMessage(previous, next, text) {
+  const available = new Map();
+  const partKey = part => part.dataset.approvalId || part.dataset.imageJobId || part.className || part.tagName;
+  for (const part of previous.children) {
+    const key = partKey(part); if (!available.has(key)) available.set(key, []); available.get(key).push(part);
+  }
+  const children = [...next.children].map(part => {
+    const old = available.get(partKey(part))?.shift();
+    if (old?.classList.contains('message-body')) { old.dataset.messageRole = part.dataset.messageRole; renderText(old, text); return old; }
+    return old?.isEqualNode(part) ? old : part;
+  });
+  previous.className = next.className;
+  for (const [name, value] of Object.entries(next.dataset)) previous.dataset[name] = value;
+  if (next.hasAttribute('tabindex')) previous.tabIndex = next.tabIndex;
+  keepChildOrder(previous, children);
+  return previous;
 }
 function renderChat() {
   const chat = state.chat, project = state.projects.find(p => p.id === state.projectId);
-  const expanded = new Set();
-  for (const article of $('messages').querySelectorAll('.message[data-message-key]')) article.querySelectorAll('details').forEach((detail, index) => { if (detail.open) expanded.add(article.dataset.messageKey + ':' + (detail.dataset.disclosureKey || index)); });
+  const view = JSON.stringify([state.projectId, state.viewKey]), sameView = readingView === view;
+  const oldScroll = $('messages').scrollTop;
+  const textSelection = sameView ? captureMessageSelection() : null;
+  const follow = !sameView || followingReply && nearReplyBottom() && !readingInteraction($('messages'));
+  readingView = view;
+  const previous = new Map(sameView ? [...$('messages').querySelectorAll(':scope > .message[data-message-key]')].map(article => [article.dataset.messageKey, article]) : []);
+  const disclosureState = new Map();
+  for (const article of previous.values()) for (const {detail, key} of messageDisclosures(article)) disclosureState.set(article.dataset.messageKey + ':' + key, detail.open);
   const focus = document.activeElement?.dataset.workspaceFocus;
+  const focusedDisclosure = document.activeElement?.tagName === 'SUMMARY' ? document.activeElement.closest('details[data-disclosure-key]') : null;
+  const disclosureFocus = focusedDisclosure ? { key: focusedDisclosure.dataset.disclosureKey, messageKey: focusedDisclosure.closest('.message')?.dataset.messageKey } : null;
   const selection = focus && typeof document.activeElement.selectionStart === 'number' ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
   $('agent-files').value = unassignedProject() ? 'none' : state.draftFileProfile ?? fileProfile(chat);
   $('agent-web-approval').checked = state.draftWebApproval ?? chat?.webApproval ?? false;
@@ -699,22 +796,41 @@ function renderChat() {
   if (chat?.model && !(state.status?.models || []).some(m => m.id === chat.model)) banner += ' Le modèle d’origine n’est pas disponible sous le même nom dans l’API : vérifie le modèle sélectionné avant d’envoyer.';
   $('banner').replaceChildren(document.createTextNode(banner));
   if(chat?.origin){$('banner').append(node('span','',' Fichiers du projet partagés. '));const source=node('button','source-link','Voir la conversation source');source.type='button';source.addEventListener('click',()=>visitSource(chat.origin,source));$('banner').append(source);}
-  $('messages').replaceChildren();
+  const nextMessages = document.createDocumentFragment(), displayText = new Map();
   if (chat?.messages?.length) for (const m of chat.messages) {
-    const body = addMessage(m);
-    if (m.role === 'assistant' && !m.text && chat.generation?.status === 'running' && (m.requestId === chat.generation.requestId || m.localRequestId === chat.generation.requestId)) body.textContent = 'Le modèle prépare sa réponse sur le PC…';
+    const body = addMessage(m, nextMessages, false);
+    const text = m.role === 'assistant' && !m.text && chat.generation?.status === 'running' && (m.requestId === chat.generation.requestId || m.localRequestId === chat.generation.requestId) ? 'Le modèle prépare sa réponse sur le PC…' : m.text || '';
+    displayText.set(body.parentElement.dataset.messageKey, text);
   }
-  else { const empty = node('div', 'welcome'); empty.append(node('h2', '', 'Commence une nouvelle idée.'), node('p', '', 'Le modèle local répondra à partir de tes messages et des fichiers que tu choisis de joindre.')); $('messages').append(empty); }
-  renderQueue(chat);
-  for (const article of $('messages').querySelectorAll('.message[data-message-key]')) article.querySelectorAll('details').forEach((detail, index) => { if (expanded.has(article.dataset.messageKey + ':' + (detail.dataset.disclosureKey || index))) detail.open = true; });
-  if (focus) { const input = [...$('messages').querySelectorAll('[data-workspace-focus]')].find(el => el.dataset.workspaceFocus === focus); if (input) { input.focus({ preventScroll: true }); if (selection) input.setSelectionRange(...selection); } }
+  else { const empty = node('div', 'welcome'); empty.append(node('h2', '', 'Commence une nouvelle idée.'), node('p', '', 'Le modèle local répondra à partir de tes messages et des fichiers que tu choisis de joindre.')); nextMessages.append(empty); }
+  renderQueue(chat, nextMessages);
+  const nextArticles = [...nextMessages.children].map(article => {
+    for (const {detail, key} of messageDisclosures(article)) {
+      const identity = article.dataset.messageKey + ':' + key;
+      if (disclosureState.has(identity)) detail.open = disclosureState.get(identity);
+    }
+    const text = displayText.get(article.dataset.messageKey);
+    const old = previous.get(article.dataset.messageKey);
+    if (old) return reconcileMessage(old, article, text ?? renderedMessageText.get(article.querySelector('.message-body')) ?? '');
+    if (text !== undefined) renderText(article.querySelector('.message-body'), text);
+    return article;
+  });
+  keepChildOrder($('messages'), nextArticles);
+  for (const container of pendingMessageText.keys()) if (!container.isConnected) pendingMessageText.delete(container);
+  const semanticSummary = disclosureFocus && [...$('messages').querySelectorAll('details[data-disclosure-key]')].find(detail => detail.dataset.disclosureKey === disclosureFocus.key && detail.closest('.message')?.dataset.messageKey === disclosureFocus.messageKey)?.querySelector('summary');
+  if (semanticSummary) semanticSummary.focus({ preventScroll: true });
+  else if (focus) { const input = [...$('messages').querySelectorAll('[data-workspace-focus]')].find(el => el.dataset.workspaceFocus === focus); if (input) { input.focus({ preventScroll: true }); if (selection) input.setSelectionRange(...selection); } }
+  restoreMessageSelection(textSelection);
   const selectedModel = draftForView().model;
   $('model').value = (state.status?.models || []).some(model => model.id === selectedModel) ? selectedModel : modelForChat();
-  setEffort(); scrollBottom(); renderSessions();
+  setEffort();
+  if (follow) scrollBottom(); else { $('messages').scrollTop = sameView ? oldScroll : 0; followingReply = false; updateReplyFollow(); }
+  renderSessions();
   setSending();
 }
 async function openChat(id) {
   if (state.uploading || conversationMove.busy) return;
+  readingView = null;
   closeConversationOptions();
   saveDraft();
   const seq = ++state.viewSeq, pid = state.projectId;
@@ -792,9 +908,7 @@ function adoptJobs(chat, projectId) {
 function showChatUpdate(chat, projectId) {
   cacheChat(chat, projectId);
   if (!state.authenticated || projectId !== state.projectId || state.chat?.id !== chat.id || state.loading) { renderSessions(); return; }
-  const nearBottom = $('messages').scrollHeight - $('messages').scrollTop - $('messages').clientHeight < 160;
-  const oldScroll = $('messages').scrollTop;
-  state.chat = chat; renderChat(); if (!nearBottom) $('messages').scrollTop = oldScroll;
+  state.chat = chat; renderChat();
 }
 async function recoverReplies() {
   if (recoveryBusy || !state.authenticated || conversationMove.busy) return;
@@ -877,8 +991,9 @@ function redrawJob(job, full = false) {
     if (full || !article) { showChatUpdate(chat, job.projectId); return; }
     const reply = replyForJob(chat, job.requestId), body = article.querySelector('.message-body');
     if (!reply || !body) return;
-    const nearBottom = $('messages').scrollHeight - $('messages').scrollTop - $('messages').clientHeight < 160;
-    renderText(body, reply.text || 'Le modèle prépare sa réponse sur le PC…'); if (nearBottom) scrollBottom();
+    const follow = followingReply && nearReplyBottom() && !readingInteraction($('messages'));
+    renderText(body, reply.text || 'Le modèle prépare sa réponse sur le PC…');
+    if (follow) scrollBottom(); else updateReplyFollow();
   }, 40);
 }
 async function send(event) {
@@ -888,6 +1003,8 @@ async function send(event) {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   const requestId = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
   error(''); const data = companionSettings.decorate({ requestId, projectId: state.projectId, sessionId: state.chat?.id || null, model: $('model').value, reasoning: $('effort').value, fileAccess: currentFileProfile()!=='none', fileProfile:currentFileProfile(), webApproval:$('agent-web-approval').checked, webAccess:$('agent-web').checked, scriptAccess:$('agent-scripts').checked, imageAccess:companionSettings.enabled()&&$('agent-images').checked, text, attachments: fileBrowser.references() });
+  responseModels.set(JSON.stringify([data.projectId, requestId]), data.model);
+  if (responseModels.size > 100) responseModels.delete(responseModels.keys().next().value);
   const originalDraft = draftForView(), oldKey = state.viewKey;
   const viewKey = data.sessionId ? oldKey : chatKey(data.projectId, 'pending:' + requestId);
   const chat = state.chat || { projectId: data.projectId, name: text.slice(0, 70), source: 'web', messages: [], model: data.model };
@@ -946,7 +1063,7 @@ async function send(event) {
           const reply = replyForJob(localChatForJob(job), requestId); if (reply && e.contextReceipt) reply.contextReceipt = e.contextReceipt;
           redrawJob(job, true);
         } else if (e.type === 'error') { if (jobIsVisible(job)) error(e.message); }
-        else if (e.type === 'done') { const reply=replyForJob(localChatForJob(job),requestId);if(reply)Object.assign(reply,{truncated:e.truncated,finishReason:e.finishReason,outputBudget:e.outputBudget,limited:e.limited});if(e.limited&&jobIsVisible(job))toast(e.truncated?'Réponse coupée : vérifie le plafond dans Paramètres.':'Limite d’actions atteinte.');redrawJob(job,true); }
+        else if (e.type === 'done') { const reply=replyForJob(localChatForJob(job),requestId);if(reply)Object.assign(reply,{truncated:e.truncated,finishReason:e.finishReason,outputBudget:e.outputBudget,limited:e.limited});if(e.limited&&!e.truncated&&jobIsVisible(job))toast('Limite d’actions atteinte.');redrawJob(job,true); }
       }
     }
   } catch (e) {
@@ -999,6 +1116,8 @@ async function start() {
   }
 }
 function hidePrivateViews() {
+  pendingMessageText.clear(); responseModels.clear(); readingView = null; followingReply = true;
+  $('reply-follow-bar').hidden = true;
   companionSettings.reset();
   updatesPanel.stop();
   try { textDraftStore.clear(); } catch { toast('Impossible d’effacer la copie locale du brouillon. Efface les données de ce site dans le navigateur.'); } $('draft-duration').value='0'; sessionSignature=''; observedGenerations.clear(); announcedEvents.clear();
@@ -1084,6 +1203,20 @@ $('info-button').addEventListener('click', () => {
 $('info-close').addEventListener('click', () => closeInfo(true));
 $('info').addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeInfo(true); } });
 $('composer').addEventListener('submit', send);
+let messageFlushTimer;
+function scheduleMessageTextFlush() {
+  if (!pendingMessageText.size) return;
+  clearTimeout(messageFlushTimer); messageFlushTimer = setTimeout(flushMessageText, 0);
+}
+document.addEventListener('selectionchange', scheduleMessageTextFlush);
+$('messages').addEventListener('focusout', scheduleMessageTextFlush);
+$('messages').addEventListener('scroll', () => { followingReply = nearReplyBottom(); updateReplyFollow(); }, { passive: true });
+$('reply-follow').addEventListener('click', () => {
+  window.getSelection()?.removeAllRanges();
+  $('messages').focus({ preventScroll: true }); flushMessageText(); scrollBottom();
+  const last = $('messages').querySelector('.message.assistant:last-of-type');
+  if (last) last.focus({ preventScroll: true });
+});
 $('prompt').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); $('composer').requestSubmit(); } });
 $('stop').addEventListener('click', async () => {
   const target = { id: state.chat?.id, projectId: state.projectId };

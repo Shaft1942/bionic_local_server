@@ -14,13 +14,19 @@ Vous pouvez aussi commencer un nouveau chat dans le projet sélectionné. Le mod
 
 ## Lire les réponses
 
-Sous une réponse assistant, **Détails et actions** regroupe le journal d’outils, la création d’une branche, les mesures de génération, **Contexte utilisé** et **Conserver comme livrable**. Ce volet reste fermé tant que vous ne l’ouvrez pas. Les formulaires et volets ouverts sont conservés pendant les actualisations de la conversation. Échap le ferme et ramène le focus sur son titre.
+Sous une réponse assistant, **Détails du tour** regroupe le journal d’outils, la création d’une branche, les mesures de génération, **Contexte utilisé** et **Conserver comme livrable**. Ce volet reste fermé tant que vous ne l’ouvrez pas. Les formulaires et volets ouverts sont conservés pendant les actualisations de la conversation. Échap le ferme et ramène le focus sur son titre.
 
 Les validations à traiter, opérations incertaines, interruptions et indicateurs d’action en erreur restent accessibles directement dans le fil. Ouvrir les détails n’exécute aucun outil. Pour un de vos messages, les trois points dans sa bulle donnent accès à ses actions.
 
+Les réponses affichent les titres, listes ordonnées et imbriquées, citations et tableaux Markdown usuels. Les blocs de code portent un langage lorsqu’il est fourni, et **Code proposé** ou **Code fourni** selon l’auteur. **Copier le code** utilise le texte source exact, avec espaces et retours à la ligne ; un bloc non fermé reste signalé et copiable sans lui inventer une fin. Si la copie automatique est indisponible, une sélection manuelle est proposée, avec fermeture directe et Échap. Afficher ou copier du code ne l’exécute pas ; l’accord d’un script reste une action distincte.
+
+Le plafond ordinaire est dans **Détails du tour**. Une réduction liée au contexte ou une réponse coupée reste visible. **Régler le plafond** ouvre le chat courant et le modèle utilisé lorsqu’il a été relevé pendant l’envoi dans cet onglet. Pour une réponse ancienne ou après rechargement, le modèle peut être inconnu : l’interface invite alors à choisir celui du prochain envoi, sans attribuer l’ancienne réponse au modèle actuellement sélectionné.
+
+Si vous remontez dans le fil, les nouveaux fragments ne vous ramènent pas automatiquement en bas. **Revenir à la réponse** retrouve la suite. Une sélection de texte ou un contrôle de code focalisé est conservé ; le corps concerné attend la fin de cette interaction pour afficher ses derniers fragments. Le bouton permet aussi de retrouver la suite immédiatement. Les validations, erreurs et états de la génération continuent de s’actualiser.
+
 ## Créer une branche d’une conversation
 
-Choisissez **Créer une branche du chat** dans le menu **Outils**, ou **Créer une branche depuis ici** dans **Détails et actions** d’une réponse ou les trois points de votre message. Le compagnon crée un nouveau chat web contenant les messages jusqu’au point choisi **inclus**. Le fil source reste intact ; aucune demande n’est envoyée au modèle pendant cette copie.
+Choisissez **Créer une branche du chat** dans le menu **Outils**, ou **Créer une branche depuis ici** dans **Détails du tour** d’une réponse ou les trois points de votre message. Le compagnon crée un nouveau chat web contenant les messages jusqu’au point choisi **inclus**. Le fil source reste intact ; aucune demande n’est envoyée au modèle pendant cette copie.
 
 Les suites sont indépendantes : les nouveaux messages ne se synchronisent ni avec la source ni vers Bionic. Les journaux d’outils et les reçus éventuellement copiés sont des traces historiques passives : aucun script, fichier ou restauration n’est rejoué et aucune validation en attente n’est transférée. Le web et les scripts sont désactivés dans la branche ; vérifiez aussi le droit de fichiers avant votre prochain message.
 
@@ -82,7 +88,7 @@ Les anciens messages sans date de fin enregistrée ne reçoivent pas de date inv
 
 ## Conserver et retrouver des livrables
 
-Sous une réponse enregistrée, ouvrez **Détails et actions**, puis **Conserver comme livrable**, ajustez le titre et choisissez **Conserver la copie figée**. Une création ou modification de fichier confirmée propose aussi **Conserver ce fichier** dans son journal. Ce dernier choix vérifie que le fichier du PC correspond encore à la version produite par l’action ; un changement intervenu entre-temps provoque un refus explicite.
+Sous une réponse enregistrée, ouvrez **Détails du tour**, puis **Conserver comme livrable**, ajustez le titre et choisissez **Conserver la copie figée**. Une création ou modification de fichier confirmée propose aussi **Conserver ce fichier** dans son journal. Ce dernier choix vérifie que le fichier du PC correspond encore à la version produite par l’action ; un changement intervenu entre-temps provoque un refus explicite.
 
 Ouvrez **Livrables** dans la liste des conversations, ou l’onglet correspondant depuis **Depuis votre départ**. Les copies sont séparées par projet. Chaque élément garde son origine et sa date de conservation. **Ouvrir la copie** permet de consulter son aperçu et de la télécharger, de renommer son titre, de revenir au message d’origine ou de la retirer de l’étagère.
 
@@ -99,7 +105,7 @@ Les limites de l’étagère, pour toute l’installation, sont de **1 000 livra
 
 ## Contexte utilisé pour une réponse
 
-Ouvrez **Détails et actions**, puis **Contexte utilisé** sous une nouvelle réponse assistant. Le reçu indique l’historique retenu, les messages écartés, les pièces jointes sélectionnées et les lectures réussies par les outils. Les extraits d’outils conservent le texte observé, sa position et l’empreinte du fichier au moment de la lecture. Ce panneau ne relit pas les fichiers du projet pour reconstruire le passé.
+Ouvrez **Détails du tour**, puis **Contexte utilisé** sous une nouvelle réponse assistant. Le reçu indique l’historique retenu, les messages écartés, les pièces jointes sélectionnées et les lectures réussies par les outils. Les extraits d’outils conservent le texte observé, sa position et l’empreinte du fichier au moment de la lecture. Ce panneau ne relit pas les fichiers du projet pour reconstruire le passé.
 
 Pour un message en attente, le reçu est construit lorsque son tour commence : il peut alors inclure la réponse précédente. Il évolue avec les lectures d’outils et reste accessible après rechargement. Les pièces jointes appartiennent aux copies enregistrées lors de l’envoi, pas au fichier qui aurait été modifié ensuite sur le PC.
 
@@ -117,7 +123,7 @@ Sélectionnez un modèle disponible dans la liste. Le chargement à la demande d
 
 Le champ **Effort** présente les choix pris en charge pour le modèle. Un niveau plus élevé peut prendre davantage de temps ou de contexte. L’application conserve une option par défaut et n’invente pas de prise en charge pour un modèle inconnu.
 
-Les mesures de tokens, durée et tokens/s sont disponibles dans **Détails et actions** lorsqu’elles peuvent être calculées ou sont fournies par l’API. Elles ne constituent pas un benchmark comparable entre tous les modèles ; une demande avec plusieurs étapes d’outils peut ne pas avoir de vitesse globale affichée.
+Les mesures de tokens, durée et tokens/s sont disponibles dans **Détails du tour** lorsqu’elles peuvent être calculées ou sont fournies par l’API. Elles ne constituent pas un benchmark comparable entre tous les modèles ; une demande avec plusieurs étapes d’outils peut ne pas avoir de vitesse globale affichée.
 
 Dans **Modèles chargés**, vous pouvez décharger une instance. Son fichier reste sur le disque. L’action peut affecter les autres conversations Bionic utilisant cette instance. Un prochain message peut recharger le modèle si Bionic autorise le chargement à la demande.
 

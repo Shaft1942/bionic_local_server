@@ -60,7 +60,12 @@ async function waitForCondition(condition,timeoutMs=5000){const deadline=perform
 const findings=[];
 const runId=randomUUID(),backgroundRequestId=runId+'-checkpoint';
 try {
- let r=await request('/api/projects');findings.push({test:'unauthenticated API blocked',pass:r.statusCode===401,status:r.statusCode});
+ await fs.mkdir(path.join(root,'public'),{recursive:true});
+ const messageAsset=await fs.readFile(path.join(sourceRoot,'public/message-text.js'),'utf8');
+ await fs.writeFile(path.join(root,'public/message-text.js'),messageAsset);
+ let r=await request('/message-text.js');findings.push({test:'conversation renderer is served through the explicit static asset allowlist with JavaScript MIME',pass:r.statusCode===200&&r.parts.map(String).join('')===messageAsset&&/^text\/javascript/.test(r.headers['Content-Type']||r.headers['content-type']||'')});
+ r=await request('/unlisted-reading.js');findings.push({test:'new conversation renderer does not expose arbitrary static paths',pass:r.statusCode===404});
+ r=await request('/api/projects');findings.push({test:'unauthenticated API blocked',pass:r.statusCode===401,status:r.statusCode});
  r=await request('/api/conversation/move',{method:'POST',body:{projectId:'p1',id:'native-1',targetProjectId:'p2'}});findings.push({test:'conversation move requires authentication',pass:r.statusCode===401});
  for(const action of ['rename','delete']){r=await request('/api/conversation/'+action,{method:'POST',body:{projectId:'p1',id:'native-1',name:'Forbidden'}});findings.push({test:'conversation '+action+' requires authentication',pass:r.statusCode===401})}
  r=await request('/api/file?projectId=p1&rootId=project&path=notes.md');findings.push({test:'file contents require login',pass:r.statusCode===401});

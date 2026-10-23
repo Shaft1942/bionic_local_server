@@ -42,7 +42,7 @@ function fixture(intercept=()=>undefined) {
   const fire=(id,type='click')=>element(id).listeners[type]({currentTarget:element(id),preventDefault(){}});
   const open=()=>fire('settings-open');
   async function saveOutput(value,all=false){element('output-mode').value=value===null?'auto':'manual';element('output-tokens').value=value??8192;element('output-all-sessions').checked=all;return fire('output-settings-form','submit');}
-  return {state,element,settings,writes,fire,open,saveOutput};
+  return {state,document,element,settings,writes,fire,open,saveOutput};
 }
 
 test('LoRA form keeps two choices and strengths independently when switching image models',async()=>{
@@ -225,4 +225,27 @@ test('an older ComfyUI save response cannot replace the enabled state of a newer
   older.resolve({...defaultComfy,enabled:false,updatedAt:1});await oldSave;
   assert.equal(f.settings.enabled(),true);
   // The caller owns composer locks; browser-v2 verifies the enabled control.
+});
+
+test('a targeted output opening cannot steal focus or scroll from a newer settings view',async()=>{
+  const old=deferred();let calls=0,scrolls=0;
+  const f=fixture(route=>route.startsWith('/api/model-preferences?')&&++calls===1?old.promise:undefined);
+  f.element('output-settings-form').scrollIntoView=()=>{scrolls++;};
+  const previous=f.settings.openOutput({currentTarget:f.element('budget-trigger')},'m');
+  await tick();f.settings.close();await f.open();f.element('comfy-url').focus();
+  old.resolve({source:'auto',automatic:true,maxOutputTokens:8192,contextLength:16000,applyToAllSessions:false});
+  await previous;
+  assert.equal(scrolls,0);
+  assert.equal(f.document.activeElement,f.element('comfy-url'));
+});
+
+test('output shortcut uses its known model, and unknown provenance focuses the model choice',async()=>{
+  const queries=[],f=fixture(route=>{if(route.startsWith('/api/model-preferences?'))queries.push(new URLSearchParams(route.split('?')[1]));});
+  f.state.status.models.push({id:'n',name:'Modèle N'});f.element('model').value='n';
+  let scrolls=0;f.element('output-settings-form').scrollIntoView=()=>{scrolls++;};
+  await f.settings.openOutput({currentTarget:f.element('budget-trigger')},'m');
+  assert.equal(queries.at(-1).get('model'),'m');assert.equal(f.document.activeElement,f.element('output-mode'));
+  f.settings.close();assert.equal(f.document.activeElement,f.element('budget-trigger'));
+  await f.settings.openOutput({currentTarget:f.element('unknown-budget')},null);
+  assert.equal(queries.at(-1).get('model'),'n');assert.equal(f.document.activeElement,f.element('settings-model'));assert.equal(scrolls,2);
 });
