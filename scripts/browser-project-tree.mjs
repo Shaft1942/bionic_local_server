@@ -85,15 +85,19 @@ async function assertNoOverflow(page, label) {
 }
 
 try {
-  for (const width of [1280, 320]) for (const journey of ['navigation-search-draft', 'late-logout', 'rapid-navigation']) {
+  for (const width of [1280, 320]) for (const journey of ['navigation-search-draft', 'late-logout', 'rapid-navigation', 'project-new-chat']) {
     const context = await browser.newContext({locale:'fr-FR', viewport: { width, height: 900 } });
-    const page = await context.newPage(), api = fixture(), errors = [];
+    const page = await context.newPage(), api = fixture(), errors = [], submissions = [];
     page.setDefaultTimeout(6000);
     page.on('pageerror', error => errors.push(error.message));
     await context.route('**/*', async route => {
       const url = new URL(route.request().url());
       if (url.origin !== origin) return route.abort();
       if (url.pathname.startsWith('/api/')) {
+        if (url.pathname === '/api/chat') {
+          submissions.push(route.request().postDataJSON());
+          return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'Envoi capturé par la fixture, sans modèle.' }) });
+        }
         const data = await api.respond(url);
         return route.fulfill({ status: data.error ? 404 : 200, contentType: 'application/json', body: JSON.stringify(data) });
       }
@@ -185,6 +189,61 @@ try {
         await page.waitForFunction(() => document.querySelector('#project').value === 'companion-unassigned');
         assert.equal(await page.locator('#agent-files').inputValue(), 'none');
         assert.equal(await page.locator('#agent-scripts').isChecked(), false);
+      } else if (journey === 'project-new-chat') {
+        assert.equal(await page.locator('.project-new-chat').count(), 3);
+        const create = group(page, 'p2').locator('.project-new-chat');
+        assert.equal(await create.getAttribute('aria-label'), 'Nouveau chat web dans Projet secondaire');
+        const size = await create.boundingBox(); assert(size.width >= 44 && size.height >= 44);
+        // Open the current chat first: + must not keep appending to it.
+        await group(page, 'p1').locator('.session').first().click();
+        await page.waitForFunction(() => document.querySelector('#thread-title').textContent === 'Aiguille p1 1');
+        await page.locator('#prompt').fill('Brouillon de la conversation existante');
+        await sidebar(page, width);
+        await page.locator('#search').fill('aucun-resultat');
+        const release = api.holdNextSessions('p2');
+        await create.focus(); await create.press('Enter');
+        await page.waitForFunction(() => document.querySelector('#project').value === 'p2' && document.activeElement === document.querySelector('#prompt'));
+        release();
+        assert.equal(await page.locator('#thread-title').textContent(), 'Nouveau chat web');
+        assert.equal(await page.locator('#search').inputValue(), '');
+        assert.equal(await page.locator('#prompt').inputValue(), '');
+        await page.locator('#prompt').fill('Premier message du nouveau chat');
+        await page.locator('#send').click();
+        await page.waitForFunction(() => document.querySelector('#message-error').textContent.includes('Envoi capturé'));
+        assert.equal(submissions.length, 1);
+        assert.equal(submissions[0].projectId, 'p2'); assert.equal(submissions[0].sessionId, null);
+        await sidebar(page, width);
+        // The current project's + must also open a new conversation.
+        await group(page, 'p2').locator('.session').first().click();
+        await page.waitForFunction(() => document.querySelector('#thread-title').textContent === 'Aiguille p2 1');
+        await sidebar(page, width);
+        await group(page, 'p2').locator('.project-new-chat').click();
+        assert.equal(await page.locator('#thread-title').textContent(), 'Nouveau chat web');
+        await page.locator('#prompt').fill('Brouillon du nouveau chat');
+        await sidebar(page, width);
+        await group(page, 'p2').locator('.session').first().click();
+        await page.waitForFunction(() => document.querySelector('#thread-title').textContent === 'Aiguille p2 1');
+        await sidebar(page, width);
+        await group(page, 'p2').locator('.project-new-chat').click();
+        assert.equal(await page.locator('#prompt').inputValue(), 'Brouillon du nouveau chat', 'new-chat draft survives navigation');
+        await sidebar(page, width);
+        await group(page, 'p1').locator('.session').first().click();
+        await page.waitForFunction(() => document.querySelector('#prompt').value === 'Brouillon de la conversation existante');
+        await sidebar(page, width);
+        await group(page, 'companion-unassigned').locator('.project-new-chat').click();
+        await page.waitForFunction(() => document.querySelector('#project').value === 'companion-unassigned');
+        assert.equal(await page.locator('#agent-files').inputValue(), 'none');
+        assert.equal(await page.locator('#agent-scripts').isChecked(), false);
+        await sidebar(page, width);
+        await page.evaluate(() => BionicI18n.setLanguage('en'));
+        assert.equal(await group(page, 'p2').locator('.project-new-chat').getAttribute('aria-label'), 'New web chat in Projet secondaire');
+        await page.evaluate(() => BionicI18n.setLanguage('fr'));
+        for (const id of ['p1', 'p2', 'companion-unassigned']) {
+          const toggle = group(page, id).locator('.project-toggle');
+          if (await toggle.getAttribute('aria-expanded') === 'true') await toggle.click();
+        }
+        await page.locator('#sessions').evaluate(element => { element.scrollTop = 0; });
+        if (captures) await page.screenshot({ path: path.join(captures, width + '-project-new-chat.png') });
       } else if (journey === 'late-logout') {
         const release = api.holdNextSessions('p2');
         const request = page.waitForRequest(request => isSessions(request.url(), 'p2'));

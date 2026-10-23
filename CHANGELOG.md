@@ -10,6 +10,10 @@
 
 Les entrées décrivent les évolutions du produit. Les comptes rendus de travail, mesures d’un poste, plans et prompts internes ne font pas partie de cette documentation. Les versions effectivement disponibles sont dans les [Releases](https://github.com/Shaft1942/bionic_local_server/releases).
 
+## 2.5.1 — Bêta à venir
+
+- Dans **Projets et conversations**, un bouton **+** à droite du compteur ouvre directement un nouveau chat web dans le projet choisi, y compris depuis un projet replié. Les brouillons sont conservés et la conversation est enregistrée au premier envoi.
+
 ## 2.5.0 — 2026-10-23
 
 - Interface **français/anglais**, choix mémorisé par navigateur et indépendant de la langue des conversations, prompts et fichiers. README et guide d’usage anglais ajoutés ; documentation réorganisée, synthétisée et débarrassée des traces internes.

@@ -294,6 +294,7 @@ BionicI18n.register("fr", {
   "components.projects.collapse": "Replier les conversations de {name}",
   "components.projects.expand": "Déplier les conversations de {name}",
   "components.projects.open": "Ouvrir le projet {name}",
+  "components.projects.newChat": "Nouveau chat web dans {name}",
   "components.projects.more": "Afficher plus ({count})",
   "components.images.loras": "LoRA : {loras}",
   "components.updates.installed": "Version installée : {version} · canal {channel}",

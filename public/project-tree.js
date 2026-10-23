@@ -1,6 +1,6 @@
 'use strict';
 
-function createProjectTree({ container, node, icon, getView, fetchSessions, renderSession, onSelectProject, onCount }) {
+function createProjectTree({ container, node, icon, getView, fetchSessions, renderSession, onSelectProject, onNewChat, onCount }) {
   const storageKey = 'bm_project_tree';
   const cache = new Map(), expanded = new Set(), collapsed = new Set(), pages = new Map();
   let projects = [], signature = '', generation = 0, currentProject = null, previousSearch = '';
@@ -116,7 +116,12 @@ function createProjectTree({ container, node, icon, getView, fetchSessions, rend
         if (event.key === 'ArrowRight') { event.preventDefault(); if (!open) changeExpansion(true); else section.querySelector('.session')?.focus(); }
         if (event.key === 'ArrowLeft') { event.preventDefault(); if (open) changeExpansion(false); else toggle.focus(); }
       });
-      heading.append(toggle, select); section.append(heading);
+      const create = node('button', 'project-new-chat'); create.type = 'button'; create.dataset.treeKey = 'new-chat:' + project.id;
+      create.disabled = view.disabled;
+      create.title = BionicI18n.t('components.projects.newChat', { name: project.name });
+      create.setAttribute('aria-label', create.title); create.append(icon('plus'));
+      create.addEventListener('click', () => { if (!getView().disabled) onNewChat(project.id); });
+      heading.append(toggle, select, create); section.append(heading);
       const children = node('div', 'project-conversations'); children.id = childrenId; children.hidden = !open;
       if (open) {
         if (item.partial) children.append(node('p', 'partial-warning', item.warnings.map(warning => warning.message).join(' ') || BionicI18n.t('components.projects.partial')));

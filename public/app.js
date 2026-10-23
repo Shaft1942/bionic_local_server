@@ -108,6 +108,7 @@ const projectTree = createProjectTree({
   fetchSessions: projectId => api('/api/sessions?projectId=' + encodeURIComponent(projectId)),
   renderSession: renderSessionRow,
   onSelectProject: projectId => selectProject(projectId).catch(e => error(e.message)),
+  onNewChat: projectId => selectProject(projectId, { clearSearch: true, startNewChat: true }).catch(e => error(e.message)),
   onCount: (count, unloaded, searching) => { setText($('session-count'), appNumber(count)); $('session-count').dataset.count = String(count); $('session-count').setAttribute('aria-label', appT('app.sessionsCount', { count, unloaded: unloaded ? appT('app.projectsUnloaded', { count: unloaded }) : '', search: searching ? appT('app.searchMatching') : '' })); }
 });
 let recoveryTimer, recoveryBusy = false, renderTimer;
@@ -526,17 +527,22 @@ function renderSessionRow(s, projectId) {
     });
     return button;
 }
-async function selectProject(projectId, { clearSearch = false } = {}) {
+async function selectProject(projectId, { clearSearch = false, startNewChat = false } = {}) {
   if (state.uploading || conversationMove.busy || !state.authenticated) return false;
   if (!state.projects.some(project => project.id === projectId)) throw new Error(appT('app.projectUnavailable'));
   projectTree.activate(projectId);
-  if (projectId === state.projectId) { projectTree.render(); return true; }
+  if (projectId === state.projectId) {
+    if (clearSearch) $('search').value = '';
+    if (startNewChat) newChat();
+    projectTree.render(); return true;
+  }
   closeConversationOptions(); saveDraft();
   state.projectId = projectId; $('project').value = projectId; state.chat = null; state.loading = false;
   state.sessions = []; state.sessionsPartial = false; state.sessionWarnings = [];
   const seq = ++state.viewSeq, epoch = state.authEpoch;
   if (clearSearch) $('search').value = '';
   restoreDraft(chatKey(projectId)); renderChat(); error('');
+  if (startNewChat) { $('app').classList.add('thread-open'); $('prompt').focus(); }
   await loadSessions();
   if (seq !== state.viewSeq || epoch !== state.authEpoch || !state.authenticated || projectId !== state.projectId) return false;
   renderSessions(); scheduleRecovery();
@@ -985,7 +991,7 @@ function setSending() {
   $('logout').disabled = state.uploading || conversationMove.busy;
   document.querySelectorAll('.restore-action').forEach(button => button.disabled = locked || state.sending || button.dataset.restored === 'true');
   $('effort').disabled = locked || !(state.status?.models || []).find(model => model.id === $('model').value)?.reasoning?.allowedOptions.length;
-  document.querySelectorAll('.session,.project-toggle,.project-select,.project-more').forEach(b => b.disabled = state.uploading || conversationMove.busy);
+  document.querySelectorAll('.session,.project-toggle,.project-select,.project-new-chat,.project-more').forEach(b => b.disabled = state.uploading || conversationMove.busy);
   const queued = Math.max(state.chat?.queue?.filter(item => item.status === 'queued').length || 0, active.filter(job => job.status === 'queued').length);
   $('composer-activity').hidden = !state.sending;
   const activityText = state.chat?.generation?.awaitingApproval ? appT('app.approvalActivity') : unresolved ? appT('app.sendingActivity') : (running ? appT('app.runningActivity') : '') + (queued ? appT('app.queuedActivity', { count: queued }) : '') + appT('app.keepWritingSuffix');
