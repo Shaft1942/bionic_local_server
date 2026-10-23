@@ -953,6 +953,8 @@ async function handleRequest(req, res) {
         const chat = record.id ? chatStates.get(record.id)?.chat : undefined;
         json(res, 200, { projectId: record.projectId, id: record.id, status: record.status, message: record.message, ...(chat ? { position: queuePosition(chat, requestId) } : {}) }); return;
       }
+      if(req.method==='GET'&&url.pathname==='/api/comfy/memory-module'){const module=await defaultFS.readFile(new URL('./comfyui/custom_nodes/free_memory_after_workflow.py',import.meta.url));res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Disposition':'attachment; filename="free_memory_after_workflow.py"','Cache-Control':'no-store'});res.end(module);return;}
+      if(req.method==='POST'&&url.pathname==='/api/comfy/discover'){json(res,200,await comfyImages.discoverServers(await body(req,4096)));return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/loras'){json(res,200,await comfyImages.listLoras(await body(req,4096)));return;}
       if(req.method==='GET'&&url.pathname==='/api/comfy/settings'){json(res,200,await comfyImages.getSettings());return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/settings'){json(res,200,await comfyImages.updateSettings(await body(req,4096)));return;}

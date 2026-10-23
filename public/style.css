@@ -233,3 +233,5 @@
 @media(max-width:760px){
   .sidebar-bottom .status{font-size:11px}
 }
+
+.settings-body #comfy-settings-form h3{font-size:17px;margin:22px 0 0;line-height:1.4}.comfy-help{width:100%;min-width:0;font-size:14px;line-height:1.6}.comfy-help summary{cursor:pointer;min-height:44px;display:flex;align-items:center;text-decoration:underline;text-underline-offset:3px}.comfy-help p{margin:10px 0}.comfy-help li,.comfy-diagnostic li{margin:8px 0;overflow-wrap:anywhere}.comfy-help ol,.comfy-diagnostic ul{padding-inline-start:24px}.comfy-diagnostic{width:100%;padding:0 0 16px;border-top:1px solid var(--line);font-size:14px;line-height:1.6;overflow-wrap:anywhere}.comfy-help a,.comfy-diagnostic a{color:var(--blue);text-underline-offset:3px}.comfy-help a:focus-visible,.comfy-help summary:focus-visible,.comfy-diagnostic a:focus-visible{outline:3px solid var(--focus);outline-offset:3px}

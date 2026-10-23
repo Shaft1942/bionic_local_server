@@ -183,9 +183,8 @@ test('closing and reopening settings discards old GET results for output, ComfyU
 test('an unreachable ComfyUI check displays its error instead of claiming a connection',async()=>{
   const f=fixture(route=>route==='/api/comfy/check'?{ok:false,reachable:false,error:'Serveur ComfyUI inaccessible.',workflows:[]}:undefined);
   await f.open();await f.fire('comfy-test');
-  assert.equal(f.element('comfy-error').textContent,'Serveur ComfyUI inaccessible.');
-  assert.equal(f.element('comfy-error').attributes.role,'alert');
-  assert.equal(f.element('comfy-result').textContent,'');
+  assert.match(f.element('comfy-server-status').textContent,/Serveur ComfyUI inaccessible/);
+  assert.match(f.element('comfy-result').textContent,/Complète/);
   assert.equal(f.element('comfy-test').disabled,false);
 });
 test('an explicit automatic session override reopens as automatic even when its source is session',async()=>{

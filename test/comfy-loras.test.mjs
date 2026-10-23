@@ -14,7 +14,7 @@ async function fixture(t){
   const choices=[...slots.map(lora=>lora.name),'new.safetensors'];
   const info={LoraLoader:{input:{required:{lora_name:[choices]}}},LoraLoaderModelOnly:{input:{required:{lora_name:[choices]}}}};
   const fetchImpl=async(url,options={})=>{calls.push({url,options});if(url.endsWith('/object_info'))return Response.json(info);if(url.endsWith('/prompt'))return Response.json({prompt_id:'prompt-'+calls.length});throw Error('Unexpected HTTP call');};
-  const service=await createComfyImages({directory,settingsFile:path.join(directory,'settings.json'),enabled:true,fetchImpl,pollMs:100000});
+  const service=await createComfyImages({directory,settingsFile:path.join(directory,'settings.json'),enabled:true,memoryCleanup:true,fetchImpl,pollMs:100000});
   t.after(async()=>{await service.close();assert(path.basename(directory).startsWith('comfy-loras-test-'));await fs.rm(directory,{recursive:true,force:true});});
   return {directory,service,calls,info};
 }
@@ -48,7 +48,7 @@ test('v1 settings migrate without losing endpoint; two model LoRA profiles persi
   await fs.writeFile(file,JSON.stringify({version:1,enabled:true,url:'http://127.0.0.1:8188',workflowId:'krea2_turbo'}));
   const store=await createComfySettings({file});await store.update({loraProfiles:{krea2_turbo:slots}});await store.update({loraProfiles:{hassaku_illustrious:[{name:'sdxl.safetensors',strength:1}]}});
   const restored=await createComfySettings({file});assert.deepEqual(restored.get().loraProfiles.krea2_turbo,slots);assert.equal(restored.get().loraProfiles.hassaku_illustrious[0].name,'sdxl.safetensors');
-  const copy=restored.get();copy.loraProfiles.krea2_turbo[0].name='mutated';assert.equal(restored.get().loraProfiles.krea2_turbo[0].name,slots[0].name);assert.equal(JSON.parse(await fs.readFile(file)).version,2);
+  const copy=restored.get();copy.loraProfiles.krea2_turbo[0].name='mutated';assert.equal(restored.get().loraProfiles.krea2_turbo[0].name,slots[0].name);assert.equal(JSON.parse(await fs.readFile(file)).version,3);
 });
 
 test('catalog uses ComfyUI loader choices, including extra folders; image job keeps selected model, two LoRA and /free',async t=>{

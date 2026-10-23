@@ -36,7 +36,7 @@ async function fixture(t,{busy,cleanupFailure,unrelated=false,legacy=false,succe
     }
     throw Error('Unexpected route '+route);
   };
-  service=await createComfyImages({directory,settingsFile,enabled:true,fetchImpl,pollMs:100000});
+  service=await createComfyImages({directory,settingsFile,enabled:true,memoryCleanup:true,fetchImpl,pollMs:100000});
   t.after(async()=>{await service.close();assert.equal(path.dirname(directory),path.resolve(os.tmpdir()));assert(path.basename(directory).startsWith('comfy-memory-test-'));await fs.rm(directory,{recursive:true,force:true});});
   const job=await service.submit({prompt:'Synthetic teapot',seed:42},owner);
   ownedJobId=job.id;

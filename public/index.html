@@ -162,19 +162,46 @@
         <p id="comfy-scope" class="settings-scope">Installation PC · partagé entre les conversations.</p><p id="comfy-origin"></p><p id="comfy-effective"></p>
         <form id="comfy-settings-form">
           <label class="settings-check"><input id="comfy-enabled" type="checkbox"><span>Activer ComfyUI pour ce compagnon</span></label>
+          <h3>1. Trouver ComfyUI</h3>
+          <p>Démarre ComfyUI sur le PC. Le compagnon se connecte à son serveur ; le téléphone n’a pas besoin d’accéder directement à ComfyUI.</p>
           <label for="comfy-url">Adresse du serveur ComfyUI</label><input id="comfy-url" type="url" placeholder="http://127.0.0.1:8188" required autocomplete="off" spellcheck="false" aria-describedby="comfy-url-help">
           <p id="comfy-url-help">Adresse vue depuis le PC qui héberge le compagnon. Exemple réseau : http://192.168.1.197:8188.</p>
-          <label for="comfy-workflow">Profil par défaut et LoRA à modifier</label><select id="comfy-workflow"></select>
-          <fieldset class="comfy-loras"><legend>Deux LoRA par profil</legend>
+          <button id="comfy-discover" class="file-action" type="button">Rechercher le serveur</button>
+          <p id="comfy-discovery-status" role="status"></p><div id="comfy-servers" class="settings-actions"></div>
+          <details class="comfy-help"><summary>ComfyUI n’est pas trouvé ?</summary>
+            <p>La recherche vérifie les ports 8188 et 8000 sur le PC du compagnon, ainsi que l’adresse saisie. Pour un autre port, copie l’adresse affichée par ComfyUI dans le champ ci-dessus.</p>
+            <p>Dans ComfyUI Desktop, vérifie les paramètres du serveur et son port, puis démarre le serveur local. Sur le même PC, conserve localhost : aucune ouverture du pare-feu ou exposition réseau n’est nécessaire.</p>
+            <p>Pour un autre PC, saisis son adresse IPv4 privée et son port. Son serveur doit autoriser les connexions du réseau privé. Une erreur de connexion peut aussi venir du port, du pare-feu ou d’un serveur arrêté ; elle ne prouve pas qu’une option est désactivée.</p>
+          </details>
+          <h3>2. Vérifier le modèle d’image</h3>
+          <p>Choisis une recette puis lance la vérification ci-dessous. Les fichiers attendus et leur dossier seront indiqués. Les poids ne sont pas inclus avec le compagnon.</p>
+          <label for="comfy-workflow">Modèle d’image</label><select id="comfy-workflow"></select>
+          <h3>3. Choisir le nettoyage mémoire</h3>
+          <label class="settings-check"><input id="comfy-memory-cleanup" type="checkbox" aria-describedby="comfy-memory-help"><span>Décharger les modèles ComfyUI après chaque rendu</span></label>
+          <p id="comfy-memory-help">Facultatif. Utile pour rendre de la mémoire à d’autres applications ou en cas de ralentissement entre rendus, notamment avec Krea 2. Les poids devront être rechargés au rendu suivant, qui peut donc être plus lent. Aucun gain de vitesse ni quantité de mémoire libérée n’est garanti.</p>
+          <p>Le nettoyage attend la fin du workflow et ne décharge pas Bionic. Désactivé : ComfyUI conserve sa gestion mémoire habituelle, aucun module supplémentaire n’est requis. Les réglages existants conservent leur ancien choix.</p>
+          <details class="comfy-help"><summary>Installer le module mémoire facultatif</summary>
+            <ol><li><a href="/api/comfy/memory-module" download="free_memory_after_workflow.py">Télécharger le module mémoire fourni</a> sur le PC qui héberge ComfyUI.</li><li>Copie le fichier dans le dossier <code>custom_nodes</code> de l’instance ComfyUI utilisée. Aucun paquet Python supplémentaire n’est nécessaire.</li><li>Attends la fin des travaux, puis redémarre ComfyUI et relance la vérification. Le compagnon ne l’installe pas et ne redémarre pas ComfyUI.</li></ol>
+            <p>Le module nécessite une sortie IMAGE sur SaveImage. Si ce lien n’est pas disponible sur ta version, laisse le nettoyage désactivé.</p>
+          </details>
+          <details class="comfy-help"><summary>LoRA facultatifs et réglages avancés</summary>
+          <fieldset class="comfy-loras"><legend>Jusqu’à deux LoRA pour ce modèle</legend>
             <p>La liste vient de ComfyUI et comprend ses dossiers supplémentaires et ses téléchargements. Utilise des LoRA SDXL / Illustrious pour HassakuXL, ou Krea2 pour Krea2. Leur présence dans la liste ne garantit pas leur compatibilité.</p>
             <div class="comfy-lora-row"><div><label for="comfy-lora-1">LoRA 1</label><select id="comfy-lora-1"><option value="">Aucun LoRA</option></select></div><div class="comfy-lora-strength"><label for="comfy-lora-1-strength">Force du LoRA 1<output id="comfy-lora-1-value" for="comfy-lora-1-strength" aria-hidden="true">1,00</output></label><input id="comfy-lora-1-strength" type="range" min="-2" max="20" step="0.05" value="1"></div></div>
             <div class="comfy-lora-row"><div><label for="comfy-lora-2">LoRA 2</label><select id="comfy-lora-2"><option value="">Aucun LoRA</option></select></div><div class="comfy-lora-strength"><label for="comfy-lora-2-strength">Force du LoRA 2<output id="comfy-lora-2-value" for="comfy-lora-2-strength" aria-hidden="true">1,00</output></label><input id="comfy-lora-2-strength" type="range" min="-2" max="20" step="0.05" value="1"></div></div>
             <p>Force 0 : LoRA désactivé. Les deux choix et leurs forces sont conservés séparément pour chaque modèle.</p>
             <button id="comfy-loras-refresh" class="file-action" type="button">Actualiser les LoRA de ComfyUI</button><p id="comfy-loras-status" role="status"></p>
-          </fieldset>
-          <p>Le profil choisi devient le défaut global. Chaque message garde son propre choix dans Outils. Le nettoyage mémoire ComfyUI après sauvegarde est prévu par le workflow. Tester vérifie la connexion sans enregistrer ni lancer de rendu.</p>
+          </fieldset></details>
+          <p>Après enregistrement, active aussi Images dans le menu Outils du message. Le diagnostic ne lance aucun rendu.</p>
           <p id="comfy-experimental">La chaîne Hassaku vers Krea2 reste expérimentale et n’est pas proposée comme workflow automatique.</p>
-          <p id="comfy-dirty" class="settings-dirty" role="status" hidden></p><div class="settings-actions"><button id="comfy-test" class="file-action" type="button">Tester la connexion et les modèles</button><button id="comfy-save" class="primary" type="submit">Enregistrer ComfyUI</button><button id="comfy-cancel" class="file-action" type="button">Annuler la saisie</button></div>
+          <p id="comfy-dirty" class="settings-dirty" role="status"></p><div class="settings-actions"><button id="comfy-test" class="file-action" type="button">Tester la connexion et les modèles</button><button id="comfy-cancel" class="file-action" type="button">Annuler la saisie</button><button id="comfy-save" class="primary" type="submit">Enregistrer ComfyUI</button></div>
+          <div id="comfy-diagnostic" class="comfy-diagnostic" hidden>
+            <h3>Résultat de la vérification</h3>
+            <p id="comfy-server-status"></p><p id="comfy-model-status"></p><ul id="comfy-models"></ul>
+            <p id="comfy-memory-status"></p><ul id="comfy-node-errors"></ul>
+            <p>Pour un fichier manquant, installe exactement le modèle indiqué dans le dossier indiqué de ComfyUI (ou un dossier supplémentaire configuré). Actualise les modèles dans ComfyUI, puis vérifie à nouveau. Un fichier renommé ou placé sous un sous-dossier doit correspondre au nom attendu par cette recette.</p>
+            <a href="https://docs.comfy.org/installation/manual_install#adding-models" target="_blank" rel="noopener noreferrer">Guide officiel pour ajouter des modèles</a>
+          </div>
           <p id="comfy-result" role="status"></p><p id="comfy-error" class="error" role="alert" hidden></p>
         </form>
       </section>
