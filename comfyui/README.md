@@ -1,7 +1,11 @@
 # Nettoyage mémoire ComfyUI
 
-Le compagnon utilise `FreeMemoryAfterWorkflow` dans ses deux graphes de production,
-y compris Krea 2 Turbo. Le module est fourni ici :
+À partir de la 2.2.1-beta.3, le compagnon utilise `FreeMemoryAfterWorkflow` seulement
+si l’option facultative « Décharger les modèles ComfyUI après chaque rendu » est activée.
+Elle est désactivée pour une installation neuve ; les réglages enregistrés anciens
+conservent leur comportement. Désactivée, aucun module ni sortie IMAGE sur SaveImage
+n’est requis. Le choix est figé pour chaque demande. Les deux graphes de production
+conservent le nœud comme recette de référence, y compris Krea 2 Turbo. Le module est fourni ici :
 `custom_nodes/free_memory_after_workflow.py`. Il ne demande aucun paquet Python.
 
 Pour une instance où le nœud est absent, copier ce seul fichier dans le dossier
@@ -14,7 +18,7 @@ redémarrage ComfyUI n'est effectué par le compagnon ou son autoupdate.
 Le nœud 99 dépend de `SaveImage`. Il programme les indicateurs `unload_models` et
 `free_memory`, puis le worker ComfyUI les traite après le workflow : déchargement
 des modèles ComfyUI, remise à zéro du cache de l'exécuteur et collecte mémoire.
-Les graphes fournis exigent donc une sortie `IMAGE` d'indice 0 sur `SaveImage`.
+Avec le nettoyage activé, les graphes soumis exigent donc une sortie `IMAGE` d'indice 0 sur `SaveImage`.
 Elle est présente dans le backend ComfyUI 0.42.2 vérifié pour cette intégration
 (`RETURN_TYPES = ("IMAGE",)` et résultat `images`). Certaines autres versions de
 `SaveImage` ne renvoient aucune sortie. Dans ce cas, **Tester la connexion et les
@@ -25,7 +29,7 @@ Il ne décharge pas un modèle Bionic. Le journal
 `[Free Memory after Workflow] Requested ...` confirme la **demande**, pas une
 quantité de RAM ou de VRAM libérée.
 
-Si un nouveau travail du compagnon échoue ou est interrompu avant la sauvegarde,
+Si le nettoyage a été activé pour ce travail et qu’un nouveau travail du compagnon échoue ou est interrompu avant la sauvegarde,
 le nœud final peut ne pas être atteint. À partir de la 2.1, le compagnon demande
 alors une seule fois `/free` avec les deux indicateurs, après avoir retrouvé
 l'erreur terminale de son propre `prompt_id` et vérifié que la file est vide.

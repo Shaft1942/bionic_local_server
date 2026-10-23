@@ -10,7 +10,7 @@ const captures=process.env.BIONIC_SMOKE_SCREENSHOTS;if(captures)await fs.mkdir(c
 const results=[],origin='http://bionic.test';
 try{
   for(const width of [1280,320]){
-    const context=await browser.newContext({viewport:{width,height:900}}),page=await context.newPage(),errors=[],writes=[],sends=[];let tests=0;
+    const context=await browser.newContext({viewport:{width,height:900}}),page=await context.newPage(),errors=[],writes=[],sends=[];let tests=0,discoveries=0,diagnosis="offline";
     page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(6000);
     const models=['a','b'].map(id=>({id,name:'Modèle '+id,type:'llm',tools:true,contextLength:16384,reasoning:{allowedOptions:[],default:'default'}}));
     let comfy={enabled:false,url:'http://127.0.0.1:8188',workflowId:'krea2_turbo',activeJobs:0,loraProfiles:{krea2_turbo:[],hassaku_illustrious:[]},workflows:[{id:'krea2_turbo',label:'Krea2 Turbo'},{id:'hassaku_illustrious',label:'Hassaku XL Illustrious v34'}]};
@@ -26,7 +26,11 @@ try{
       else if(url.pathname==='/api/updates')data={currentVersion:'2.0.0',enabled:false,canInstall:false,installation:{status:'idle'}};
       else if(url.pathname==='/api/comfy/settings'){if(input){writes.push({type:'comfy',...input});comfy={...comfy,...input};}data=comfy;}
       else if(url.pathname==='/api/comfy/loras')data={url:input?.url||comfy.url,loras:['synthetic/style.safetensors','synthetic/detail.safetensors'],loaders:{LoraLoader:['synthetic/style.safetensors','synthetic/detail.safetensors'],LoraLoaderModelOnly:['synthetic/style.safetensors','synthetic/detail.safetensors']},checkedAt:Date.now()};
-      else if(url.pathname==='/api/comfy/check'){tests++;assert.equal(input.workflowId,'hassaku_illustrious');data={ok:true,url:input.url,workflows:[{id:input.workflowId,compatible:true,errors:[]}]};}
+      else if(url.pathname==='/api/comfy/discover'){discoveries++;data={servers:discoveries===1?[]:[{url:'http://127.0.0.1:8000',version:'synthetic'}]};}
+      else if(url.pathname==='/api/comfy/check'){
+        tests++;const offline=diagnosis==='offline',missing=diagnosis==='missing',blocked=input.memoryCleanup===true;
+        data={ok:!offline&&!missing&&!blocked,reachable:!offline,url:input.url,error:offline?'Serveur arrêté (fixture).':undefined,system:{comfyuiVersion:'synthetic'},memoryCleanup:{available:false,compatible:false,enabled:blocked},workflows:[{id:input.workflowId,label:input.workflowId,compatible:!missing&&!blocked,errors:blocked?['Nœud absent : FreeMemoryAfterWorkflow.']:[],models:[{name:'krea2_turbo_fp8_scaled.safetensors',folder:'models/diffusion_models',available:!missing},{name:'qwen3vl_4b_fp8_scaled.safetensors',folder:'models/text_encoders',available:!missing},{name:'qwen_image_vae.safetensors',folder:'models/vae',available:!missing}]}]};
+      }
       else if(url.pathname==='/api/capabilities')data={items:[{name:'Scripts sur le PC',description:'Validation du code exact. 120 secondes maximum.'},{name:'Bionic Desktop',description:'MCP et sous-agents non hérités.'}]};
       else if(url.pathname==='/api/model-preferences'){
         if(input){writes.push({type:'output',...input});if(input.applyToAllSessions)defaults.set(input.model,input.maxOutputTokens);}
@@ -65,6 +69,18 @@ try{
     await page.locator('#settings-model').selectOption('b');await page.waitForFunction(()=>document.querySelector('#output-tokens-slider').value==='5000000');assert.equal(await precise.inputValue(),'5000000');
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);if(captures){await slider.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(captures,width+'-v2-token-slider.png')});}
     if(width===320)await page.locator('#settings-back').click();await page.locator('[data-settings-page="images"]').click();
+    await page.locator('#comfy-discover').click();await page.getByText(/Aucun serveur trouvé aux adresses testées/).waitFor();
+    await page.locator('#comfy-test').click();await page.locator('#comfy-server-status').getByText(/Serveur inaccessible/).waitFor();
+    assert.equal(await page.locator('#comfy-memory-cleanup').isChecked(),false);
+    diagnosis='missing';await page.locator('#comfy-discover').click();await page.getByRole('button',{name:'Utiliser http://127.0.0.1:8000',exact:true}).click();
+    await page.locator('#comfy-models').getByText(/Manquant.*qwen3vl/).waitFor();assert.equal(await page.locator('#comfy-url').inputValue(),'http://127.0.0.1:8000');
+    assert.equal(await page.locator('#comfy-models li').count(),3);assert.match(await page.locator('#comfy-models').textContent(),/models\/diffusion_models/);
+    if(captures){await page.locator('#comfy-diagnostic').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(captures,width+'-comfy-missing.png')});}
+    diagnosis='ready';await page.locator('#comfy-test').click();await page.getByText(/Prêt à enregistrer/).waitFor();
+    await page.locator('#comfy-memory-cleanup').check();assert.equal(await page.locator('#comfy-diagnostic').isVisible(),false);
+    await page.locator('#comfy-test').click();await page.locator('#comfy-memory-status').getByText(/Décoche le nettoyage/).waitFor();
+    await page.locator('#comfy-memory-cleanup').uncheck();await page.locator('#comfy-test').click();await page.getByText(/Prêt à enregistrer/).waitFor();
+    await page.getByText('LoRA facultatifs et réglages avancés',{exact:true}).click();
     await page.locator('#comfy-enabled').check();await page.locator('#comfy-url').fill('http://192.168.1.197:8188');await page.locator('#comfy-workflow').selectOption('hassaku_illustrious');
     await page.locator('#comfy-lora-1').selectOption('synthetic/style.safetensors');await page.locator('#comfy-lora-2').selectOption('synthetic/detail.safetensors');
     for(const index of [1,2]){
@@ -75,7 +91,7 @@ try{
       await strength.press('ArrowLeft');assert.equal(await strength.inputValue(),'19.95');assert.equal(await value.textContent(),'19,95');await strength.press('End');
     }
     assert.equal(await precise.inputValue(),'5000000','token and LoRA sliders coexist in the same settings view');
-    await page.locator('#comfy-test').click();await page.getByText(/Connexion confirmée/).waitFor();assert.equal(tests,1);assert.equal(writes.filter(w=>w.type==='comfy').length,0);
+    await page.locator('#comfy-test').click();await page.getByText(/Connexion confirmée/).waitFor();assert.equal(tests,6);assert.equal(writes.filter(w=>w.type==='comfy').length,0);
     await page.locator('#comfy-save').click();await page.getByText(/Configuration enregistrée/).waitFor();assert.equal(writes.at(-1).workflowId,'hassaku_illustrious');assert.deepEqual(writes.at(-1).loraProfiles.hassaku_illustrious,[{name:'synthetic/style.safetensors',strength:20},{name:'synthetic/detail.safetensors',strength:20}]);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);if(captures)await page.screenshot({path:path.join(captures,width+'-v2-settings.png'),fullPage:true});
     await page.locator('#comfy-url').press('Escape');assert.equal(await page.evaluate(()=>document.activeElement.id),'settings-open-sidebar');assert.equal(await page.locator('#settings-view').isVisible(),false);

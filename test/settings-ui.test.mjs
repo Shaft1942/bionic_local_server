@@ -350,3 +350,36 @@ test('closing restores an available chat or sidebar trigger when the original me
     assert.equal(f.document.activeElement,f.element(inThread?'conversation-options-toggle':'settings-open-sidebar'));
   }
 });
+
+
+test('optional memory cleanup participates in dirty state, cancel and saved configuration',async()=>{
+  let saved={...defaultComfy,memoryCleanup:false};
+  const f=fixture((route,options)=>route==='/api/comfy/settings'?(options?.method==='POST'?(saved={...saved,...JSON.parse(options.body)}):structuredClone(saved)):undefined);
+  await f.open();assert.equal(f.settings.hasUnsaved(),false);
+  f.element('comfy-memory-cleanup').checked=true;f.fire('comfy-memory-cleanup','change');assert.equal(f.settings.hasUnsaved(),true);
+  f.fire('comfy-cancel');assert.equal(f.element('comfy-memory-cleanup').checked,false);assert.equal(f.settings.hasUnsaved(),false);
+  f.element('comfy-memory-cleanup').checked=true;f.fire('comfy-memory-cleanup','change');await f.fire('comfy-settings-form','submit');
+  assert.equal(saved.memoryCleanup,true);assert.equal(f.settings.hasUnsaved(),false);
+  await f.settings.close();await f.open();assert.equal(f.element('comfy-memory-cleanup').checked,true);
+});
+
+test('guided diagnostics discard a response for edited values and keep the test button usable',async()=>{
+  const waiting=deferred();let count=0;
+  const f=fixture(route=>route==='/api/comfy/check'?++count===1?waiting.promise:{ok:true,reachable:true,url:'http://127.0.0.1:8000',workflows:[],memoryCleanup:{available:false}}:undefined);
+  await f.open();const old=f.fire('comfy-test');
+  f.element('comfy-url').value='http://127.0.0.1:8000';f.fire('comfy-url','input');
+  waiting.resolve({ok:true,reachable:true,url:'http://127.0.0.1:8188',workflows:[]});await old;
+  assert.equal(f.element('comfy-diagnostic').hidden,true);assert.equal(f.element('comfy-test').disabled,false);
+  await f.fire('comfy-test');assert.match(f.element('comfy-server-status').textContent,/8000/);
+  assert.match(f.element('comfy-memory-status').textContent,/ne bloque pas/);
+});
+
+test('guided discovery cannot replace a changed address or an invalidated settings view',async()=>{
+  const waiting=deferred();
+  const f=fixture(route=>route==='/api/comfy/discover'?waiting.promise:undefined);
+  await f.open();const old=f.fire('comfy-discover');
+  f.element('comfy-url').value='http://127.0.0.1:9000';f.fire('comfy-url','input');
+  waiting.resolve({servers:[{url:'http://127.0.0.1:8000'}]});await old;
+  assert.equal(f.element('comfy-servers').children.length,0);assert.equal(f.element('comfy-url').value,'http://127.0.0.1:9000');
+  assert.equal(f.element('comfy-discover').disabled,false);
+});

@@ -1,5 +1,13 @@
 # Journal des versions
 
+## 2.2.1-beta.3 — 2026-10-23
+
+- Paramètres → Images : configuration guidée en trois étapes, recherche des serveurs locaux (ports 8188/8000 et adresse saisie), diagnostic séparé du serveur, des fichiers de modèles et des nœuds, avec instructions et dossiers attendus.
+- Nettoyage mémoire facultatif, désactivé sur installation neuve ; choix existant conservé et figé avec chaque demande. Sans nettoyage, aucun module custom ni sortie IMAGE de SaveImage n'est requis.
+- Module mémoire téléchargeable depuis les paramètres authentifiés, installation manuelle expliquée ; effets après rendu, coût du rechargement et absence de garantie de gain explicités.
+- Conservation des parcours de paramètres, lecture et canaux de mise à jour de la beta.2.
+
+
 ## 2.2.1-beta.2 — 23 octobre 2026
 
 - Barre de statut, modèles chargés et paramètres limitée à la colonne des projets et conversations ; la conversation retrouve toute sa hauteur.

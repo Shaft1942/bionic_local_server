@@ -23,21 +23,26 @@ SDXL/Illustrious pour Hassaku, et Krea 2 pour Krea 2. Aucun LoRA n’est activé
 Krea utilise `LoraLoaderModelOnly` ; Hassaku applique la même force au modèle et au
 CLIP avec `LoraLoader`, sans remplacer le VAE du checkpoint.
 
-Les deux graphes de production terminent par `FreeMemoryAfterWorkflow` (nœud 99),
-dont `trigger` dépend de la sortie de `SaveImage`. Ce nœud installé localement pose
-les drapeaux `unload_models` et `free_memory`, comme `/free` ; ComfyUI les traite
-après le workflow. Le nettoyage est donc effectué après la sauvegarde de l’image.
-Le nœud doit être installé sur l’instance visée ; le test de connexion signale son
-absence. Les anciens exports éditables archivés ne sont pas les graphes exécutés.
-Le module sans dépendance est désormais fourni dans
-`comfyui/custom_nodes/free_memory_after_workflow.py` ; voir `comfyui/README.md`
-pour l'installation et les limites. Après une erreur ou interruption terminale
-d'un nouveau job du compagnon, un nettoyage de récupération est demandé une seule
-fois si la file ComfyUI est vide. Une file occupée ou un résultat incertain
-n'entraîne aucun nouvel essai automatique. Aucun travail n'est interrompu.
-La durée d'exécution vient des événements ComfyUI lorsqu'ils sont disponibles ;
-une demande de nettoyage acceptée ne prouve ni la quantité de mémoire libérée
-ni une accélération.
+## Configuration guidée (2.2.1-beta.3)
+
+Dans **Paramètres → Images**, suivre les trois étapes :
+
+1. **Trouver ComfyUI** : démarrer ComfyUI, puis **Rechercher le serveur**. Le compagnon interroge seulement `/system_stats` sur les ports 8188 et 8000 du PC du compagnon et sur l'adresse saisie. Il ne parcourt pas le réseau. Choisir un résultat lance le diagnostic complet sans enregistrer ni générer. Un port différent se saisit manuellement. L'absence de résultat ne prouve pas que l'option serveur est désactivée : vérifier démarrage, port, adresse et, uniquement pour un autre PC, accès réseau privé.
+2. **Vérifier le modèle d'image** : choisir Krea 2 ou Hassaku puis **Tester la connexion et les modèles**. Le résultat sépare serveur, fichiers attendus et nœuds. Chaque modèle est marqué présent/manquant avec son dossier dans ComfyUI : `models/diffusion_models`, `models/text_encoders`, `models/vae` ou `models/checkpoints`. Les noms exacts du graphe sont requis ; les modèles renommés ou rangés sous un autre nom relatif ne sont pas sélectionnés automatiquement. Les dossiers supplémentaires configurés dans ComfyUI restent pris en compte via son catalogue.
+3. **Choisir le nettoyage mémoire**, puis activer ComfyUI et enregistrer. Aucun diagnostic ne télécharge de poids, ne lance un rendu ou ne modifie le serveur. Les poids et leurs licences restent à obtenir auprès de leurs éditeurs ; voir le [guide officiel des modèles](https://docs.comfy.org/basic-concepts/models). Les LoRA sont facultatifs dans les réglages avancés.
+
+Une installation neuve laisse ComfyUI et le nettoyage désactivés. Une configuration déjà enregistrée en version 1 ou 2 conserve son ancien nettoyage activé ; le passage au format 3 est enregistré au prochain changement. Un choix explicitement désactivé reste désactivé après redémarrage.
+
+## Nettoyage mémoire facultatif
+
+L'option **Décharger les modèles ComfyUI après chaque rendu** peut aider à rendre de la mémoire à d'autres applications ou à traiter un ralentissement entre rendus, notamment avec Krea 2. Elle ne garantit aucun gain : le rechargement des poids peut ralentir le rendu suivant. Elle ne décharge jamais le modèle de conversation Bionic et ne constitue pas un déchargement systématique avant chaque prompt.
+
+- **Désactivée** : le compagnon retire le nœud 99 du graphe soumis. Aucun module supplémentaire n'est nécessaire ; un `SaveImage` standard sans sortie IMAGE est accepté. La gestion mémoire normale de ComfyUI reste active. Aucune récupération `/free` n'est déclenchée après erreur pour ces nouvelles demandes.
+- **Activée** : le graphe conserve `FreeMemoryAfterWorkflow`, dépendant de `SaveImage`. Les indicateurs `unload_models` et `free_memory` sont traités après le workflow. La récupération après échec reste limitée au propre job terminal du compagnon et à une file observée vide ; aucun `/interrupt` n'est appelé. Le choix est figé à l'acceptation du message et persisté avec le job ; les anciens jobs conservent leurs règles.
+
+Le formulaire permet de **télécharger le module mémoire fourni** via une route authentifiée du compagnon. Copier `free_memory_after_workflow.py` dans `custom_nodes` de l'instance ComfyUI utilisée, attendre la fin des travaux puis redémarrer cette instance. Aucun paquet Python supplémentaire n'est requis. Copier le fichier uniquement dans le compagnon ne l'installe pas dans ComfyUI. L'installation et le redémarrage restent manuels.
+
+Le diagnostic montre l'absence du module même lorsque l'option est désactivée, sans bloquer le workflow. Activée, elle exige aussi que le module soit un nœud de sortie et que `SaveImage` fournisse une sortie IMAGE d'indice 0. Si cette combinaison est incompatible, désactiver le nettoyage pour continuer. Les graphes archivés restent des exports historiques ; les graphes de production incluent le nœud facultatif que le service retire au besoin.
 
 Le serveur ComfyUI doit être démarré sur le PC ou le réseau privé. L’adresse par
 défaut est `http://127.0.0.1:8188` ; HTTP loopback et les IPv4 RFC1918 sont acceptés,
