@@ -1,5 +1,12 @@
 # Journal des versions
 
+## 2.5.1-beta.2 — 2026-10-24 — candidate locale
+
+- Dans **Projets et conversations**, un bouton **+** à droite du compteur ouvre directement un nouveau chat web dans le projet choisi, y compris depuis un projet replié. Les brouillons sont conservés et la conversation est enregistrée au premier envoi.
+- Images : récupération bornée d'un appel d'outil oublié sur commande explicite, annonces de lancement retenues jusqu'au reçu du service et erreurs de soumission affichées directement. Aucun renvoi après un appel image déjà tenté.
+- Suivi ComfyUI : état inconnu lorsque le job disparaît de la file et de son historique après revérification ; carte incertaine pendant une perte de connexion, sans soumission automatique.
+- Cette candidate conserve les corrections de reprise et la configuration des serveurs de la bêta.1, les valeurs par défaut Internet/images, les séries de 1 à 5 images, les choix mémoire, la galerie, les actions image et l'interface français/anglais.
+
 ## 2.5.1-beta.1 — 2026-10-24 — candidate locale
 
 - Les refus avant tout lancement n'immobilisent plus le compagnon. Les véritables effets inconnus restent protégés ; l'ancien refus Bionic avant ouverture est migré sans rejouer une commande.
@@ -9,10 +16,6 @@
 - Internet activé par défaut pour les nouveaux choix ; images activées lorsque ComfyUI configuré est disponible. Les droits, brouillons et réglages explicitement désactivés restent respectés.
 
 Les entrées décrivent les évolutions du produit. Les comptes rendus de travail, mesures d’un poste, plans et prompts internes ne font pas partie de cette documentation. Les versions effectivement disponibles sont dans les [Releases](https://github.com/Shaft1942/bionic_local_server/releases).
-
-## 2.5.1 — Bêta à venir
-
-- Dans **Projets et conversations**, un bouton **+** à droite du compteur ouvre directement un nouveau chat web dans le projet choisi, y compris depuis un projet replié. Les brouillons sont conservés et la conversation est enregistrée au premier envoi.
 
 ## 2.5.0 — 2026-10-23
 

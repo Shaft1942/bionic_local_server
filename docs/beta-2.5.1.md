@@ -1,6 +1,14 @@
-# 2.5.1-beta.1 — reprise et configuration simplifiées
+# 2.5.1-beta.2 — chats par projet et état réel des rendus
 
 Candidate locale issue de la stable 2.5.0. Elle conserve ses fonctions images, fichiers, projets, conversations et interface français/anglais.
+
+## Ajouts de la bêta.2
+
+Dans **Projets et conversations**, le **+** à droite du compteur ouvre le composeur d'un nouveau chat web dans le projet choisi. Il fonctionne même lorsque le projet est replié ; les brouillons sont préservés. La conversation est enregistrée au premier message envoyé.
+
+Une annonce textuelle de rendu est vérifiée avant affichage. Si le modèle oublie l'outil sur une commande explicite, le compagnon lui demande une seule fois l'appel structuré correspondant au nombre d'images choisi. Un nouvel oubli se termine par une erreur, sans annoncer un rendu. Les refus ComfyUI sont affichés directement. Une perte du suivi ou un job disparu est signalé comme incertain, sans nouvelle soumission automatique. Voir [le suivi ComfyUI](comfyui.md#annonce-et-état-du-rendu).
+
+Les évolutions de reprise et de configuration décrites ci-dessous ont été introduites dans la bêta.1 et sont conservées dans la bêta.2, ainsi que les séries 1–5, les politiques mémoire, l'annulation, la relance, la galerie et les ZIP.
 
 ## Préparer Bionic et ComfyUI
 

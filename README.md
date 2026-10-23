@@ -2,7 +2,7 @@
 
 # Bionic Mobile — compagnon local
 
-**Candidate locale 2.5.1-beta.1** : reprise du contrôle des serveurs, configuration assistée dans les paramètres et gestion simplifiée. Internet est activé pour les nouveaux choix ; les images le sont quand ComfyUI est disponible. Les désactivations explicites restent conservées. Voir [les changements de cette bêta](docs/beta-2.5.1.md). Cette mention ne constitue pas une publication.
+**Candidate locale 2.5.1-beta.2** : bouton **+** pour ouvrir un chat dans chaque projet, annonces et suivi de rendu vérifiés à partir des reçus ComfyUI. Elle reprend aussi la reprise du contrôle des serveurs et leur configuration assistée de la bêta.1. Internet est activé pour les nouveaux choix ; les images le sont quand ComfyUI est disponible. Les désactivations explicites restent conservées. Voir [les changements de cette bêta](docs/beta-2.5.1.md). Cette mention ne constitue pas une publication.
 
 **Version 2.5.0** · Discutez avec les modèles de votre PC et retrouvez vos projets depuis le navigateur de votre téléphone, sur votre réseau local.
 

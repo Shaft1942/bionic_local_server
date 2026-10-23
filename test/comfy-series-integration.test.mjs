@@ -44,7 +44,7 @@ const scenes=(label,count=3)=>[
 ].slice(0,count);
 const publicModel={id:'synthetic-series',name:'Synthetic series model',type:'llm',tools:true,contextLength:8192,reasoning:{allowedOptions:[]}};
 
-async function fixture(t,{builtInComfy=false,forceSeries=false,controlledText=false,seriesCountOverride,holdImageModel=false}={}){
+async function fixture(t,{builtInComfy=false,forceSeries=false,controlledText=false,seriesCountOverride,holdImageModel=false,missingFirstTool=false}={}){
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'comfy-series-http-test-'));
   const state={loaded:true,inferences:[],posts:[],completed:new Set(),unloads:[],modelAdmissions:[],textStreams:new Map()};
   const inFlight=()=>state.posts.filter(post=>!state.completed.has(post.id)).length;
@@ -78,6 +78,8 @@ async function fixture(t,{builtInComfy=false,forceSeries=false,controlledText=fa
       }});
       return new Response(stream);
     }
+    if(missingFirstTool&&state.inferences.length===1)return new Response('data: '+JSON.stringify({choices:[{delta:{content:'Je lance quatre images. Statut : Running…'},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n');
+    if(missingFirstTool){assert.equal(body.tool_choice.function.name,'generate_comfy_image_series');assert.equal(body.tools.length,1);}
     let choices;
     if(last.role==='tool'||userText.includes('TEXT-ONLY'))choices=[{delta:{content:'Réponse synthétique disponible.'},finish_reason:'stop'}];
     else{
@@ -124,7 +126,7 @@ async function fixture(t,{builtInComfy=false,forceSeries=false,controlledText=fa
     const response=await request('/api/chat',{projectId:'p1',model:publicModel.id,requestId:randomUUID(),text:'Génère trois images différentes '+label,imageAccess:true,imageCount:3,fileProfile:'none',...overrides});
     assert.equal(response.status,200);
     const events=(await response.text()).trim().split('\n').map(JSON.parse);
-    assert(events.some(event=>event.type==='done'),JSON.stringify(events));assert(!events.some(event=>event.type==='error'),JSON.stringify(events));
+    if(forceSeries && overrides.imageCount===1 || seriesCountOverride!==undefined){assert(events.some(event=>event.type==='error'));assert(!events.some(event=>event.type==='done'));assert.equal(state.inferences.length,1);}else{assert(events.some(event=>event.type==='done'),JSON.stringify(events));assert(!events.some(event=>event.type==='error'),JSON.stringify(events));}
     return {events,start:events.find(event=>event.type==='start'),actions:events.filter(event=>event.type==='action').map(event=>event.action)};
   };
   const params=(turn,job)=>new URLSearchParams({projectId:'p1',chatId:turn.start.id,messageId:turn.start.replyId,jobId:job.id});
@@ -367,4 +369,19 @@ test('global policy is captured before model preparation and cannot change a pre
   assert(turn.actions[0].imageGenerations.every(job=>job.modelPolicy==='keep'));assert.equal(f.state.unloads.length,0);
   await completeSeries(f,4);
   assert.equal((await(await f.request('/api/comfy/settings')).json()).modelPolicy,'unload');
+});
+
+test('text-only false launch is repaired into four real workflow POSTs and owned status cards',async t=>{
+  const f=await fixture(t,{missingFirstTool:true});
+  const turn=await f.send('SCENARIO-REPAIR',{text:'Génère les images. SCENARIO-REPAIR',imageCount:4});
+  assert.equal(f.state.inferences.length,2);
+  assert(!turn.events.filter(e=>e.type==='delta').some(e=>/Running|Je lance/.test(e.text)));
+  const jobs=turn.actions[0].imageGenerations;assert.equal(jobs.length,4);
+  for(let index=0;index<4;index++){
+    await until(()=>f.state.posts.length>index);
+    const post=f.state.posts[index];assert.match(post.body.prompt['6'].inputs.text,/SCENARIO-REPAIR/);
+    f.state.completed.add(post.id);
+    await until(async()=>{const response=await f.request('/api/comfy/generation?'+f.params(turn,jobs[index]));return(await response.json()).status==='succeeded';});
+  }
+  assert.equal(f.state.posts.length,4);assert.equal(f.state.inferences.length,2);
 });
