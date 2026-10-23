@@ -80,15 +80,16 @@ Le contrôle **Tester la connexion et les modèles** consulte seulement
 `generate_comfy_image` et son alias historique `generate_krea2_image` utilisent
 le modèle choisi pour le message, avec le réglage des paramètres comme valeur par défaut.
 
-Dans **Outils**, choisir **1 image** ou **Série de 3 images** avant d'envoyer le
-message. La série utilise `generate_comfy_image_series` : le modèle prépare trois
-descriptions et trois seeds distinctes dans un seul appel. Le compagnon valide
-l'ensemble avant d'admettre le lot. Chaque image possède sa carte et revient
+Dans **Outils**, régler **Images par demande** avec le curseur de **1 à 5** avant
+d’envoyer le message. Une seule image garde son outil habituel ; à partir de deux,
+`generate_comfy_image_series` prépare exactement le nombre choisi de descriptions
+et de seeds distinctes dans un seul appel. Le compagnon valide l’ensemble avant
+d’admettre le lot, même si le modèle ne respecte pas le schéma annoncé. Chaque image possède sa carte et revient
 dans la conversation d'origine avec son indice et sa position dans la file.
 
 La file est commune aux conversations de cette instance : douze images actives
-au maximum, lots FIFO, une seule soumission ComfyUI en cours à la fois. Les trois
-images d'une série restent groupées. Le nettoyage ComfyUI facultatif reste appliqué
+au maximum, lots FIFO, une seule soumission ComfyUI en cours à la fois. Les
+images d’une série restent groupées, qu’elle contienne deux, trois, quatre ou cinq images. Le nettoyage ComfyUI facultatif reste appliqué
 après chaque image ; un échec du lot peut aussi demander le nettoyage. Le conserver
 actif peut éviter des ralentissements de Krea 2 entre deux prompts. Garder les poids
 en mémoire jusqu'à la fin du lot n'a pas amélioré les performances sur le GPU testé.
@@ -116,8 +117,16 @@ Dans **Paramètres → Images et ComfyUI**, choisir la gestion du modèle texte 
   prochaine réponse avec les réglages Bionic existants. Ce rechargement a un coût ;
   la stratégie ne garantit pas un délai complet inférieur.
 
-La politique est figée à l'envoi du message. Modifier les réglages exige une file
-vide. Cette coordination ne couvre pas une autre instance ou une autre application.
+Le menu **Outils → Modèle texte pendant les images** permet de choisir le mode
+pour la prochaine demande, sans ouvrir les paramètres. **Paramètres globaux**
+reprend le défaut enregistré ; Conserver, Décharger et Répondre entre les images
+créent une exception propre à cette demande et conservée dans la conversation.
+Choisir à nouveau Paramètres globaux retire cette exception. Les brouillons
+conservent leurs choix séparément.
+
+La politique effective est figée à l’envoi du message. Le choix rapide peut servir
+pour un nouveau lot pendant que d’autres attendent, sans changer leur politique.
+Modifier les réglages globaux exige une file vide. Cette coordination ne couvre pas une autre instance ou une autre application.
 
 Un délai expiré ou un redémarrage pendant la soumission donne un état inconnu,
 sans répétition automatique du POST. La file suspend les nouvelles images. Après
@@ -128,11 +137,16 @@ redémarrage ; les images encore locales sont marquées interrompues, sans rejeu
 Le verrou des anciens jobs distants est rétabli. Arrêter la réponse du modèle
 n'interrompt pas globalement les travaux ComfyUI ni un lot déjà enregistré.
 
-Pour les clients API, `POST /api/chat` accepte `imageCount: 1 | 3` avec
-`imageAccess: true`. En mode trois, seul l'outil de série est proposé ; ses arguments
-sont `{images: [{prompt, seed, format?}, ...]}` (exactement trois éléments).
+Pour les clients API, `POST /api/chat` accepte `imageCount`, entier de 1 à 5 (défaut 1), avec
+`imageAccess: true`. Pour 2–5 images, seul l’outil de série est proposé avec un
+schéma de longueur exacte ; ses arguments
+sont `{images: [{prompt, seed, format?}, ...]}` (exactement le nombre choisi).
 L'action renvoie `imageGenerations`, et chaque job ajoute `seriesId`, `seriesIndex`,
-`seriesTotal`, `queuePosition`, `queuedLocally` et `modelPolicy`. Le suivi et les
+`seriesTotal`, `queuePosition`, `queuedLocally` et `modelPolicy`.
+`imageModelPolicy: "keep" | "alternate" | "unload"` peut surcharger le défaut pour
+ce message ; absent ou null revient aux paramètres globaux. Le champ conservé
+dans le chat et annoncé au start représente cette exception, enum ou null ; le
+job porte la politique effective capturée. Le suivi et les
 images conservent leurs routes authentifiées et leurs propriétaires projet/chat/message.
 `POST /api/comfy/settings` accepte `modelPolicy: "keep" | "alternate" | "unload"` ; les anciens
 réglages migrent vers `keep`. `POST /api/comfy/queue/resume` reçoit `{}` et ne resoumet

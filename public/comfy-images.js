@@ -5,7 +5,7 @@ function createImageGenerationView({api,node,getState,redraw}) {
   function url(job,chat,message,download=false){return '/api/comfy/image?'+new URLSearchParams({jobId:job.id,projectId:chat.projectId,chatId:chat.id,messageId:message.id,...(download?{download:'1'}:{})});}
   function card(job,chat,message){
     const figure=node('figure','generated-image');figure.dataset.imageJobId=job.id;
-    const series=job.seriesTotal===3&&Number.isInteger(job.seriesIndex)&&job.seriesIndex>=1&&job.seriesIndex<=3?'Série · image '+job.seriesIndex+'/3 · ':'';
+    const series=Number.isInteger(job.seriesTotal)&&job.seriesTotal>=2&&job.seriesTotal<=5&&Number.isInteger(job.seriesIndex)&&job.seriesIndex>=1&&job.seriesIndex<=job.seriesTotal?'Série · image '+job.seriesIndex+'/'+job.seriesTotal+' · ':'';
     const position=job.status==='queued'&&Number.isSafeInteger(job.queuePosition)&&job.queuePosition>0?' Position '+job.queuePosition+'.':'';
     const status=node('p','generated-image-status',series+(labels[job.status]||'Suivi de génération')+position);status.setAttribute('role','status');figure.append(status);
     if(job.status==='succeeded'&&job.image){

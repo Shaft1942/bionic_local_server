@@ -12,6 +12,7 @@ const images=(prefix='Series')=>[
   {prompt:prefix+' wooden sailboat at dawn',seed:102,format:'portrait'},
   {prompt:prefix+' yellow tram in an empty street',seed:103,format:'landscape'},
 ];
+const countedImages=(prefix,count)=>Array.from({length:count},(_,index)=>({prompt:prefix+' distinct subject '+(index+1),seed:301+index,format:['square','portrait','landscape'][index%3]}));
 async function until(condition,label='expected fixture state'){
   const deadline=Date.now()+4000;
   while(!condition()){assert(Date.now()<deadline,label);await wait(5);}
@@ -76,11 +77,12 @@ async function fixture(t,options={}){
   };
 }
 
-test('series validates all three images before persistence or HTTP submission',async t=>{
+test('series validates two to five images before persistence or HTTP submission',async t=>{
   const f=await fixture(t);
   const valid=images();
   for(const args of [
-    {images:valid.slice(0,2)}, {images:[...valid,valid[0]]}, {images:[valid[0],valid[1],{prompt:''}]},
+    {images:[]}, {images:valid.slice(0,1)}, {images:countedImages('Too many',6)}, {images:Array(2)},
+    {images:[...valid,valid[0]]}, {images:[valid[0],valid[1],{prompt:''}]},
     {images:[valid[0],valid[1],{prompt:'third',seed:-1}]}, {images:[valid[0],valid[1],{prompt:'third',format:'__proto__'}]},
     {images:[valid[0],valid[1],{prompt:'third',url:'http://example.org'}]}, {images:valid,arbitrary:true},
     {images:[valid[0],valid[1],{...valid[2],prompt:valid[0].prompt.toUpperCase()}]},
@@ -89,6 +91,38 @@ test('series validates all three images before persistence or HTTP submission',a
   assert.equal(f.posts.length,0);
   assert.equal(f.service.getSettings().activeJobs,0);
   assert.deepEqual((await fs.readdir(f.directory)).filter(name=>/^[a-f0-9-]{36}\.json$/i.test(name)),[]);
+});
+
+for(const count of [2,4,5])test(`a ${count}-image series pins its metadata and submits every distinct graph once in order`,async t=>{
+  const f=await fixture(t,{memoryCleanup:true});
+  const input=countedImages('Count '+count,count);
+  const jobs=await f.service.submitSeries({images:input},owner);
+  assert.equal(jobs.length,count);assert.equal(new Set(jobs.map(job=>job.seriesId)).size,1);assert(jobs[0].seriesId);
+  assert.deepEqual(jobs.map(job=>job.seriesIndex),Array.from({length:count},(_,index)=>index+1));
+  assert(jobs.every(job=>job.seriesTotal===count));
+  for(const job of jobs){assert.deepEqual(f.service.owner(job.id),owner);await f.finish(job);}
+  assert.equal(f.posts.length,count);assert.equal(f.maxRunning,1);
+  assert.deepEqual(f.posts.map(post=>post.body.prompt['6'].inputs.text),input.map(image=>image.prompt));
+  assert.deepEqual(f.posts.map(post=>post.body.prompt['3'].inputs.seed),input.map(image=>image.seed));
+  assert(f.posts.every(post=>Object.hasOwn(post.body.prompt,'99')));
+  const repeated=await f.service.submitSeries({images:countedImages('Ignored',count)},owner);
+  assert.deepEqual(repeated.map(job=>job.id),jobs.map(job=>job.id));assert.equal(f.posts.length,count);
+});
+
+test('mixed five-image lots keep the twelve-image capacity atomic and preserve FIFO groups',async t=>{
+  const f=await fixture(t);
+  const firstInput=countedImages('First',5),secondInput=countedImages('Second',5),lastInput=countedImages('Last',2);
+  const first=await f.service.submitSeries({images:firstInput},owner);
+  const second=await f.service.submitSeries({images:secondInput},{...owner,chatId:'second-chat',messageId:'second-reply'});
+  const lastOwner={...owner,chatId:'last-chat',messageId:'last-reply'};
+  await assert.rejects(f.service.submitSeries({images:countedImages('Overflow',3)},lastOwner),{status:409});
+  assert.equal(f.service.getSettings().activeJobs,10);
+  const last=await f.service.submitSeries({images:lastInput},lastOwner);
+  assert.equal(f.service.getSettings().activeJobs,12);
+  assert.equal((await fs.readdir(f.directory)).filter(name=>/^[a-f0-9-]{36}\.json$/i.test(name)).length,12);
+  for(const job of [...first,...second,...last])await f.finish(job);
+  assert.deepEqual(f.posts.map(post=>post.body.prompt['6'].inputs.text),[...firstInput,...secondInput,...lastInput].map(image=>image.prompt));
+  assert.equal(f.posts.length,12);assert.equal(f.maxRunning,1);
 });
 
 test('three distinct prompts execute sequentially with memory cleanup after every image when enabled',async t=>{

@@ -95,7 +95,7 @@ test('series selection follows its conversation and draft, and is sent only with
   assert.equal(f.element('image-count').value,'3');assert.equal(!!f.element('image-count').disabled,false);
   assert.equal(f.settings.decorate({model:'m',imageAccess:true}).imageCount,3);
   assert.equal(f.settings.decorate({model:'m',imageAccess:false}).imageCount,undefined);
-  assert.match(f.element('image-settings-help').textContent,/Trois prompts différents/);
+  assert.match(f.element('image-settings-help').textContent,/3 prompts différents/);
   assert.match(f.element('image-settings-help').textContent,/réponses texte attendront/);
   f.state.draftImageCount=1;f.settings.imagePermission();assert.equal(f.element('image-count').value,'1');
   f.state.draftImageCount=null;f.state.chat={};f.settings.imagePermission();assert.equal(f.element('image-count').value,'1');
@@ -119,9 +119,38 @@ test('alternate policy is saved and restored without converting it to keep or cl
   await f.open();f.element('comfy-model-policy').value='alternate';f.fire('comfy-model-policy','change');assert.equal(f.settings.hasUnsaved(),true);
   await f.fire('comfy-settings-form','submit');assert.equal(saved.modelPolicy,'alternate');assert.equal(f.settings.hasUnsaved(),false);
   await f.settings.close();await f.open();assert.equal(f.element('comfy-model-policy').value,'alternate');
-  f.settings.imagePermission();assert.match(f.element('image-settings-help').textContent,/attendent la fin de l’image en cours/);
+  f.element('agent-images').checked=true;f.state.chat={imageCount:2};f.settings.imagePermission();assert.match(f.element('image-settings-help').textContent,/attendent la fin de l’image en cours/);
   assert.match(f.element('image-settings-help').textContent,/entre deux images/);assert.doesNotMatch(f.element('image-settings-help').textContent,/pendant un rendu|simultané/);
   f.element('comfy-model-policy').value='keep';f.fire('comfy-model-policy','change');await f.fire('comfy-cancel');assert.equal(f.element('comfy-model-policy').value,'alternate');
+});
+
+test('image counts from one to five restore with an accessible count and respect disabled permissions',async()=>{
+  const f=fixture(route=>route==='/api/comfy/settings'?{...defaultComfy,enabled:true}:undefined);await f.settings.refresh();f.element('agent-images').checked=true;
+  for(const count of [1,2,3,4,5]){
+    f.state.chat={imageCount:count};f.settings.imagePermission();
+    assert.equal(f.element('image-count').value,String(count));assert.equal(f.element('image-count-value').textContent,count+' image'+(count>1?'s':''));
+    assert.equal(f.element('image-count').attributes['aria-valuetext'],count+' image'+(count>1?'s':''));
+    assert.equal(f.settings.decorate({model:'m',imageAccess:true}).imageCount,count);
+    assert.match(f.element('image-settings-help').textContent,count===1?/Une image/:new RegExp(count+' prompts différents'));
+  }
+  f.state.draftImageCount=2;f.settings.imagePermission();assert.equal(f.element('image-count').value,'2');
+  f.element('agent-images').checked=false;f.settings.imagePermission();assert.equal(f.element('image-count-value').textContent,'0 image (désactivé)');
+  assert.equal(f.element('image-count').disabled,true);assert.equal(f.element('image-model-policy').disabled,true);assert.match(f.element('image-settings-help').textContent,/0 image autorisée/);
+  assert.equal(f.settings.decorate({model:'m',imageAccess:false}).imageCount,undefined);
+});
+
+test('per-message model policy preserves the chosen intent across settings refreshes and can clear an earlier override',async()=>{
+  let globalPolicy='unload';const f=fixture(route=>route==='/api/comfy/settings'?{...defaultComfy,enabled:true,modelPolicy:globalPolicy}:undefined);
+  await f.settings.refresh();f.element('agent-images').checked=true;f.state.chat={imageCount:3,imageModelPolicy:'keep'};f.settings.imagePermission();
+  assert.equal(f.element('image-model-policy').value,'keep');assert.equal(f.settings.decorate({model:'m',imageAccess:true}).imageModelPolicy,'keep');
+  f.state.draftImageModelPolicy='alternate';globalPolicy='keep';await f.settings.refresh();
+  assert.equal(f.element('image-model-policy').value,'alternate');assert.match(f.element('image-settings-help').textContent,/Choix pour ce message/);
+  assert.equal(f.settings.decorate({model:'m',imageAccess:true}).imageModelPolicy,'alternate');
+  f.state.draftImageModelPolicy='';globalPolicy='unload';await f.settings.refresh();
+  assert.equal(f.element('image-model-policy').value,'');assert.equal(Object.hasOwn(f.settings.decorate({model:'m',imageAccess:true}),'imageModelPolicy'),false);
+  assert.match(f.element('image-settings-help').textContent,/Paramètres globaux/);assert.match(f.element('image-settings-help').textContent,/déchargé avant les images/);
+  f.state.draftImageModelPolicy=null;f.state.chat={imageCount:1};f.settings.imagePermission();assert.equal(f.element('image-model-policy').value,'');
+  f.state.draftImageModelPolicy='unload';f.settings.imagePermission();assert.equal(f.settings.decorate({model:'m',imageAccess:false}).imageModelPolicy,undefined);
 });
 
 test('queue recovery is hidden unless the server explicitly reports a paused queue',async()=>{

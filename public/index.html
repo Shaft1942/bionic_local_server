@@ -77,7 +77,8 @@
             <label class="agent-files-option"><input id="agent-web-approval" type="checkbox"><span>Valider chaque recherche et URL avant envoi</span></label>
             <label class="agent-files-option"><input id="agent-images" type="checkbox" aria-describedby="image-settings-help"><span>Générer des images avec ComfyUI</span></label>
             <label class="image-model-choice" for="image-workflow"><span>Modèle d’image</span><select id="image-workflow" aria-describedby="image-settings-help"></select></label>
-            <label class="image-model-choice" for="image-count"><span>Images par demande</span><select id="image-count" aria-describedby="image-settings-help"><option value="1">1 image</option><option value="3">Série de 3 images</option></select></label>
+            <div class="image-count-choice"><label for="image-count"><span>Images par demande</span><output id="image-count-value" for="image-count" aria-hidden="true">0 image (désactivé)</output></label><input id="image-count" type="range" min="1" max="5" step="1" value="1" aria-valuetext="1 image" aria-describedby="image-settings-help"></div>
+            <label class="image-model-choice image-policy-choice" for="image-model-policy"><span>Modèle texte pendant les images</span><select id="image-model-policy" aria-describedby="image-settings-help"><option value="">Paramètres globaux</option><option value="keep">Conserver le modèle texte</option><option value="unload">Décharger avant le lot</option><option value="alternate">Répondre entre les images</option></select></label>
             <p id="image-settings-help" class="tools-help">Active et configure ComfyUI dans les paramètres.</p>
             <label class="agent-files-option"><input id="agent-scripts" type="checkbox"><span>Scripts sur le PC, avec validation</span></label>
             <p class="tools-help">Chaque script attend ton accord dans le chat avant de s’exécuter.</p>

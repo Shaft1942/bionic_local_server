@@ -50,3 +50,14 @@ test('cards show measured ComfyUI duration and the policy frozen for their own i
     assert.doesNotMatch(missing.children.find(child=>child.tag==='figcaption').text,/ComfyUI :/);
   }
 });
+
+test('series cards support two to five images and still read historical series of three',()=>{
+  const f=fixture(),message={id:'reply'};
+  for(const total of [2,3,4,5]){
+    const card=f.view.card({...job,seriesIndex:total,seriesTotal:total},f.state.chat,message);
+    assert.match(card.children[0].text,new RegExp('Série · image '+total+'/'+total));
+  }
+  for(const [seriesIndex,seriesTotal] of [[1,1],[6,6],[3,2],[0,4]]){
+    const card=f.view.card({...job,seriesIndex,seriesTotal},f.state.chat,message);assert.doesNotMatch(card.children[0].text,/Série · image/);
+  }
+});

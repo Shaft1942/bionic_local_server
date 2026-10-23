@@ -50,7 +50,7 @@ for (const [id, name] of [['settings-open-sidebar','settings'], ['reconnect','re
 $('models-open-sidebar').prepend(icon('models'));
 $('conversation-options-toggle').append(icon('more'));
 $('new-chat').append(icon('plus'), document.createTextNode('Nouveau chat web'));
-const state = { projects: [], sessions: [], projectId: null, chat: null, sending: false, loading: false, uploading: false, status: null, viewSeq: 0, projectSeq: 0, authenticated: false, authEpoch: 0, viewKey: null, draftReasoning: {}, draftFileProfile: null, draftFileAccess: null, draftWebAccess:null, draftWebApproval:null, draftScriptAccess:null, draftImageAccess:null, draftImageWorkflowId:null, draftImageCount:null, sessionsPartial:false, sessionWarnings:[] };
+const state = { projects: [], sessions: [], projectId: null, chat: null, sending: false, loading: false, uploading: false, status: null, viewSeq: 0, projectSeq: 0, authenticated: false, authEpoch: 0, viewKey: null, draftReasoning: {}, draftFileProfile: null, draftFileAccess: null, draftWebAccess:null, draftWebApproval:null, draftScriptAccess:null, draftImageAccess:null, draftImageWorkflowId:null, draftImageCount:null, draftImageModelPolicy:null, sessionsPartial:false, sessionWarnings:[] };
 const companionSettings = createCompanionSettings({api,getState:()=>state,node,onChange:()=>setSending(),onPageChange:page=>page==='maintenance'?updatesPanel.refresh():undefined,onNavigate:target=>{
   $('app').classList.add('thread-open');
   if(target==='tools'||target==='image') { composerFiles.open=true; const control=$(target==='image'?'agent-images':'agent-files'); (control.disabled?composerFilesToggle:control).focus({preventScroll:true}); composerFiles.scrollIntoView({block:'nearest'}); }
@@ -118,12 +118,13 @@ function rememberDrafts() {
   try { if(textDraftStore.save(drafts)?.revoked){applyDraftRevocation();sessionStorage.setItem('bm_drafts',JSON.stringify([...drafts.entries()].slice(-100)));} } catch { draftFailure(); }
 }
 function chatKey(projectId, id) { return projectId + '|' + (id || 'new'); }
+function normalizedImageCount(value) { const amount=Number(value); return Number.isSafeInteger(amount)&&amount>=1&&amount<=5?amount:1; }
 function currentJobs() { return [...jobs.values()].filter(job => job.projectId === state.projectId && (job.id ? job.id === state.chat?.id : job.viewKey === state.viewKey)); }
 function anyGeneration() { return jobs.size > 0 || state.sessions.some(chat => chat.generation?.status === 'running' || chat.queue?.some(item => item.status === 'queued')); }
 function draftForView() { return drafts.get(state.viewKey) || {}; }
 function saveDraft() {
   if (!state.viewKey) return;
-  drafts.set(state.viewKey, { ...draftForView(), text: $('prompt').value, model: $('model').value, reasoning: { ...state.draftReasoning }, fileProfile:currentFileProfile(), fileAccess:currentFileProfile()==='write', webAccess:$('agent-web').checked, webApproval:$('agent-web-approval').checked, scriptAccess:$('agent-scripts').checked, imageAccess:$('agent-images').checked, imageWorkflowId:$('image-workflow').value, imageCount:$('image-count').value==='3'?3:1, attachments: fileBrowser.snapshot(), uploadStatus: $('upload-status').hidden ? '' : $('upload-status').textContent });
+  drafts.set(state.viewKey, { ...draftForView(), text: $('prompt').value, model: $('model').value, reasoning: { ...state.draftReasoning }, fileProfile:currentFileProfile(), fileAccess:currentFileProfile()==='write', webAccess:$('agent-web').checked, webApproval:$('agent-web-approval').checked, scriptAccess:$('agent-scripts').checked, imageAccess:$('agent-images').checked, imageWorkflowId:$('image-workflow').value, imageCount:normalizedImageCount($('image-count').value), imageModelPolicy:$('image-model-policy').value, attachments: fileBrowser.snapshot(), uploadStatus: $('upload-status').hidden ? '' : $('upload-status').textContent });
   rememberDrafts();
 }
 function restoreDraft(key) {
@@ -132,7 +133,7 @@ function restoreDraft(key) {
   const draft = draftForView();
   state.draftReasoning = { ...draft.reasoning }; state.draftFileAccess = draft.fileAccess ?? null;
   state.draftFileProfile = ['none','read','write'].includes(draft.fileProfile) ? draft.fileProfile : typeof draft.fileAccess === 'boolean' ? fileProfile(draft) : null;
-  state.draftWebAccess=draft.webAccess??null;state.draftWebApproval=draft.webApproval??null;state.draftScriptAccess=draft.scriptAccess??null;state.draftImageAccess=draft.imageAccess??null;state.draftImageWorkflowId=draft.imageWorkflowId??null;state.draftImageCount=draft.imageCount??null;
+  state.draftWebAccess=draft.webAccess??null;state.draftWebApproval=draft.webApproval??null;state.draftScriptAccess=draft.scriptAccess??null;state.draftImageAccess=draft.imageAccess??null;state.draftImageWorkflowId=draft.imageWorkflowId??null;state.draftImageCount=draft.imageCount??null;state.draftImageModelPolicy=draft.imageModelPolicy??null;
   $('prompt').value = draft.text || ''; fileBrowser.restore(draft.attachments || []);
   $('upload-status').textContent = draft.uploadStatus || ''; $('upload-status').hidden = !draft.uploadStatus;
   $('model').value = (state.status?.models || []).some(model => model.id === draft.model) ? draft.model : modelForChat();
@@ -711,7 +712,8 @@ function renderQueue(chat, parent = $('messages')) {
         state.draftWebAccess = item.webAccess === true; state.draftScriptAccess = sameProject && !unassignedProject() && item.scriptAccess === true;
         $('agent-web').checked = state.draftWebAccess; $('agent-scripts').checked = state.draftScriptAccess;
         state.draftImageAccess = item.imageAccess === true;
-        state.draftImageCount = item.imageCount === 3 ? 3 : 1;
+        state.draftImageCount = normalizedImageCount(item.imageCount);
+        state.draftImageModelPolicy = item.imageModelPolicy??'';
         state.draftImageWorkflowId = item.imageSelection?.workflowId ?? item.imageWorkflowId ?? null;
         $('agent-images').checked = state.draftImageAccess;
         companionSettings.imagePermission();
@@ -905,8 +907,9 @@ function setSending() {
   companionSettings.imagePermission();
   $('image-workflow').disabled = locked || !companionSettings.enabled();
   $('image-count').disabled = locked || !companionSettings.enabled() || !$('agent-images').checked;
+  $('image-model-policy').disabled = locked || !companionSettings.enabled() || !$('agent-images').checked;
   $('agent-web-approval').disabled = locked || !$('agent-web').checked;
-  $('files-permission-state').textContent = ({none:'Outils fichiers désactivés',read:'Fichiers en lecture',write:'Fichiers modifiables'}[currentFileProfile()]) + ($('agent-web').checked ? ' · Web' : '') + ($('agent-scripts').checked ? ' · Scripts' : '') + (companionSettings.enabled()&&$('agent-images').checked ? ($('image-count').value==='3'?' · Série de 3':' · Images') : '');
+  $('files-permission-state').textContent = ({none:'Outils fichiers désactivés',read:'Fichiers en lecture',write:'Fichiers modifiables'}[currentFileProfile()]) + ($('agent-web').checked ? ' · Web' : '') + ($('agent-scripts').checked ? ' · Scripts' : '') + (companionSettings.enabled()&&$('agent-images').checked ? (normalizedImageCount($('image-count').value)>1?' · Série de '+normalizedImageCount($('image-count').value):' · 1 image') : '');
   $('logout').disabled = state.uploading || conversationMove.busy;
   document.querySelectorAll('.restore-action').forEach(button => button.disabled = locked || state.sending || button.dataset.restored === 'true');
   $('effort').disabled = locked || !(state.status?.models || []).find(model => model.id === $('model').value)?.reasoning?.allowedOptions.length;
@@ -917,7 +920,7 @@ function setSending() {
   const activityText = state.chat?.generation?.awaitingApproval ? 'Un outil attend ta validation dans ce chat. Tu peux continuer à écrire.' : unresolved ? 'Envoi au PC… Tu peux préparer ton prochain message.' : waitingGpu?'Réponse en attente du GPU. Tu peux écrire ou ouvrir un autre chat.' : (running ? 'Réponse en cours sur le PC.' : '') + (queued ? ` ${queued} message${queued > 1 ? 's' : ''} en attente.` : '') + ' Tu peux écrire ou ouvrir un autre chat.';
   setText($('composer-activity'), activityText);
   $('composer-note').textContent = state.sending ? 'Les messages de ce chat seront traités dans l’ordre. Les réponses continuent si tu quittes le navigateur.' : unassignedProject() ? 'Sans projet : les outils de fichiers sont désactivés.' : currentFileProfile()==='write' ? 'Prochain envoi : lecture ciblée et modifications directes autorisées, avec sauvegardes.' : currentFileProfile()==='read' ? 'Prochain envoi : outils fichiers en lecture seule.' : 'Prochain envoi : outils fichiers désactivés.';
-  if(companionSettings.enabled()&&$('agent-images').checked) $('composer-note').textContent += $('image-count').value==='3'?' Trois images différentes seront préparées, puis rendues dans la file commune.':' ComfyUI peut générer une image ; son rendu continue après la réponse.';
+  if(companionSettings.enabled()&&$('agent-images').checked) $('composer-note').textContent += normalizedImageCount($('image-count').value)>1?' '+normalizedImageCount($('image-count').value)+' images différentes seront préparées, puis rendues dans la file commune.':' ComfyUI peut générer une image ; son rendu continue après la réponse.';
   if($('agent-scripts').checked) $('composer-note').textContent += ' Un script validé peut modifier le PC, y compris hors projet.';
   if($('agent-web').checked) $('composer-note').textContent += ' Les recherches et URL quittent le PC.';
   updateConversationOptions();
@@ -1078,7 +1081,7 @@ async function send(event) {
           const current = localChatForJob(job);
           current.id = e.id; current.name = e.name || current.name; current.source = 'web'; current.model = data.model;
           current.reasoningByModel = { ...current.reasoningByModel, [data.model]: e.reasoning || data.reasoning }; current.fileAccess = e.fileAccess ?? data.fileAccess; current.fileProfile = e.fileProfile ?? data.fileProfile; current.webApproval=e.webApproval??data.webApproval;
-          current.imageCount=e.imageCount??data.imageCount;current.imageWorkflowId=e.imageWorkflowId??data.imageWorkflowId;current.imageAccess=e.imageAccess??data.imageAccess;current.webAccess=e.webAccess??data.webAccess;current.scriptAccess=e.scriptAccess??data.scriptAccess;
+          current.imageCount=e.imageCount??data.imageCount;current.imageModelPolicy=Object.hasOwn(e,'imageModelPolicy')?e.imageModelPolicy:data.imageModelPolicy??null;current.imageWorkflowId=e.imageWorkflowId??data.imageWorkflowId;current.imageAccess=e.imageAccess??data.imageAccess;current.webAccess=e.webAccess??data.webAccess;current.scriptAccess=e.scriptAccess??data.scriptAccess;
           if (e.type === 'start') {
             current.messages ||= [];
             if (!current.messages.some(message => message.requestId === requestId)) current.messages.push({ role: 'user', id: e.contextReceipt?.current?.messageId, text, requestId });
@@ -1171,7 +1174,7 @@ function hidePrivateViews() {
   workspace.reset();
   $('messages').replaceChildren(); $('sessions').replaceChildren(); $('prompt').value = ''; $('attachments').replaceChildren(); $('upload-status').textContent = '';
   $('file-editor').value = ''; $('file-image').removeAttribute('src'); $('file-list').replaceChildren();
-  state.chat = null; state.viewKey = null; state.sessions = []; chats.clear(); drafts.clear(); rememberDrafts();
+  state.chat = null; state.viewKey = null; state.draftImageCount=null;state.draftImageModelPolicy=null;state.sessions = []; chats.clear(); drafts.clear(); rememberDrafts();
   state.projects = []; $('project').replaceChildren();
   try { sessionStorage.removeItem('bm_view'); } catch {}
 }
@@ -1186,7 +1189,8 @@ $('project').addEventListener('change', async () => {
   try { await selectProject($('project').value, { clearSearch: true }); } catch (e) { error(e.message); }
 });
 $('agent-files').addEventListener('change', () => { state.draftFileProfile = currentFileProfile(); saveDraft(); setSending(); });
-$('image-count').addEventListener('change',()=>{state.draftImageCount=$('image-count').value==='3'?3:1;saveDraft();setSending();});
+for(const type of ['input','change'])$('image-count').addEventListener(type,()=>{state.draftImageCount=normalizedImageCount($('image-count').value);saveDraft();setSending();});
+$('image-model-policy').addEventListener('change',()=>{state.draftImageModelPolicy=$('image-model-policy').value;saveDraft();setSending();});
 $('image-workflow').addEventListener('change',()=>{state.draftImageWorkflowId=$('image-workflow').value;saveDraft();companionSettings.imagePermission();});
 for(const [id,key] of [['agent-web','draftWebAccess'],['agent-web-approval','draftWebApproval'],['agent-scripts','draftScriptAccess'],['agent-images','draftImageAccess']])$(id).addEventListener('change',()=>{state[key]=$(id).checked;saveDraft();setSending();});
 $('attach-file').addEventListener('click', () => closeComposerFiles());

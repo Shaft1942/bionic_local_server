@@ -28,21 +28,23 @@ function ndjson(response){
     }
   },async remaining(){const events=[];for(;;){const event=await this.next();if(event===null)return events;events.push(event);}}};
 }
-async function completeSeries(f){
-  for(let index=0;index<3;index++){
+async function completeSeries(f,count=3,offset=0){
+  for(let index=offset;index<offset+count;index++){
     await until(()=>f.state.posts.length>index);f.state.completed.add(f.state.posts[index].id);
-    if(index<2)await until(()=>f.state.posts.length>index+1);
+    if(index<offset+count-1)await until(()=>f.state.posts.length>index+1);
   }
   await until(()=>f.app.gpuScheduler.snapshot().activeImages===0);
 }
-const scenes=label=>[
+const scenes=(label,count=3)=>[
   {prompt:label+' red bicycle beside a stone wall',seed:201,format:'square'},
   {prompt:label+' yellow tram in an empty street',seed:202,format:'square'},
   {prompt:label+' wooden sailboat at dawn',seed:203,format:'square'},
-];
+  {prompt:label+' green forest in morning mist',seed:204,format:'square'},
+  {prompt:label+' orange cat beside a window',seed:205,format:'square'},
+].slice(0,count);
 const publicModel={id:'synthetic-series',name:'Synthetic series model',type:'llm',tools:true,contextLength:8192,reasoning:{allowedOptions:[]}};
 
-async function fixture(t,{builtInComfy=false,forceSeries=false,controlledText=false}={}){
+async function fixture(t,{builtInComfy=false,forceSeries=false,controlledText=false,seriesCountOverride,holdImageModel=false}={}){
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'comfy-series-http-test-'));
   const state={loaded:true,inferences:[],posts:[],completed:new Set(),unloads:[],modelAdmissions:[],textStreams:new Map()};
   const inFlight=()=>state.posts.filter(post=>!state.completed.has(post.id)).length;
@@ -81,7 +83,9 @@ async function fixture(t,{builtInComfy=false,forceSeries=false,controlledText=fa
     else{
       const series=forceSeries||body.tools?.some(tool=>tool.function.name==='generate_comfy_image_series');
       const name=series?'generate_comfy_image_series':'generate_comfy_image';
-      const args=series?{images:scenes(label)}:scenes(label)[0];
+      const selectedCount=body.tools?.find(tool=>tool.function.name==='generate_comfy_image_series')?.function.parameters.properties.images.minItems??3;
+      const args=series?{images:scenes(label,seriesCountOverride??selectedCount)}:scenes(label)[0];
+      if(holdImageModel)await new Promise(resolve=>{state.finishImagePreparation=resolve;});
       choices=[{delta:{tool_calls:[{index:0,id:randomUUID(),type:'function',function:{name,arguments:JSON.stringify(args)}}]},finish_reason:'tool_calls'}];
     }
     return new Response('data: '+JSON.stringify({choices})+'\n\ndata: [DONE]\n\n');
@@ -152,7 +156,7 @@ test('HTTP series mode saves three cards with per-image cleanup and needs only o
 
 test('invalid image counts are refused before inference, graph submission or chat persistence',async t=>{
   const f=await fixture(t);
-  for(const imageCount of [0,2,4,'3',false,{}]){
+  for(const imageCount of [0,-1,6,1.5,'3',null,false,{}]){
     const response=await f.request('/api/chat',{projectId:'p1',model:publicModel.id,requestId:randomUUID(),text:'SCENARIO-A',imageAccess:true,imageCount,fileProfile:'none'});
     assert.equal(response.status,400);await response.arrayBuffer();
   }
@@ -302,4 +306,65 @@ for(const ending of ['complete','stop'])test(`HTTP alternate preserves an active
   assert.equal(reply.outcome,ending==='stop'?'stopped':'completed');
   const imageChat=await(await f.request('/api/conversation?'+new URLSearchParams({projectId:'p1',id:turn.start.id}))).json();
   assert(imageChat.messages.at(-1).imageGenerations.every(job=>job.status==='succeeded'));
+});
+
+
+for(const count of [1,2,4,5])test(`HTTP accepts ${count} images with exact model schema and owner cards`,async t=>{
+  const f=await fixture(t),turn=await f.send('SCENARIO-COUNT',{imageCount:count});
+  const action=turn.actions[0],jobs=action.imageGenerations||(action.imageGeneration?[action.imageGeneration]:[]);
+  assert.equal(action.ok,true);assert.equal(jobs.length,count);assert.equal(turn.start.imageCount,count);
+  if(count>1){
+    const tool=f.state.inferences[0].body.tools.find(tool=>tool.function.name==='generate_comfy_image_series');
+    assert.equal(tool.function.parameters.properties.images.minItems,count);assert.equal(tool.function.parameters.properties.images.maxItems,count);
+    assert.deepEqual(jobs.map(job=>job.seriesIndex),Array.from({length:count},(_,i)=>i+1));assert(jobs.every(job=>job.seriesTotal===count));
+  }else assert(!f.state.inferences[0].body.tools.some(tool=>tool.function.name==='generate_comfy_image_series'));
+  await completeSeries(f,count);assert.equal(f.state.posts.length,count);assert(f.state.posts.every(post=>post.priorRunning===0));
+  const saved=await(await f.request('/api/conversation?'+new URLSearchParams({projectId:'p1',id:turn.start.id}))).json();
+  assert.equal(saved.imageCount,count);assert.equal(saved.messages.at(-1).imageGenerations.length,count);
+  assert(saved.messages.at(-1).imageGenerations.every(job=>job.status==='succeeded'));
+});
+
+for(const actualCount of [2,4])test(`model returning ${actualCount} images for a selected five creates no jobs`,async t=>{
+  const f=await fixture(t,{seriesCountOverride:actualCount}),turn=await f.send('SCENARIO-WRONG',{imageCount:5});
+  assert.equal(turn.actions[0].ok,false);assert.equal(f.state.posts.length,0);
+  const saved=await(await f.request('/api/conversation?'+new URLSearchParams({projectId:'p1',id:turn.start.id}))).json();
+  assert.equal(saved.messages.at(-1).imageGenerations,undefined);
+});
+
+test('invalid per-message model policies are refused before model, image or chat effects',async t=>{
+  const f=await fixture(t);
+  for(const imageModelPolicy of ['',false,0,'KEEP','other',{}]){
+    const response=await f.request('/api/chat',{projectId:'p1',model:publicModel.id,requestId:randomUUID(),text:'SCENARIO-A',imageAccess:true,imageCount:2,imageModelPolicy,fileProfile:'none'});
+    assert.equal(response.status,400);await response.arrayBuffer();
+  }
+  assert.equal(f.state.inferences.length,0);assert.equal(f.state.posts.length,0);
+  assert.deepEqual(await fs.readdir(path.join(f.root,'data','chats')),[]);
+});
+
+test('quick unload applies only to its image lot and clearing the exception restores global keep in the same chat',async t=>{
+  const f=await fixture(t);
+  const first=await f.send('SCENARIO-QUICK',{imageCount:2,imageModelPolicy:'unload'}),jobs=first.actions[0].imageGenerations;
+  assert.equal(first.start.imageModelPolicy,'unload');assert(jobs.every(job=>job.modelPolicy==='unload'));
+  assert.equal(f.state.unloads.length,1);assert.equal(f.state.posts[0].loaded,false);
+  assert.equal((await(await f.request('/api/comfy/settings')).json()).modelPolicy,'keep');
+  await completeSeries(f,2);
+  const second=await f.send('SCENARIO-DEFAULT',{sessionId:first.start.id,imageCount:1});
+  const next=second.actions[0].imageGeneration||second.actions[0].imageGenerations?.[0];
+  assert.equal(second.start.id,first.start.id);assert.equal(second.start.imageModelPolicy,null);assert.equal(next.modelPolicy,'keep');assert.equal(f.state.unloads.length,1);
+  await completeSeries(f,1,2);
+  const saved=await(await f.request('/api/conversation?'+new URLSearchParams({projectId:'p1',id:second.start.id}))).json();
+  assert.equal(saved.imageModelPolicy,null);assert.equal(saved.imageCount,1);assert.equal(saved.messages.at(-1).imageGenerations[0].modelPolicy,'keep');
+  assert.equal((await(await f.request('/api/comfy/settings')).json()).modelPolicy,'keep');
+});
+
+test('global policy is captured before model preparation and cannot change a previously accepted image request',async t=>{
+  const f=await fixture(t,{holdImageModel:true});
+  const pending=f.send('SCENARIO-FROZEN',{imageCount:4});
+  await until(()=>typeof f.state.finishImagePreparation==='function');
+  assert.equal((await f.request('/api/comfy/settings',{modelPolicy:'unload'})).status,200);
+  f.state.finishImagePreparation();
+  const turn=await pending;assert.equal(turn.start.imageModelPolicy,null);
+  assert(turn.actions[0].imageGenerations.every(job=>job.modelPolicy==='keep'));assert.equal(f.state.unloads.length,0);
+  await completeSeries(f,4);
+  assert.equal((await(await f.request('/api/comfy/settings')).json()).modelPolicy,'unload');
 });

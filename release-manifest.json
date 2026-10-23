@@ -167,6 +167,7 @@
     "test/certificate-web.test.mjs",
     "test/certificates-ui.test.mjs",
     "test/comfy-alternate.test.mjs",
+    "test/comfy-image-count.test.mjs",
     "test/comfy-images.test.mjs",
     "test/comfy-integration.test.mjs",
     "test/comfy-loras.test.mjs",
