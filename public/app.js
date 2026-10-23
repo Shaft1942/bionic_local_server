@@ -140,11 +140,17 @@ function restoreDraft(key) {
 }
 function rememberView() { try { sessionStorage.setItem('bm_view', JSON.stringify({ projectId: state.projectId, key: state.viewKey })); } catch {} }
 function rememberChat() { if (state.chat?.id) { try { localStorage.setItem('bm_chat_' + state.projectId, state.chat.id); } catch {} } }
-const imageGenerationView = createImageGenerationView({api,node,getState:()=>state,redraw:()=>renderChat()});
+const imageGenerationView = createImageGenerationView({api,node,getState:()=>state,redraw:()=>renderChat(),onRetry:async(result,owner)=>{
+  const epoch=state.authEpoch,key=chatKey(owner.projectId,result.chatId);
+  let target=chats.get(key)||(state.projectId===owner.projectId&&state.chat?.id===result.chatId?state.chat:null);
+  if(!target||!result.message)target=await api('/api/conversation?'+new URLSearchParams({projectId:owner.projectId,id:result.chatId}));
+  else{target.messages||=[];const index=target.messages.findIndex(message=>message.id===result.messageId);if(index<0)target.messages.push(result.message);else target.messages[index]=result.message;}
+  if(epoch===state.authEpoch&&state.authenticated)showChatUpdate(target,owner.projectId);
+}});
 const EFFORT_LABELS = { off: 'Désactivé', on: 'Activé', low: 'Faible', medium: 'Moyen', high: 'Élevé', xhigh: 'Très élevé' };
 const modelPanel = { models: [], loading: false, unloading: null, generationActive: false };
 const fileBrowser = createProjectFileBrowser({ api, node, icon, toast, getProject: () => state.projects.find(project => project.id === state.projectId), isBusy: () => state.loading || state.uploading || conversationMove.busy, onChange: saveDraft, onAttach: () => { $('app').classList.add('thread-open'); renderChat(); $('prompt').focus(); } });
-const workspace = createWorkspace({ api, node, icon, toast, getState: () => state, openTarget: async (projectId, chatId, messageId) => {
+const workspace = createWorkspace({ api, node, icon, toast, getState: () => state, imageGallery:(images,projectId)=>imageGenerationView.gallery(images,null,null,{projectId,projectOnly:true,readonly:true}), openTarget: async (projectId, chatId, messageId) => {
   if (state.uploading) throw new Error('Attends la fin de l’import avant d’ouvrir cette conversation.');
   if (conversationMove.busy) throw new Error('Attends la fin de la modification de cette conversation.');
   if (!state.projects.some(project => project.id === projectId)) throw new Error('Le projet de cette réponse n’est plus disponible. Actualise les projets.');
@@ -644,7 +650,7 @@ function addMessage(message, parent = $('messages'), renderBody = true) {
     for(const copy of intent.backupCandidates||[]) { const a=node('a','file-action','Télécharger une copie antérieure vérifiée');a.href='/api/files/backup/download?'+new URLSearchParams({projectId:state.projectId,backupId:copy.id});a.download='';warning.append(a); }
     article.append(warning);
   }
-  for(const job of message.imageGenerations||[])article.append(imageGenerationView.card(job,state.chat,message));
+  if(message.imageGenerations?.length)article.append(imageGenerationView.gallery(message.imageGenerations,state.chat,message));
   for (const action of message.actions || []) addFileAction(article, action, message);
   for(const approval of message.approvals||[])addToolApproval(article,approval,state.chat);
   if(message.historicalActions?.length){const history=node('details','actions-log');history.append(node('summary','','Actions dans la conversation source · '+message.historicalActions.length));for(const action of message.historicalActions)history.append(node('p','message-footer',(action.message||action.name||'Action')+(action.path?' · '+action.path:'')));article.append(history);}
@@ -1171,7 +1177,7 @@ function hidePrivateViews() {
   projectTree.reset();
   for (const job of jobs.values()) job.controller?.abort();
   $('models-dialog').close(); $('files-view').hidden = true; $('app').hidden = true; $('login').hidden = false;
-  workspace.reset();
+  workspace.reset();imageGenerationView.reset();
   $('messages').replaceChildren(); $('sessions').replaceChildren(); $('prompt').value = ''; $('attachments').replaceChildren(); $('upload-status').textContent = '';
   $('file-editor').value = ''; $('file-image').removeAttribute('src'); $('file-list').replaceChildren();
   state.chat = null; state.viewKey = null; state.draftImageCount=null;state.draftImageModelPolicy=null;state.sessions = []; chats.clear(); drafts.clear(); rememberDrafts();

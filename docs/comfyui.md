@@ -165,6 +165,37 @@ n’affaiblit pas leurs validations. Les conversations natives Bionic restent en
 lecture seule. La cohabitation mémoire et la durée de génération dépendent des
 modèles chargés dans Bionic et de l’offload ComfyUI.
 
+## Galerie, annulation et relance — beta2
+
+**Annuler l’attente** retire une image encore locale, sans `prompt_id`. Les autres
+images du lot continuent. Dès que l’envoi à ComfyUI commence, ce bouton disparaît :
+aucune interruption globale du moteur n’est envoyée. Un état annulé reste conservé
+après redémarrage et un second clic ne relance rien.
+
+**Relancer** crée une nouvelle image, dans un nouveau message du chat source, avec
+le même prompt, format, workflow, LoRA, nettoyage mémoire et choix de modèle texte.
+On choisit une graine identique ou une nouvelle graine distincte. L’original reste
+disponible. Une image active ou dont la soumission est incertaine ne se relance pas.
+Un changement d’adresse du moteur ou de contenu du workflow depuis l’original
+demande une nouvelle génération ordinaire ; la recette ne change pas silencieusement.
+
+La galerie permet de télécharger les images disponibles d’une série en ZIP.
+**Livrables → Génération** rassemble automatiquement les copies privées des images
+réussies dans toutes les conversations du projet. Les pages suivantes se chargent
+explicitement ; les copies restent accessibles après suppression du chat source.
+Le téléchargement sélectionné accepte 1 à 20 images, au maximum 32 Mio par image
+et 128 Mio par archive. Le ZIP conserve les PNG et ajoute un manifeste avec les
+prompts, graines, modèle, LoRA et empreintes SHA-256 ; aucun chemin privé ni adresse
+de moteur n’est ajouté au manifeste. Il ne relance aucune image.
+
+Routes authentifiées :
+
+- `POST /api/comfy/generation/cancel` : `{projectId,chatId,messageId,jobId}` ; renvoie le job annulé, ou 409 si l’envoi a déjà commencé.
+- `POST /api/comfy/generation/retry` : mêmes propriétaires, `seedMode: "same" | "new"` et `requestId` UUID stable ; renvoie `{job,chatId,messageId,message}`. Répéter cet identifiant retourne le même job. Une relance interrompue avant son reçu n’est jamais rejouée automatiquement.
+- `GET /api/comfy/generations?projectId=…&cursor=…` : `{images,total,nextCursor}`, 200 images maximum par page ; chaque DTO porte son propriétaire pour retrouver la source.
+- `GET /api/comfy/generation-image?projectId=…&jobId=…` : PNG conservé, vérifié par SHA-256 ; `download=1` déclenche le téléchargement.
+- `GET /api/comfy/images.zip?projectId=…&jobId=…&jobId=…` : ZIP des seules images sélectionnées et réussies. Tous les propriétaires sont vérifiés avant lecture ; une entrée d’un autre projet refuse l’ensemble.
+
 Un rendu Krea2 1024 × 1024 piloté par Gemma a réussi pendant la validation V2.
 Voir `docs/history/v2-live-proof.json`. Les ajouts LoRA réunis dans la release 2.0.0 ont été testés avec
 des rendus HassakuXL et Krea2 avec LoRA depuis des prompts du compagnon ; voir

@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.4.1-beta.2 — version de travail, non publiée
+
+- Annulation individuelle des images encore dans la file locale, sans interrompre les rendus déjà transmis à ComfyUI.
+- Relance explicite d’une image terminée, échouée ou annulée, avec la même graine ou une nouvelle ; recette conservée et reçu idempotent dans un nouveau message.
+- Galerie des séries et export ZIP des images disponibles. Dans Livrables, la catégorie Génération rassemble les images de toutes les conversations du projet, y compris les copies conservées après suppression du chat source.
+
 ## 2.4.1-beta.1 — version de travail, non publiée
 
 - Images par demande : curseur accessible de 1 à 5, séries de longueur exacte, cartes i/N et validation complète avant admission.

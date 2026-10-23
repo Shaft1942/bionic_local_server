@@ -21,6 +21,7 @@ import { consumeModelStream } from './lib/file-agent.mjs';
 import { toolsFor, createAgentTools, normalizeFileProfile, FILE_MUTATION_TOOLS } from './lib/agent-tools.mjs';
 import { createToolApprovals } from './lib/tool-approvals.mjs';
 import { createComfyImages } from './lib/comfy-images.mjs';
+import { createImageArchive } from './lib/image-archive.mjs';
 import { forkConversation } from './lib/conversation-fork.mjs';
 import { createContextReceipt, addToolRead, addExternalContext, markContextTransmitted } from './lib/context-receipt.mjs';
 import { buildToolMemory } from './lib/tool-memory.mjs';
@@ -37,6 +38,7 @@ const APP_VERSION = JSON.parse(await defaultFS.readFile(new URL('./package.json'
 const ACTIVE_IMAGE_STATUSES = new Set(['submitting', 'queued', 'running']);
 function imageTurnStatus(jobs) {
   if (jobs.some(job => job.status === 'unknown')) return 'Le résultat de la soumission à ComfyUI est incertain. Vérifie le suivi avant toute nouvelle demande ; aucune image n’a été relancée.';
+  if (jobs.every(job => job.status === 'cancelled')) return 'Les images en attente ont été annulées.';
   if (jobs.every(job => job.status === 'failed')) return 'La génération a échoué. Consulte le détail dans la carte de suivi de l’image.';
   if (jobs.every(job => job.status === 'succeeded')) return 'L’image est disponible dans la conversation.';
   if (jobs.some(job => job.status === 'submitting')) return 'La demande d’image est en cours d’envoi à ComfyUI. Son suivi apparaîtra automatiquement ici.';
@@ -280,6 +282,51 @@ async function readChat(projectId, id) {
 function apiHeaders() { return process.env.BIONIC_API_TOKEN ? { Authorization: `Bearer ${process.env.BIONIC_API_TOKEN}` } : {}; }
 const projectFiles = options.projectFiles || createProjectFiles({ backupDirectory: path.join(DATA, 'file-backups'), imageDirectory: path.join(DATA, 'image-attachments'), registryPath: settings.registryPath, extraRoots: settings.extraRoots, python: settings.python });
 const workspaceFeatures = createWorkspaceFeatures({ directory: path.join(DATA, 'workspace'), listProjects, listWebChats: webChats, readConversation: readChat, projectFiles });
+async function requireImageProject(projectId) {
+  if (typeof projectId !== 'string' || !(await listProjects()).some(project => project.id === projectId)) throw fail(404, 'Projet introuvable.');
+}
+async function ownedImage(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input) || ['projectId', 'chatId', 'messageId', 'jobId'].some(key => typeof input[key] !== 'string' || !input[key] || input[key].length > 128)) throw fail(400, 'Propriétaire de l’image invalide.');
+  const chat = await readChat(input.projectId, input.chatId);
+  const message = chat.messages?.find(entry => entry.id === input.messageId);
+  const owner = comfyImages.owner(input.jobId);
+  if (owner.projectId !== input.projectId || owner.chatId !== chat.id || owner.messageId !== input.messageId || !message?.imageGenerations?.some(job => job.id === input.jobId)) throw fail(404, 'Image introuvable dans cette conversation.');
+  return { chat, message, job: comfyImages.get(input.jobId) };
+}
+async function retryImage(input) {
+  if (!input || typeof input !== 'object' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(input.requestId || '') || !['same', 'new'].includes(input.seedMode)) throw fail(400, 'Identifiant de relance ou choix de graine invalide.');
+  return withConversationManagement({ projectId: input.projectId, id: input.chatId }, async () => {
+    const { chat } = await ownedImage(input);
+    if (!webId(chat.id)) throw fail(409, 'Relance disponible dans les conversations du compagnon.');
+    let message = chat.messages.find(entry => entry.imageRetry?.requestId === input.requestId);
+    if (message) {
+      if (message.imageRetry.sourceId !== input.jobId || message.imageRetry.seedMode !== input.seedMode) throw fail(409, 'Cet identifiant appartient à une autre relance.');
+      const previous = comfyImages.listGenerations({ projectId: input.projectId, chatId: chat.id, messageId: message.id, includeAll: true })[0];
+      if (previous) {
+        const { owner, ...job } = previous;
+        message.imageGenerations = [job]; await persistChat(chat);
+        return { job, chatId: chat.id, messageId: message.id, message };
+      }
+      if (message.imageRetry.error) throw fail(message.imageRetry.errorStatus || 409, message.imageRetry.error);
+      // A restart between the durable receipt and enqueue is deliberately not replayed.
+      throw fail(409, 'Cette relance a été interrompue avant son reçu. Vérifie le suivi ; utilise une nouvelle relance si aucune image n’a été soumise.');
+    }
+    assertConversationIdle({ projectId: input.projectId, id: chat.id }, chat);
+    await comfyImages.validateRetry(input.jobId, { seedMode: input.seedMode });
+    message = { id: randomUUID(), role: 'assistant', text: 'Relance de l’image en préparation.', createdAt: Date.now(), imageGenerations: [], imageRetry: { requestId: input.requestId, sourceId: input.jobId, seedMode: input.seedMode } };
+    chat.messages.push(message); chat.updatedAt = Date.now(); await persistChat(chat);
+    try {
+      const job = await comfyImages.retry(input.jobId, { projectId: input.projectId, chatId: chat.id, messageId: message.id, requestId: input.requestId }, { seedMode: input.seedMode });
+      message.imageGenerations = [job]; message.text = imageTurnStatus([job]); message.finishedAt = Date.now();
+      await persistChat(chat); return { job, chatId: chat.id, messageId: message.id, message };
+    } catch (error) {
+      // Keep a durable failure receipt: the same HTTP request must never enqueue again.
+      message.imageRetry.error = error.status ? error.message : 'La relance a échoué. Consulte le suivi avant une nouvelle demande.';
+      message.imageRetry.errorStatus = error.status || 500; message.text = message.imageRetry.error; message.finishedAt = Date.now();
+      await persistChat(chat); throw error;
+    }
+  });
+}
 function managementInput(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw fail(400, 'Demande de modification invalide.');
   if (typeof input.id !== 'string' || !/^[\w-]{1,128}$/.test(input.id) || typeof input.projectId !== 'string' || !/^[\w-]{1,128}$/.test(input.projectId)) throw fail(400, 'Conversation ou projet invalide.');
@@ -1030,6 +1077,48 @@ async function handleRequest(req, res) {
           {name:'Contexte et actions',description:'Historique récent borné, reçu des fichiers et outils transmis. Résumés historiques limités à 2 400 caractères, à revérifier avant action.'},
           {name:'Bionic Desktop',description:'Historiques natifs consultés en lecture. MCP, skills, sous-agents et navigateur interactif de Desktop ne sont pas hérités.'}
         ]});return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/comfy/generation/cancel') {
+        const input = await body(req, 4096);
+        const { chat, message } = await ownedImage(input);
+        const job = await comfyImages.cancel(input.jobId);
+        message.imageGenerations = message.imageGenerations.map(previous => previous.id === job.id ? job : previous);
+        await persistChat(chat); json(res, 200, job); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/comfy/generation/retry') {
+        json(res, 200, await retryImage(await body(req, 4096))); return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/comfy/generations') {
+        const projectId = url.searchParams.get('projectId'); await requireImageProject(projectId);
+        const images = comfyImages.listGenerations({ projectId }).sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
+        const cursor = url.searchParams.get('cursor');
+        const start = cursor ? images.findIndex(image => image.id === cursor) + 1 : 0;
+        if (cursor && !start) throw fail(400, 'Page de galerie invalide. Actualise la galerie.');
+        const page = images.slice(start, start + 200);
+        json(res, 200, { images: page, total: images.length, nextCursor: start + page.length < images.length ? page.at(-1).id : null }); return;
+      }
+      if (req.method === 'GET' && ['/api/comfy/generation-image', '/api/comfy/images.zip'].includes(url.pathname)) {
+        const projectId = url.searchParams.get('projectId'); await requireImageProject(projectId);
+        const ids = url.searchParams.getAll('jobId');
+        if (!ids.length || ids.length > (url.pathname.endsWith('.zip') ? 20 : 1) || new Set(ids).size !== ids.length) throw fail(400, 'Sélectionne entre une et vingt images distinctes pour le ZIP.');
+        // Authorize every entry before reading bytes; retained copies stay scoped to their project.
+        const jobs = ids.map(id => {
+          const owner = comfyImages.owner(id), job = comfyImages.get(id);
+          if (owner.projectId !== projectId || job.status !== 'succeeded') throw fail(404, 'Image indisponible dans ce projet.');
+          return job;
+        });
+        if (url.pathname.endsWith('.zip')) {
+          const images = []; let total = 0;
+          for (const job of jobs) {
+            const image = await comfyImages.image(job.id); total += image.bytes.length;
+            if (total > 128 * 1024 * 1024) throw fail(413, 'La sélection dépasse 128 Mio. Télécharge moins d’images à la fois.');
+            images.push({ id: job.id, buffer: image.bytes, metadata: job });
+          }
+          const archive = createImageArchive(images);
+          res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Length': archive.length, 'Content-Disposition': 'attachment; filename="Bionic-generation.zip"', 'Cache-Control': 'no-store' }); res.end(archive); return;
+        }
+        const image = await comfyImages.image(ids[0]);
+        res.writeHead(200, { 'Content-Type': image.mime, 'Content-Length': image.bytes.length, 'Cache-Control': 'no-store', ...(url.searchParams.get('download') === '1' ? { 'Content-Disposition': 'attachment; filename="Bionic-' + ids[0] + '.png"' } : {}) }); res.end(image.bytes); return;
       }
       if(req.method==='GET'&&['/api/comfy/generation','/api/comfy/image'].includes(url.pathname)){
         const id=url.searchParams.get('jobId'),pid=url.searchParams.get('projectId'),chatId=url.searchParams.get('chatId'),messageId=url.searchParams.get('messageId');

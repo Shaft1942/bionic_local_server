@@ -128,6 +128,7 @@
     <div class="workspace-toolbar"><div class="workspace-tabs" role="group" aria-label="Espace du projet"><button id="workspace-activity" type="button" aria-pressed="true">Depuis votre départ</button><button id="workspace-deliverables" type="button" aria-pressed="false">Livrables</button></div><label class="workspace-filter" for="workspace-project"><span>Projet</span><select id="workspace-project"></select></label><button id="workspace-refresh" class="icon-button" type="button" aria-label="Actualiser cet espace"></button></div>
     <p id="workspace-error" class="workspace-error error" role="alert" hidden></p>
     <p id="workspace-status" class="workspace-status" role="status"></p>
+    <div id="workspace-deliverable-categories" class="workspace-deliverable-categories workspace-tabs" role="group" aria-label="Catégories de livrables" hidden><button id="workspace-copies" type="button" aria-pressed="true">Copies conservées</button><button id="workspace-generations" type="button" aria-pressed="false">Génération</button></div>
     <div class="workspace-layout"><div id="workspace-list" class="workspace-list"></div><section id="workspace-detail" class="workspace-detail" aria-label="Copie conservée du livrable" hidden></section></div>
   </section>
   <section id="settings-view" class="settings-view" aria-labelledby="settings-title" data-settings-index="true" hidden>
@@ -301,5 +302,6 @@
   <p id="updates-announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
   <div id="toast" class="toast" role="status" hidden></div>
   <div id="event-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <dialog id="generated-image-preview" class="generated-image-preview" aria-labelledby="generated-image-preview-title"><header><h2 id="generated-image-preview-title">Image générée</h2><button id="generated-image-preview-close" class="file-action" type="button">Fermer l’image</button></header><img id="generated-image-preview-image" alt=""><p id="generated-image-preview-caption"></p></dialog>
 </body>
 </html>
