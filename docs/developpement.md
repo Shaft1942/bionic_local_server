@@ -152,3 +152,7 @@ En cas de base occupée, l’adaptateur peut construire un instantané temporair
 Une exécution locale génère `data/`, `runtime/`, `ACCES-PRIVE.txt` et des journaux. Ils ne doivent pas devenir des fixtures, des artefacts CI ou une partie d’une release. Le fichier local de configuration et les jetons d’environnement restent privés.
 
 Avant une proposition de publication, suivez [Publication](publication.md). Ne copiez pas tout un dossier actif vers une archive, même si `.gitignore` existe.
+
+### Vérifier l’aide embarquée
+
+`npm run test:browser:help` exécute `scripts/browser-help.mjs` sur une API synthétique : séparation Maintenance/Aide, guide au clavier, raccourcis, saisies conservées, retours de focus et débordements à 320/390/1280 px. Playwright et ses options sont ceux des autres parcours. Aucun service personnel ni modèle n’est utilisé.

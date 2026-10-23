@@ -690,7 +690,7 @@ async function generateChat(res, chat, item, request) {
   }
 }
 
-const STATIC = { '/': 'index.html', '/app.js': 'app.js', '/message-text.js':'message-text.js', '/settings.js':'settings.js', '/certificates.js':'certificates.js', '/project-tree.js':'project-tree.js', '/project-tree.css':'project-tree.css', '/comfy-images.js':'comfy-images.js', '/updates.js': 'updates.js', '/message-drafts.js': 'message-drafts.js', '/files.js': 'files.js', '/workspace.js': 'workspace.js', '/style.css': 'style.css', '/manifest.webmanifest': 'manifest.webmanifest', '/icon.svg': 'icon.svg' };
+const STATIC = { '/': 'index.html', '/app.js': 'app.js', '/message-text.js':'message-text.js', '/settings.js':'settings.js', '/help.js':'help.js', '/certificates.js':'certificates.js', '/project-tree.js':'project-tree.js', '/project-tree.css':'project-tree.css', '/comfy-images.js':'comfy-images.js', '/updates.js': 'updates.js', '/message-drafts.js': 'message-drafts.js', '/files.js': 'files.js', '/workspace.js': 'workspace.js', '/style.css': 'style.css', '/manifest.webmanifest': 'manifest.webmanifest', '/icon.svg': 'icon.svg' };
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml' };
 function handle(req, res) { return scanCycles.run({}, () => handleRequest(req, res)); }
 async function handleRequest(req, res) {

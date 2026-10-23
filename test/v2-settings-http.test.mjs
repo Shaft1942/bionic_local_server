@@ -165,3 +165,13 @@ test('guided discovery and module download require session; discovery rejects ex
   assert.match(download.headers['content-disposition'],/attachment.*free_memory_after_workflow.py/);
   assert.match(download.text(),/class FreeMemoryAfterWorkflow/);assert.equal(f.modelCalls,0);
 });
+
+
+test('embedded help is served as a fixed script and arbitrary help files stay inaccessible',async t=>{
+  const f=await fixture(t),source=await fs.readFile(new URL('../public/help.js',import.meta.url),'utf8');
+  await fs.mkdir(path.join(f.root,'public'),{recursive:true});await fs.writeFile(path.join(f.root,'public/help.js'),source);
+  const script=await f.request('/help.js',{authenticated:false});
+  assert.equal(script.statusCode,200);assert.equal(script.text(),source);assert.match(script.headers['content-type'],/^text\/javascript/);
+  const unknown=await f.request('/help-internal.js',{authenticated:false});assert.equal(unknown.statusCode,404);
+  assert.equal(f.modelCalls,0);assert.equal(f.requests.length,0);
+});

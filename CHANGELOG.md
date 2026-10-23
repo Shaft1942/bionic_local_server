@@ -1,5 +1,13 @@
 # Journal des versions
 
+## 2.2.1-beta.4 — 2026-10-23
+
+- Paramètres : Maintenance et Aide sont deux rubriques distinctes. Maintenance conserve mises à jour, diagnostic et configuration PC ; Aide regroupe le guide et les capacités.
+- Guide intégré audité contre le code puis corrigé : conversations, fichiers et pièces jointes, permissions web/scripts, ComfyUI et mémoire facultative, connexion, dépannage et mises à jour.
+- Les anciens accès d’aide ouvrent la même page. Les raccourcis du guide conservent les saisies et ciblent les bons réglages, avec recherche et navigation clavier.
+- Conservation des ajouts de la beta.3 ; les métaprompts et rapports d’audit des agents restent dans le socle de développement.
+
+
 ## 2.2.1-beta.3 — 2026-10-23
 
 - Paramètres → Images : configuration guidée en trois étapes, recherche des serveurs locaux (ports 8188/8000 et adresse saisie), diagnostic séparé du serveur, des fichiers de modèles et des nœuds, avec instructions et dossiers attendus.

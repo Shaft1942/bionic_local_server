@@ -47,14 +47,12 @@ const icons = {
 function icon(name) { const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); el.setAttribute('viewBox', '0 0 24 24'); el.setAttribute('aria-hidden', 'true'); el.innerHTML = icons[name]; return el; }
 for (const [id, name] of [['refresh', 'refresh'], ['search-icon', 'search'], ['back', 'back'], ['send', 'send'], ['info-button', 'info'], ['reveal', 'eye']]) $(id).append(icon(name));
 for (const [id, name] of [['settings-open-sidebar','settings'], ['reconnect','refresh'], ['models-close','close'], ['models-refresh','refresh']]) $(id).append(icon(name));
-$('info-close').append(icon('close'));
 $('models-open-sidebar').prepend(icon('models'));
 $('conversation-options-toggle').append(icon('more'));
 $('new-chat').append(icon('plus'), document.createTextNode('Nouveau chat web'));
 const state = { projects: [], sessions: [], projectId: null, chat: null, sending: false, loading: false, uploading: false, status: null, viewSeq: 0, projectSeq: 0, authenticated: false, authEpoch: 0, viewKey: null, draftReasoning: {}, draftFileProfile: null, draftFileAccess: null, draftWebAccess:null, draftWebApproval:null, draftScriptAccess:null, draftImageAccess:null, draftImageWorkflowId:null, sessionsPartial:false, sessionWarnings:[] };
 const companionSettings = createCompanionSettings({api,getState:()=>state,node,onChange:()=>setSending(),onPageChange:page=>page==='maintenance'?updatesPanel.refresh():undefined,onNavigate:target=>{
   $('app').classList.add('thread-open');
-  if(target==='help') { $('info').hidden=false; $('info-button').setAttribute('aria-expanded','true'); $('info-body').scrollTop=0; $('info-close').focus({preventScroll:true}); return; }
   if(target==='tools'||target==='image') { composerFiles.open=true; const control=$(target==='image'?'agent-images':'agent-files'); (control.disabled?composerFilesToggle:control).focus({preventScroll:true}); composerFiles.scrollIntoView({block:'nearest'}); }
   else { const control=$('model'); (control.disabled?$('prompt'):control).focus({preventScroll:true}); control.scrollIntoView({block:'nearest'}); }
 }});
@@ -215,10 +213,6 @@ function error(message) { $('message-error').textContent = message || ''; $('mes
 function unassignedProject() { return !!state.projects.find(project => project.id === state.projectId)?.isUnassigned; }
 function closeConversationOptions(focus = false) {
   $('conversation-options').hidden = true; $('conversation-options-toggle').setAttribute('aria-expanded', 'false');
-  if (focus) $('conversation-options-toggle').focus();
-}
-function closeInfo(focus = false) {
-  $('info').hidden = true; $('info-button').setAttribute('aria-expanded', 'false');
   if (focus) $('conversation-options-toggle').focus();
 }
 function updateConversationOptions() {
@@ -1155,7 +1149,6 @@ function hidePrivateViews() {
   ++diagnosticsRevision; $('diagnostics-result').replaceChildren(); $('diagnostics-result').hidden = true; $('diagnostics-open').disabled = false;
   updatesPanel.stop();
   try { textDraftStore.clear(); } catch { toast('Impossible d’effacer la copie locale du brouillon. Efface les données de ce site dans le navigateur.'); } $('draft-duration').value='0'; sessionSignature=''; observedGenerations.clear(); announcedEvents.clear();
-  closeInfo();
   closeConversationOptions();
   closeComposerFiles();
   state.authenticated = false; ++state.authEpoch; ++state.viewSeq; ++state.projectSeq; clearTimeout(recoveryTimer); clearTimeout(renderTimer);
@@ -1232,13 +1225,9 @@ $('conversation-name').addEventListener('input', updateConversationOptions);
 $('rename-conversation-form').addEventListener('submit', renameCurrentConversation);
 $('delete-conversation').addEventListener('click', deleteCurrentConversation);
 $('info-button').addEventListener('click', () => {
-  const show = $('info').hidden; closeConversationOptions();
-  if (!show) return closeInfo(true);
-  $('info').hidden = false; $('info-button').setAttribute('aria-expanded', 'true');
-  $('info-body').scrollTop = 0; $('info-close').focus({ preventScroll: true });
+  closeConversationOptions();
+  companionSettings.openPage({currentTarget:$('conversation-options-toggle')},'help','settings-heading-help');
 });
-$('info-close').addEventListener('click', () => closeInfo(true));
-$('info').addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeInfo(true); } });
 $('composer').addEventListener('submit', send);
 let messageFlushTimer;
 function scheduleMessageTextFlush() {

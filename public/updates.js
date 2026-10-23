@@ -47,7 +47,7 @@ function initUpdates({ api, isAuthenticated = () => true, toast = () => {}, befo
     $('updates-unavailable').textContent = unavailable; $('updates-unavailable').hidden = !unavailable;
     $('updates-checked').textContent = data?.lastCheckedAt ? `Dernière vérification : ${date(data.lastCheckedAt)}.` : 'Aucune vérification terminée.';
     if (data?.error && !state.busy && !state.error) message(typeof data.error === 'string' ? data.error : data.error.message || 'La vérification a échoué. Réessaie avec « Vérifier maintenant ».');
-    if (available && state.announced !== next.version) { state.announced = next.version; $('updates-announcement').textContent = `La version ${next.version} du compagnon est disponible dans Paramètres, Maintenance et aide.`; }
+    if (available && state.announced !== next.version) { state.announced = next.version; $('updates-announcement').textContent = `La version ${next.version} du compagnon est disponible dans Paramètres, Maintenance.`; }
   }
   function schedule() {
     clearTimeout(state.timer);

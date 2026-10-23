@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 
-const source=(await Promise.all(['certificates.js','settings.js'].map(file=>fs.readFile(new URL('../public/'+file,import.meta.url),'utf8')))).join('\n');
+const source=(await Promise.all(['certificates.js','help.js','settings.js'].map(file=>fs.readFile(new URL('../public/'+file,import.meta.url),'utf8')))).join('\n');
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const defaultComfy={enabled:false,url:'http://127.0.0.1:8188',workflowId:'krea2_turbo',activeJobs:0,workflows:[{id:'krea2_turbo',label:'Krea 2 Turbo'}]};
@@ -11,7 +11,7 @@ const defaultComfy={enabled:false,url:'http://127.0.0.1:8188',workflowId:'krea2_
 /** A small DOM boundary keeps scope and asynchronous transport tests independent of a browser. */
 function fixture(intercept=()=>undefined) {
   const elements=new Map(),writes=[],navigations=[],globalEvents={};
-  const document={activeElement:null,getElementById:element,querySelectorAll:selector=>selector==='[data-settings-page]'?[...elements.values()].filter(value=>value.dataset.settingsPage):[]};
+  const document={activeElement:null,getElementById:element,querySelectorAll:selector=>['[data-settings-page]','#settings-nav [data-settings-page]'].includes(selector)?[...elements.values()].filter(value=>value.dataset.settingsPage):[]};
   function element(id) {
     if(!elements.has(id)) {
       let value='';
@@ -25,7 +25,7 @@ function fixture(intercept=()=>undefined) {
     }
     return elements.get(id);
   }
-  for(const page of ['reading','models','tools','images','connection','maintenance'])element('nav-'+page).dataset.settingsPage=page;
+  for(const page of ['reading','models','tools','images','connection','maintenance','help'])element('nav-'+page).dataset.settingsPage=page;
   const state={authenticated:true,authEpoch:1,projectId:'p',chat:null,viewKey:'p|new',status:{models:[{id:'m',name:'Modèle M'}]}};
   element('model').value='m';document.activeElement=element('settings-open-sidebar');
   const api=async(route,options)=>{
