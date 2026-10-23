@@ -131,7 +131,7 @@ test('post-install actions use the installed public guides and server setup, ref
   for(const [action,relative] of [['guide-fr','docs/installation.md'],['guide-en','docs/en/guide.md'],['servers','Configurer-serveurs.ps1']]){
     const actual=ps(`Get-BionicInstallActionPath -Root ${q(target)} -Action ${q(action)}`);
     assert.equal(await fs.realpath(actual),await fs.realpath(path.join(target,relative)));
-    assert(!path.relative(target,actual).startsWith('..'));
+    assert(!path.relative(await fs.realpath(target),await fs.realpath(actual)).startsWith('..'));
   }
   assert.equal(ps(reject(`Get-BionicInstallActionPath -Root ${q(target)} -Action ${q("../outside")}`)),'rejected');
   await fs.unlink(path.join(target,'Configurer-serveurs.ps1'));
