@@ -1,6 +1,17 @@
 # Qualification de llama.cpp comme premier moteur alternatif
 
-Décision utilisateur du 24 octobre 2026. Statut : premier connecteur implémenté et testé sur fixtures ; aucun essai de modèle réel effectué.
+Décision utilisateur du 24 octobre 2026. Statut : premier connecteur testé sur fixtures et premier essai réel texte/outils réussi avec Gemma QAT 12B en CPU.
+
+## Premier essai réel — 24 octobre 2026
+
+- Binaire installé : `b11840-36e36e63a`, Windows x86_64 ; GGUF existant `gemma-4-12B-it-QAT-Q4_0.gguf` (6 975 879 008 octets), sans copie ni conversion.
+- Serveur de test séparé du serveur llama.cpp déjà ouvert : CPU deux threads, zéro couche GPU, offload des opérations désactivé, contexte 1024, un slot, projecteur désactivé, budget de raisonnement 0.
+- Modules du connecteur utilisés : catalogue et contexte chargés, transport Chat Completions en streaming, reconstruction des appels d'outils.
+- Texte : réponse exacte `Paris` à une question courte en français. Outil synthétique : appel structuré `report_test_result({"answer":4})`, retour injecté sans effet de bord, puis réponse finale en français. Aucun accès web ou fichier exécuté par cet outil.
+- Mesures serveur sur ces trois requêtes courtes : génération de 3,48 à 3,82 tokens/s et chargement/joignabilité en environ 7 secondes. Ce sont des mesures CPU à deux threads, pas un benchmark GPU ou une mesure de qualité générale.
+- La RAM disponible a été surveillée ; le minimum échantillonné était d'environ 2,38 Gio. Le serveur possédé a été arrêté après l'essai ; le serveur préexistant a conservé son alias avant/après. Aucun appel de gestion vers Bionic ou ComfyUI et aucune modification de leurs configurations.
+
+Limites : cet essai qualifie cette combinaison pour des échanges courts et un outil synthétique. Il ne qualifie pas le GPU, les longs contextes, la vision, les autres modèles, la cohabitation avec un rendu Krea2 ni le parcours complet dans l'interface du compagnon. Le serveur a signalé des corrections de types de tokens du GGUF au chargement ; les trois échanges testés ont néanmoins abouti.
 
 ## Utiliser ce premier connecteur
 
@@ -51,7 +62,7 @@ npm test
 npm run check:export
 ```
 
-Les tests utilisent des réponses HTTP, outils, poids et authentifiants synthétiques. Ils ne valident ni le GPU ni les GGUF de l'utilisateur. Les versions de serveur et poids réels restent à qualifier et à noter lors du premier essai.
+Les tests automatisés utilisent des réponses HTTP, outils, poids et authentifiants synthétiques. Ils ne valident ni le GPU ni les GGUF de l'utilisateur. Le premier essai réel ci-dessus est distinct ; toute autre combinaison de version, poids, backend ou contexte reste à qualifier.
 
 ## Branche et intégration
 
