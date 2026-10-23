@@ -31,7 +31,7 @@ jobs:
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           const section = fs.readFileSync('CHANGELOG.md', 'utf8').split(/^## /m).slice(1).find(text => text.startsWith(pkg.version + ' '));
           if (!section) throw new Error('Notes absentes pour la version du tag.');
-          const changes = section.slice(section.indexOf('\n') + 1).trim();
+          const changes = section.slice(section.indexOf('\n') + 1).trim().replace(/\]\((docs\/[^)]+)\)/g, (_, target) => '](https://github.com/Shaft1942/bionic_local_server/blob/v' + pkg.version + '/' + target + ')');
           const archive = 'bionic-mobile-v' + pkg.version + '.zip';
           const notes = '## Installation Windows\n\nTéléchargez **' + archive + '** ci-dessous, extrayez entièrement le ZIP puis double-cliquez sur **Installer.cmd**. L’assistant détecte Node.js ou propose son téléchargement portable avec votre accord. Bionic doit être installé séparément.\n\n## Nouveautés\n\n' + changes + '\n\n## Mise à jour\n\nDepuis 1.9.0, utilisez les mises à jour proposées dans le compagnon. Les installations plus anciennes suivent la procédure manuelle du README, avec sauvegarde des données. Node.js 24 minimum ; le runtime portable n’est pas inclus dans le ZIP.\n\nL’archive ne contient ni conversations, ni clés, ni configuration personnelle. SHA256SUMS.txt et update-manifest.json sont joints pour le contrôle de l’archive et de sa compatibilité.\n';
           fs.writeFileSync('dist/RELEASE_NOTES.md', notes);
