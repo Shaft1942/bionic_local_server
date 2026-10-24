@@ -17,6 +17,9 @@
   import SettingsPanel from './SettingsPanel.svelte';
   import WorkspaceDialog from './WorkspaceDialog.svelte';
   import ModelPicker from './ModelPicker.svelte';
+  import ReasoningPicker from './ReasoningPicker.svelte';
+  import EnginePicker from './EnginePicker.svelte';
+  import { reasoningChoiceKey, resolveReasoning, restoreReasoningChoices, type ReasoningChoice } from './reasoning-options';
   import LoadedModelsMenu from './LoadedModelsMenu.svelte';
   import ConversationActions from './ConversationActions.svelte';
   import WorkspacePanel from './WorkspacePanel.svelte';
@@ -28,11 +31,12 @@
   import { ContractError } from './client/contracts';
   import type { ChatEvent, Job } from './client/contracts';
 
-  type Draft = { text:string; updatedAt:number; attachments:any[]; model:string; reasoning:string; fileProfile:string; webAccess:boolean; webApproval:boolean; scriptAccess:boolean; imageAccess:boolean; imageWorkflowId:string; imageCount:number; imageModelPolicy:string; nonce:string };
+  type Draft = { text:string; updatedAt:number; attachments:any[]; model:string; reasoning:string; reasoningChoices?:Record<string,ReasoningChoice>; fileProfile:string; webAccess:boolean; webApproval:boolean; scriptAccess:boolean; imageAccess:boolean; imageWorkflowId:string; imageCount:number; imageModelPolicy:string; nonce:string };
   let authenticated=$state(false), ready=$state(false), error=$state(''), notice=$state('');
   let code=$state(''), loginBusy=$state(false);
   let projects=$state<any[]>([]), sessions=$state<any[]>([]), models=$state<any[]>([]), sessionPage=$state<any>(null), sessionWarnings=$state<string[]>([]);
-  let projectId=$state(''), chat=$state<any>(null), model=$state(''), reasoning=$state('default'), inference=$state<any>(null), comfy=$state<any>(null);
+  let projectId=$state(''), chat=$state<any>(null), model=$state(''), inference=$state<any>(null), comfy=$state<any>(null);
+  let reasoningChoices=$state<Record<string,ReasoningChoice>>({});
   let prompt=$state(''), attachments=$state<any[]>([]), fileProfile=$state('read'), webAccess=$state(true), webApproval=$state(false), scriptAccess=$state(false), imageAccess=$state(false);
   let imageWorkflowId=$state(''), imageCount=$state(1), imageModelPolicy=$state('');
   let jobs=$state<Job[]>([]), streamingIds=$state<string[]>([]);
@@ -66,9 +70,12 @@
   let messageList=$state<HTMLDivElement>(), composer=$state<HTMLTextAreaElement|null>(null);
   let followReply=true;
   let modelSelectionBusy=$state(false);
+  let engineSelectionBusy=$state(false);
   const workspaceItems=[{id:'chat',fr:'Chat',en:'Chat',icon:MessageSquare},{id:'files',fr:'Fichiers',en:'Files',icon:Files},{id:'images',fr:'Images',en:'Images',icon:Image},{id:'activity',fr:'Activité',en:'Activity',icon:Activity},{id:'settings',fr:'Paramètres',en:'Settings',icon:Settings}];
   const currentProject=$derived(projects.find(item=>item.id===projectId));
   const selectedModel=$derived(models.find(item=>item.id===model));
+  const reasoningKey=$derived(reasoningChoiceKey(inference?.provider,model));
+  const reasoning=$derived(resolveReasoning(selectedModel?.reasoning,reasoningChoices[reasoningKey]??chat?.reasoningByModel?.[model]));
   const visibleSessions=$derived(sessions.filter(item=>(item.name||'').toLocaleLowerCase().includes(search.toLocaleLowerCase())));
   const currentJobs=$derived(jobs.filter(item=>item.projectId===projectId&&(item.id?item.id===chat?.id:!chat?.id&&item.draftNonce===draftNonce)));
   const currentJob=$derived(currentJobs.find(item=>item.status!=='queued')||currentJobs[0]);
@@ -85,7 +92,7 @@
     draftStore.setItem(storageKey+':drafts',JSON.stringify(drafts));otherStore.removeItem(storageKey+':drafts');
   }
   function saveDraft() {
-    if(draftKey)drafts[draftKey]={text:prompt,updatedAt:Date.now(),attachments:$state.snapshot(attachments),model,reasoning,fileProfile,webAccess,webApproval,scriptAccess,imageAccess,imageWorkflowId,imageCount,imageModelPolicy,nonce:draftNonce};
+    if(draftKey)drafts[draftKey]={text:prompt,updatedAt:Date.now(),attachments:$state.snapshot(attachments),model,reasoning,reasoningChoices:$state.snapshot(reasoningChoices),fileProfile,webAccess,webApproval,scriptAccess,imageAccess,imageWorkflowId,imageCount,imageModelPolicy,nonce:draftNonce};
     try{persist();}catch{error=tr('Le navigateur ne peut pas conserver le brouillon.','The browser cannot preserve this draft.');}
   }
   function switchDraft() {
@@ -93,7 +100,9 @@
     const value=drafts[draftKey];
     prompt=value?.text||'';attachments=value?.attachments||[];draftNonce=value?.nonce||newRequestId();
     model=models.some(item=>item.id===value?.model)?value!.model:models.some(item=>item.id===chat?.model)?chat.model:model;
-    reasoning=value?.reasoning||chat?.reasoningByModel?.[model]||'default';
+    reasoningChoices=restoreReasoningChoices(value?.reasoningChoices);
+    const key=reasoningChoiceKey(inference?.provider,model);
+    if(value?.model===model&&!Object.hasOwn(reasoningChoices,key)&&typeof value?.reasoning==='string')reasoningChoices={...reasoningChoices,[key]:resolveReasoning(selectedModel?.reasoning,value.reasoning)};
     fileProfile=currentProject?.isUnassigned?'none':value?.fileProfile||chat?.fileProfile||'read';
     webAccess=value?.webAccess??chat?.webAccess??true;webApproval=value?.webApproval??chat?.webApproval??false;
     scriptAccess=!currentProject?.isUnassigned&&(value?.scriptAccess??chat?.scriptAccess??false);
@@ -161,8 +170,9 @@
     try{const result=await post('/api/local-projects',{name:projectName.trim()});await reloadProjects();projectForm=false;projectName='';await chooseProject(result.project.id);}
     catch(failure){report(failure);}finally{creatingProject=false;}
   }
-  async function refreshEngines(reportModelFailure=true){
-    const values=await Promise.allSettled([request('/api/inference/settings'),request('/api/models'),request('/api/comfy/settings')]);
+  function chooseReasoning(choice:ReasoningChoice){reasoningChoices={...reasoningChoices,[reasoningKey]:resolveReasoning(selectedModel?.reasoning,choice)};saveDraft();}
+  async function refreshEngines(reportModelFailure=true,confirmedInference?:unknown){
+    const values=await Promise.allSettled([confirmedInference?Promise.resolve(confirmedInference):request('/api/inference/settings'),request('/api/models'),request('/api/comfy/settings')]);
     if(values[0].status==='fulfilled')inference=values[0].value;
     if(values[1].status==='fulfilled'){models=(values[1].value.models||[]).filter((item:any)=>item.type==='llm');if(!models.some(item=>item.id===model))model=models.find(item=>item.loaded)?.id||models[0]?.id||'';}else{models=[];model='';if(reportModelFailure)report(values[1].reason);}
     if(values[2].status==='fulfilled'){comfy=values[2].value;if(!imageWorkflowId)imageWorkflowId=comfy.workflowId||'';}
@@ -225,10 +235,10 @@
     }
   }
   async function send(event?:Event){
-    event?.preventDefault();if(!prompt.trim()||!model||!projectId||starting||modelSelectionBusy)return;
+    event?.preventDefault();if(!prompt.trim()||!model||!projectId||starting||modelSelectionBusy||engineSelectionBusy)return;
     if(composer?.form&&!composer.form.reportValidity())return;
     error='';notice='';followReply=true;const text=prompt.trim(),requestId=newRequestId(),pid=projectId,sequence=viewSequence;
-    const snapshot:Draft={text,updatedAt:Date.now(),attachments:$state.snapshot(attachments),model,reasoning,fileProfile,webAccess,webApproval,scriptAccess,imageAccess,imageWorkflowId,imageCount,imageModelPolicy,nonce:draftNonce};
+    const snapshot:Draft={text,updatedAt:Date.now(),attachments:$state.snapshot(attachments),model,reasoning,reasoningChoices:$state.snapshot(reasoningChoices),fileProfile,webAccess,webApproval,scriptAccess,imageAccess,imageWorkflowId,imageCount,imageModelPolicy,nonce:draftNonce};
     const job:Job={requestId,projectId:pid,...(chat?.id?{id:chat.id}:{}),draftNonce,status:'starting'};
     const payload={requestId,projectId:pid,sessionId:chat?.id||null,model,reasoning,fileAccess:fileProfile!=='none',fileProfile,webAccess,webApproval,scriptAccess,imageAccess:comfy?.enabled===true&&imageAccess,text,attachments:attachments.map(({name,...reference})=>reference),...(imageAccess?{imageWorkflowId,imageCount,...(imageModelPolicy?{imageModelPolicy}:{})}:{})};
     client.track(job);drafts[draftKey]=snapshot;
@@ -255,7 +265,8 @@
   function detach(){if(currentJob)client.detach(currentJob.requestId);}
   async function visitJob(job:Job){if(projectId!==job.projectId)await chooseProject(job.projectId);if(job.id)await openSession(job.id);else await recover();}
   async function changedLoadedModels(){saveDraft();await refreshEngines(false);saveDraft();}
-  async function changedInference(){saveDraft();model='';reasoning='default';await refreshEngines();notice=tr('Moteur et modèle actifs actualisés.','Active engine and model updated.');saveDraft();}
+  async function changedInference(){saveDraft();model='';await refreshEngines();notice=tr('Moteur et modèle actifs actualisés.','Active engine and model updated.');saveDraft();}
+  async function changedComposerEngine(current:unknown){model='';await refreshEngines(true,current);saveDraft();}
   function changeTab(next:typeof tab){saveDraft();if(next==='settings')settingsVisited=true;if(next==='files')filesVisited=true;if(next==='images')imagesVisited=true;if(next==='activity')activityVisited=true;if(tab==='settings'&&next!=='settings')void refreshEngines().catch(report);tab=next;if(next==='chat')void refreshSessions().catch(report);}
   async function changedConversation(next:any|null){saveDraft();++viewSequence;if(!next&&chat?.id)sessions=sessions.filter(item=>item.id!==chat.id);chat=next;if(next?.projectId&&next.projectId!==projectId){projectId=next.projectId;sessions=[];sessionPage=null;await reloadProjects();}switchDraft();persist();await refreshSessions();}
   async function navigate(target:{projectId:string;id:string;messageId?:string}){
@@ -263,7 +274,7 @@
     while(target.messageId&&!chat?.messages?.some((item:any)=>item.id===target.messageId)&&chat?.pagination?.hasMore)await olderMessages();
     await tick();if(target.messageId){followReply=false;document.getElementById('message-'+target.messageId)?.scrollIntoView({block:'center'});}
   }
-  function changedPreferences(value:any){if(value?.clearDrafts){drafts={};prompt='';attachments=[];localStorage.removeItem(storageKey+':drafts');sessionStorage.removeItem(storageKey+':drafts');for(const source of [localStorage,sessionStorage])for(const key of Object.keys(source))if(key.startsWith('companion-prototype:'+instanceId+':')&&(key.includes(':file:')||key.includes(':image-draft:')))source.removeItem(key);filesDirty=false;}else saveDraft();}
+  function changedPreferences(value:any){if(value?.clearDrafts){drafts={};reasoningChoices={};prompt='';attachments=[];localStorage.removeItem(storageKey+':drafts');sessionStorage.removeItem(storageKey+':drafts');for(const source of [localStorage,sessionStorage])for(const key of Object.keys(source))if(key.startsWith('companion-prototype:'+instanceId+':')&&(key.includes(':file:')||key.includes(':image-draft:')))source.removeItem(key);filesDirty=false;}else saveDraft();}
   function beforeMaintenance(){saveDraft();if(filesDirty){error=tr('Enregistre ou abandonne le fichier modifié avant la maintenance.','Save or discard the edited file before maintenance.');return false;}return true;}
   $effect(()=>{document.documentElement.classList.toggle('dark',dark);document.documentElement.lang=preferences.language;});
   onMount(()=>{
@@ -278,7 +289,7 @@
 {#if !authenticated}
   <main class="login-page"><div class="login-card"><Logo class="welcome-logo" /><h1>Canaé</h1><p>{tr('Tes projets, tes fichiers, tes conversations.','Your projects, files and conversations.')}</p>
     {#if ready}<form onsubmit={login}><label for="access-code">{tr('Code d’accès du prototype','Prototype access code')}</label><input id="access-code" type="password" bind:value={code} required autocomplete="current-password" /><Button type="submit" disabled={loginBusy}>{loginBusy?tr('Connexion…','Connecting…'):tr('Se connecter','Sign in')}</Button></form>{:else}<p role="status">{tr('Connexion au compagnon…','Connecting to the companion…')}</p>{/if}
-    {#if error}<p class="error" role="alert">{error}</p>{/if}<small>2.6.0-beta.8</small></div></main>
+    {#if error}<p class="error" role="alert">{error}</p>{/if}<small>2.6.0-beta.9</small></div></main>
 {:else}
   <div class="companion-shell" class:sidebar-hidden={!sidebarOpen}>
     {#if sidebarOpen}<aside class="navigation" aria-label="Navigation">
@@ -295,7 +306,7 @@
         {#if sessionPage?.hasMore}<Button variant="ghost" size="sm" disabled={sessionsBusy} onclick={()=>refreshSessions(true)}>{tr('Charger d’autres conversations','Load more conversations')}</Button>{/if}
         {#if sessionWarnings.length}<p class="quiet" role="status">{tr('Liste partielle : ','Partial list: ')+sessionWarnings.join(' · ')}</p>{/if}
       </nav>
-      <div class="navigation-footer"><span class="version">2.6.0-beta.8 · {inference?.provider==='llamacpp'?'llama-server':inference?.provider==='bionic'?'Bionic':tr('Moteur local','Local engine')}</span><div><a class="legacy-link" href="/legacy/">{tr('Ancienne interface','Legacy interface')}</a><div class="footer-controls"><LoadedModelsMenu {request} {models} {inference} onModelsChange={changedLoadedModels} disabled={starting||modelSelectionBusy} /><Button variant="ghost" size="icon" aria-label={tr('Se déconnecter','Sign out')} onclick={logout}><LogOut /></Button></div></div></div>
+      <div class="navigation-footer"><span class="version">2.6.0-beta.9 · {inference?.provider==='llamacpp'?'llama-server':inference?.provider==='bionic'?'Bionic':tr('Moteur local','Local engine')}</span><div><a class="legacy-link" href="/legacy/">{tr('Ancienne interface','Legacy interface')}</a><div class="footer-controls"><LoadedModelsMenu {request} {models} {inference} onModelsChange={changedLoadedModels} disabled={starting||modelSelectionBusy} /><Button variant="ghost" size="icon" aria-label={tr('Se déconnecter','Sign out')} onclick={logout}><LogOut /></Button></div></div></div>
     </aside>{/if}
     <main class="workspace">
       <header class="workspace-header"><div class="workspace-title">{#if !sidebarOpen}<Button variant="ghost" size="icon" aria-label={tr('Ouvrir la navigation','Open navigation')} onclick={()=>sidebarOpen=true}><PanelLeftOpen /></Button>{/if}<span>{chat?.name||currentProject?.name||tr('Nouveau chat','New chat')}</span></div>
@@ -336,11 +347,14 @@
           <div class="composer-region"><form class="composer" onsubmit={send}>
             {#if attachments.length}<div class="attachment-chips">{#each attachments as file,index}<span><Files />{file.name||file.path}<button type="button" aria-label={tr('Retirer ','Remove ')+(file.name||file.path)} onclick={()=>{attachments=attachments.filter((_,at)=>at!==index);saveDraft();}}><X /></button></span>{/each}</div>{/if}
             <Textarea id="prompt" bind:ref={composer} bind:value={prompt} oninput={()=>queueMicrotask(saveDraft)} placeholder={tr('Écris ton message…','Write your message…')} aria-label={tr('Message','Message')} maxlength={16000} onkeydown={event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();void send();}}} />
+            <div class="inference-controls" role="group" aria-label={tr('Moteur, modèle et réflexion','Engine, model and reasoning')}>
+              <EnginePicker {request} {inference} disabled={starting||modelSelectionBusy} beforeChange={saveDraft} onBusyChange={value=>engineSelectionBusy=value} onInferenceChange={changedComposerEngine} />
+              <div class="model-field"><span>{tr('Modèle','Model')}</span><ModelPicker {request} {models} {inference} bind:model disabled={starting||modelSelectionBusy||engineSelectionBusy} onBusyChange={value=>modelSelectionBusy=value} onSelected={()=>queueMicrotask(saveDraft)} onInferenceChange={changedInference} onFailure={message=>error=message} /></div>
+              <ReasoningPicker capability={selectedModel?.reasoning} value={reasoning} hasModel={!!selectedModel} disabled={starting||modelSelectionBusy||engineSelectionBusy} onChange={chooseReasoning} />
+            </div>
             <div class="composer-toolbar"><div class="composer-controls"><Button variant="ghost" size="icon" aria-label={tr('Joindre un fichier','Attach a file')} onclick={()=>changeTab('files')}><Plus /></Button>
-              <ModelPicker {request} {models} {inference} bind:model disabled={starting||modelSelectionBusy} onBusyChange={value=>modelSelectionBusy=value} onSelected={()=>{reasoning='default';queueMicrotask(saveDraft);}} onInferenceChange={changedInference} onFailure={message=>error=message} />
-              {#if selectedModel?.reasoning?.allowedOptions?.length}<select aria-label={tr('Raisonnement','Reasoning')} bind:value={reasoning} onchange={()=>queueMicrotask(saveDraft)}><option value="default">{tr('Raisonnement par défaut','Default reasoning')}</option>{#each selectedModel.reasoning.allowedOptions as option}<option value={option}>{option}</option>{/each}</select>{/if}
               <select aria-label={tr('Droits sur les fichiers','File permissions')} bind:value={fileProfile} onchange={()=>queueMicrotask(saveDraft)} disabled={currentProject?.isUnassigned}><option value="none">{tr('Fichiers désactivés','Files disabled')}</option><option value="read">{tr('Lecture des fichiers','Read files')}</option><option value="write">{tr('Lecture et écriture','Read and write')}</option></select>
-            </div><div class="send-controls">{#if currentJob}{#if streamingIds.includes(currentJob.requestId)}<Button variant="ghost" size="icon" aria-label={tr('Déconnecter le flux sans arrêter la demande','Disconnect stream without stopping request')} onclick={detach}><Unplug /></Button>{/if}<Button variant="outline" size="icon" aria-label={tr('Arrêter la demande','Stop request')} disabled={!currentJob.id} onclick={()=>stop()}><Square /></Button>{/if}<Button type="submit" size="icon" class="send-button" aria-label={tr('Envoyer','Send')} disabled={!prompt.trim()||!model||!projectId||starting||modelSelectionBusy}><ArrowUp /></Button></div></div>
+            </div><div class="send-controls">{#if currentJob}{#if streamingIds.includes(currentJob.requestId)}<Button variant="ghost" size="icon" aria-label={tr('Déconnecter le flux sans arrêter la demande','Disconnect stream without stopping request')} onclick={detach}><Unplug /></Button>{/if}<Button variant="outline" size="icon" aria-label={tr('Arrêter la demande','Stop request')} disabled={!currentJob.id} onclick={()=>stop()}><Square /></Button>{/if}<Button type="submit" size="icon" class="send-button" aria-label={tr('Envoyer','Send')} disabled={!prompt.trim()||!model||!projectId||starting||modelSelectionBusy||engineSelectionBusy}><ArrowUp /></Button></div></div>
             <details class="tool-options" onchange={()=>queueMicrotask(saveDraft)}><summary>{tr('Outils et images','Tools and images')}</summary><div class="tool-grid"><label><input type="checkbox" bind:checked={webAccess} />{tr('Recherche web','Web search')}</label><label><input type="checkbox" bind:checked={webApproval} disabled={!webAccess} />{tr('Accord pour chaque appel web','Approve each web call')}</label><label><input type="checkbox" bind:checked={scriptAccess} disabled={currentProject?.isUnassigned} />{tr('Scripts avec approbation','Scripts with approval')}</label><label><input type="checkbox" bind:checked={imageAccess} disabled={!comfy?.enabled||!comfy?.available} />{tr('Génération d’images','Image generation')}</label>
               {#if imageAccess}<label>{tr('Workflow','Workflow')}<select aria-label={tr('Workflow du chat','Chat workflow')} bind:value={imageWorkflowId}>{#each comfy?.workflows||[] as workflow}<option value={workflow.id}>{workflow.name||workflow.label||workflow.id}</option>{/each}</select></label>{#key projectId+':'+(chat?.id||'new')}<ImageCountField id="chat-image-count" bind:value={imageCount} disabled={!comfy?.enabled||!comfy?.available} onValueChange={()=>queueMicrotask(saveDraft)}/>{/key}<label>{tr('Modèle texte pendant les images','Text model during images')}<select aria-label={tr('Politique mémoire des images','Image memory policy')} bind:value={imageModelPolicy}><option value="">{tr('Réglage de l’application','Application setting')}</option><option value="keep">{tr('Garder chargé','Keep loaded')}</option><option value="unload">{tr('Décharger','Unload')}</option><option value="alternate">{tr('Alterner','Alternate')}</option></select></label>{/if}
             </div><p class="quiet">{tr('Les droits sont fixés à l’envoi. Les mêmes outils sont disponibles quel que soit le moteur d’inférence.','Permissions are fixed when sent. The same tools are available with every inference engine.')}</p></details>
@@ -350,3 +364,12 @@
     </main>
   </div>
 {/if}
+
+<style>
+  .inference-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);align-items:start;gap:12px;margin:8px 0 12px;}
+  .model-field{display:flex;flex-direction:column;gap:4px;min-width:0;}
+  .model-field>span{font-size:11px;line-height:1.5;color:var(--muted-foreground);}
+  .model-field :global(select){width:100%;max-width:100%;min-width:0;min-height:44px;background:var(--background);color:var(--foreground);border:1px solid var(--border);border-radius:7px;padding:8px 25px 8px 10px;font-size:12px;text-overflow:ellipsis;}
+  .model-field :global(select:focus-visible){outline:2px solid var(--ring);outline-offset:2px;}
+  @media(max-width:650px){.inference-controls{grid-template-columns:minmax(0,1fr);gap:10px;}}
+</style>
