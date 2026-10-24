@@ -7,11 +7,23 @@
 	type Root = { id: string; name: string; writable: boolean };
 	type Entry = { name: string; path: string; directory: boolean };
 	type ProjectFile = { rootId: string; path: string; name: string; size: number; kind?: string; text?: string; hash?: string; editable?: boolean; attachable?: boolean; truncated?: boolean; notice?: string; saved?: boolean };
-	let { projectId, request, onAttach, onDirtyChange, instanceId = 'prototype' }: { projectId: string; request: Api; chatId?: string; instanceId?: string; onAttach?: (attachment: any) => void; onDirtyChange?: (dirty:boolean)=>void } = $props();
+	type AttachTarget = { projectId: string; chatId: string; keepOpen: boolean };
+	type ImportRow = { id: string; name: string; status: 'waiting'|'uploading'|'imported'|'refused'|'uncertain'|'not-sent'; detail?: string; file?: ProjectFile; attachment?: 'added'|'requested'|'unavailable'|'limit'|'changed' };
+	let { projectId, chatId = '', request, onAttach, attachmentCount = 0, onDirtyChange, instanceId = 'prototype' }: { projectId: string; request: Api; chatId?: string; instanceId?: string; attachmentCount?: number; onAttach?: (attachment: any, target?: AttachTarget) => boolean|void; onDirtyChange?: (dirty:boolean)=>void } = $props();
 	let roots = $state<Root[]>([]), rootId = $state(''), location = $state(''), entries = $state<Entry[]>([]);
 	let file = $state<ProjectFile | null>(null), text = $state(''), original = $state(''), baseHash = $state('');
 	let busy = $state(false), notice = $state(''), failure = $state(''), conflict = $state(false), serverVersion = $state<ProjectFile | null>(null);
 	let loadedProject = '', loadedInstance = '', sequence = 0, uploader: HTMLInputElement;
+	let imports = $state<ImportRow[]>([]), importing = $state(false), stopImport = $state(false), attachImports = false, live = true;
+	const importKey = (pid = projectId, identity = instanceId) => `companion-imports:${identity}:${pid}`;
+	function restoreImports(pid: string) {
+		try { const saved = JSON.parse(sessionStorage.getItem(importKey(pid)) || '[]'); imports = Array.isArray(saved) ? saved.filter(row => row && typeof row.id === 'string' && typeof row.name === 'string' && ['waiting','uploading','imported','refused','uncertain','not-sent'].includes(row.status)).map(row => ({ ...row, status: row.status === 'uploading' ? 'uncertain' : row.status === 'waiting' ? 'not-sent' : row.status })) : []; }
+		catch { imports = []; }
+	}
+	function importStatus(row: ImportRow) {
+		const labels = { waiting: tr('En attente','Waiting'), uploading: tr('Import en cours','Importing'), imported: tr('Importé sur le PC','Imported to the PC'), refused: tr('Refusé, non importé','Refused, not imported'), uncertain: tr('Résultat non confirmé. Relis les fichiers du serveur avant tout nouvel import.','Result unconfirmed. Read the server files before importing again.'), 'not-sent': tr('Non envoyé','Not sent') };
+		return labels[row.status];
+	}
 	const dirty = $derived(!!file?.editable && text !== original);
 	$effect(() => { onDirtyChange?.(dirty); });
 	const query = (relative = location, rid = rootId, pid = projectId) => new URLSearchParams({ projectId: pid, rootId: rid, path: relative });
@@ -56,7 +68,7 @@
 		notice = ''; displayFile(result);
 	}
 	async function initialize(pid: string) {
-		rememberDraft(); loadedProject = pid; loadedInstance = instanceId; const token = ++sequence; roots = []; entries = []; file = null; rootId = ''; location = ''; failure = ''; notice = ''; text = ''; original = '';
+		rememberDraft(); loadedProject = pid; loadedInstance = instanceId; const token = ++sequence; roots = []; entries = []; file = null; rootId = ''; location = ''; failure = ''; notice = ''; text = ''; original = ''; restoreImports(pid);
 		if (!pid) return;
 		busy = true;
 		try {
@@ -99,26 +111,57 @@
 		const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })), link = document.createElement('a');
 		link.href = url; link.download = 'brouillon-' + file.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 	}
+	function chooseImport(attach: boolean) { if (busy || importing) return; attachImports = attach; uploader.click(); }
+	async function readImports() {
+		await run(async () => { await browse('Imports telephone', 'project'); notice = tr('Fichiers du serveur relus. Aucun import renvoyé. Un nom seul ne confirme pas un résultat incertain.','Server files refreshed. No import was resent. A name alone does not confirm an uncertain result.'); });
+	}
 	async function upload(event: Event) {
-		const input = event.target as HTMLInputElement, imported = input.files?.[0], pid = projectId;
-		if (!imported) return;
-		if (imported.size > 20_000_000) { failure = tr('Choisis un fichier de moins de 20 Mo.',"Choose a file smaller than 20 MB."); input.value = ''; return; }
-		await run(async () => {
-			const result = await request('/api/file/upload?' + new URLSearchParams({ projectId: pid, name: imported.name }), { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: imported });
-			if (pid !== projectId) return;
-			await browse('Imports telephone', result.rootId); await open(result.path); notice = tr('Fichier importé dans le projet. Joins-le au chat si nécessaire.',"File imported into the project. Attach it to the chat if needed.");
-		}); input.value = '';
+		const input = event.target as HTMLInputElement, selected = [...(input.files || [])], pid = projectId, identity = instanceId, cid = chatId, attach = attachImports;
+		input.value = ''; if (!selected.length || importing || busy) return;
+		rememberDraft(); importing = true; busy = true; stopImport = false; failure = ''; notice = '';
+		const batch = selected.map((item, index): ImportRow => ({ id: Date.now()+'-'+index+'-'+Math.random().toString(36).slice(2), name: item.name, status: 'waiting' }));
+		imports = [...imports, ...batch];
+		const records = imports, active = () => live && pid === projectId && identity === instanceId;
+		const saveRows = () => sessionStorage.setItem(importKey(pid, identity), JSON.stringify(records));
+		const refreshRows = () => { if (active()) imports = [...records]; };
+		let remaining = Math.max(0, 4 - attachmentCount);
+		try {
+			// A durable intent is required before POST; File bytes stay in memory only.
+			saveRows();
+			for (let index = 0; index < selected.length; index++) {
+				const item = selected[index], row = records.find(record => record.id === batch[index].id)!;
+				if (stopImport || !active()) { row.status = 'not-sent'; continue; }
+				if (item.size > 20_000_000) { row.status = 'refused'; row.detail = tr('Ce fichier dépasse 20 Mo.','This file exceeds 20 MB.'); saveRows(); refreshRows(); continue; }
+				row.status = 'uploading'; refreshRows(); saveRows();
+				try {
+					const result: ProjectFile = await request('/api/file/upload?' + new URLSearchParams({ projectId: pid, name: item.name }), { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: item });
+					row.status = 'imported'; row.file = result;
+					if (attach) {
+						if (!active() || cid !== chatId) row.attachment = 'changed';
+						else if (!result.attachable || result.truncated || !result.hash || !onAttach) row.attachment = 'unavailable';
+						else if (remaining <= 0) row.attachment = 'limit';
+						else { try { const accepted = onAttach({ rootId: result.rootId, path: result.path, hash: result.hash, name: result.name }, { projectId: pid, chatId: cid, keepOpen: true }); row.attachment = accepted === true ? 'added' : accepted === false ? 'limit' : 'requested'; if (accepted !== false) remaining--; } catch { row.attachment = 'unavailable'; row.detail = tr('Le fichier reste sur le PC. La jointure au chat n’a pas été confirmée.','The file remains on the PC. Attachment to the chat was not confirmed.'); } }
+					}
+				} catch (error: any) {
+					row.status = error?.status >= 400 && error.status < 500 ? 'refused' : 'uncertain'; row.detail = error?.message || tr('Connexion interrompue.','Connection interrupted.');
+					if (row.status === 'uncertain') stopImport = true;
+				}
+				refreshRows(); saveRows();
+			}
+		} catch { for (const row of records) if (row.status === 'waiting') row.status = 'not-sent'; if (active()) failure = tr('Le suivi local ne peut pas être conservé. Aucun autre fichier envoyé.','Local tracking could not be saved. No further file was sent.'); }
+		finally { refreshRows(); try { saveRows(); } catch { /* Keep the visible results. */ } if (active()) busy = false; importing = false; }
 	}
 	$effect(() => { const pid = projectId; if (pid !== loadedProject || instanceId !== loadedInstance) void initialize(pid); });
 	onMount(() => {
 		const beforeLeave = (event: BeforeUnloadEvent) => { rememberDraft(); if (dirty) { event.preventDefault(); event.returnValue = ''; } };
 		window.addEventListener('beforeunload', beforeLeave);
-		return () => { rememberDraft(); window.removeEventListener('beforeunload', beforeLeave); };
+		return () => { live = false; rememberDraft(); window.removeEventListener('beforeunload', beforeLeave); };
 	});
 </script>
 
 <section class="files-panel" aria-label={tr('Fichiers du projet',"Project files")} aria-busy={busy}>
-	<header><div><h2>{tr('Fichiers du projet',"Project files")}</h2><p>{tr('Consulte, joins ou modifie les fichiers autorisés.',"Inspect, attach or edit permitted files.")}</p></div><Button variant="outline" disabled={busy || !roots.some(root => root.id === 'project' && root.writable)} onclick={() => uploader.click()}>{tr('Importer un fichier',"Import a file")}</Button><input bind:this={uploader} class="hidden-input" type="file" aria-label={tr('Importer un fichier dans le projet',"Import a file into the project")} onchange={upload} disabled={busy} /></header>
+	<header><div><h2>{tr('Fichiers du projet',"Project files")}</h2><p>{tr('Consulte, joins ou modifie les fichiers autorisés.',"Inspect, attach or edit permitted files.")}</p></div><div class="actions"><Button variant="outline" disabled={busy || importing || !roots.some(root => root.id === 'project' && root.writable)} onclick={() => chooseImport(false)}>{tr('Importer des fichiers',"Import files")}</Button><Button variant="outline" disabled={busy || importing || !onAttach || !roots.some(root => root.id === 'project' && root.writable)} onclick={() => chooseImport(true)}>{tr('Importer puis joindre',"Import and attach")}</Button></div><input bind:this={uploader} class="hidden-input" type="file" multiple aria-label={tr('Fichiers de cet appareil à importer',"Files from this device to import")} onchange={upload} disabled={busy} /></header>
+	{#if imports.length}<section class="import-results" aria-label={tr('Résultats des imports','Import results')}><h3>{tr('Imports sur le PC','Files imported to the PC')}</h3><p>{tr('20 Mo maximum par fichier. Joindre ajoute au prochain message, sans l’envoyer ; quatre pièces jointes maximum.','20 MB maximum per file. Attach adds files to the next message without sending it; up to four attachments.')}</p><ul aria-live="polite">{#each imports as row (row.id)}<li data-import-status={row.status}><strong>{row.name}</strong><span>{importStatus(row)}</span>{#if row.file}<code>{row.file.path}</code>{/if}{#if row.detail}<span>{row.detail}</span>{/if}{#if row.attachment}<span>{row.attachment==='added'?tr('Joint au prochain message.','Attached to the next message.'):row.attachment==='requested'?tr('Jointure demandée. Vérifie les pièces jointes dans le chat.','Attachment requested. Check the attachments in the chat.'):row.attachment==='limit'?tr('Non joint : limite de quatre pièces. Le fichier reste sur le PC.','Not attached: four-file limit. The file remains on the PC.'):row.attachment==='changed'?tr('Non joint : la conversation a changé. Le fichier reste sur le PC.','Not attached: the conversation changed. The file remains on the PC.'):tr('Importé, mais ce fichier ne peut pas être joint ici.','Imported, but this file cannot be attached here.')}</span>{/if}</li>{/each}</ul><div class="actions">{#if importing}<Button variant="outline" disabled={stopImport} onclick={()=>stopImport=true}>{tr('Arrêter après ce fichier','Stop after this file')}</Button>{:else}<Button variant="outline" disabled={busy} onclick={()=>void readImports()}>{tr('Relire les fichiers importés','Refresh imported files')}</Button>{/if}</div></section>{/if}
 	{#if failure}<p class="feedback error" role="alert">{failure}{#if conflict} {tr('Ton brouillon reste dans l’éditeur. Aucune écriture forcée n’a été faite.','Your draft remains in the editor. No overwrite was forced.')}{/if}</p>{/if}
 	{#if notice}<p class="feedback" role="status">{notice}</p>{/if}
 	{#if !projectId}<p class="empty">{tr('Choisis un projet pour afficher ses fichiers.',"Choose a project to view its files.")}</p>
@@ -145,6 +188,7 @@
 </section>
 
 <style>
+	.import-results{margin-bottom:20px;padding:16px;border:1px solid var(--border);border-radius:8px}.import-results>p{margin:8px 0;font-size:13px}.import-results ul{list-style:none;padding:0;margin:12px 0;max-height:250px;overflow:auto}.import-results li{display:flex;flex-direction:column;gap:4px;padding:10px 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere;font-size:13px}.import-results code{font-size:12px;white-space:pre-wrap}.import-results [data-import-status=uncertain]{color:var(--destructive)}
 	.files-panel{height:100%;overflow:auto;padding:24px;color:var(--foreground);font-size:14px}header{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:20px}h2{font-size:21px;font-weight:600;margin:0 0 5px}h3{font-weight:600;margin:0;font-size:15px}p{margin:0;color:var(--muted-foreground);line-height:1.5}header p{font-size:13px}.hidden-input{display:none}.feedback{padding:12px 14px;border:1px solid var(--border);border-radius:8px;margin:0 0 14px;background:var(--muted);color:var(--foreground);overflow-wrap:anywhere}.error{border-color:#b95353;color:#b32929}.workspace{display:grid;grid-template-columns:240px minmax(0,1fr);border:1px solid var(--border);border-radius:10px;min-height:480px;overflow:hidden}.browser{border-right:1px solid var(--border);padding:14px;background:var(--sidebar,var(--background))}.browser label{display:block;font-size:12px;color:var(--muted-foreground);margin-bottom:7px}select{background:var(--background);border:1px solid var(--border);border-radius:6px;color:inherit;width:100%;padding:9px;font-size:13px}.path{display:flex;align-items:center;gap:5px;margin:12px 0 8px}.path span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.browser ul{list-style:none;margin:0;padding:0;max-height:55vh;overflow:auto}.browser li button{width:100%;display:flex;gap:9px;text-align:left;padding:9px 8px;border-radius:6px;align-items:flex-start;cursor:pointer}.browser li button span:last-child{overflow-wrap:anywhere;min-width:0}.browser li button:hover,.browser li button.current{background:var(--muted)}.browser button:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--ring);outline-offset:2px}.editor-area{min-width:0;padding:20px;display:flex;flex-direction:column;gap:14px}.file-title{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;overflow-wrap:anywhere}.file-title p{font-size:12px;margin-top:4px}.file-title a{text-decoration:underline;font-size:12px;flex-shrink:0}.editor-label{font-size:12px;color:var(--muted-foreground)}.file-editor{flex:1;width:100%;min-height:300px;padding:12px;border:1px solid var(--border);border-radius:7px;background:var(--background);color:inherit;resize:vertical;font:13px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;tab-size:2}.actions{display:flex;gap:8px;flex-wrap:wrap}.hash{font:11px ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}.empty{padding:22px 8px;font-size:13px}.editor-empty{margin:auto;text-align:center;max-width:310px}.editor-empty>span{display:block;font-size:38px;color:var(--muted-foreground);margin-bottom:15px}.editor-empty h3{margin-bottom:9px}.file-preview{max-width:100%;max-height:460px;object-fit:contain}.comparison{border-top:1px solid var(--border);padding-top:16px}.comparison pre{font:12px/1.6 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto;margin:12px 0}.files-panel :global(button:disabled){opacity:.5;cursor:default}@media(max-width:720px){.files-panel{padding:16px}header{align-items:flex-start;flex-wrap:wrap}.workspace{grid-template-columns:1fr}.browser{border-right:0;border-bottom:1px solid var(--border)}.browser ul{max-height:190px}.editor-area{padding:14px}.file-title{flex-wrap:wrap}.file-editor{min-height:280px}}
 	@media(max-width:720px){.files-panel :global(button),select,.file-title a{min-height:44px}.browser li button{padding-top:12px;padding-bottom:12px}.file-title a{display:inline-flex;align-items:center}}
 </style>
