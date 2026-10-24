@@ -2,11 +2,11 @@
 
 # Canaé — compagnon local
 
-**Canaé 2.6.0-beta.11** devient l’interface unique, y compris après mise à jour depuis 2.5.0. Les nouveaux chats sont sans projet, le titre se modifie dans l’en-tête et le pilotage réunit moteurs, modèles et images ; voir [le guide beta.11](docs/beta11-usage.md). Les commandes sur deux lignes, les brouillons, les choix de réflexion et les outils restent disponibles.
+**Canaé 2.6.0** devient l’interface unique, y compris après mise à jour depuis 2.5.0. Les nouveaux chats sont sans projet, le titre se modifie dans l’en-tête et le pilotage réunit moteurs, modèles et images ; voir [le guide beta.11](docs/beta11-usage.md). Les commandes sur deux lignes, les brouillons, les choix de réflexion et les outils restent disponibles.
 
 La bêta 6 ajoute le curseur de quantité d’images dans le chat et l’atelier et renforce les reprises des moteurs et des sauvegardes. Voir [l’audit, les corrections et les extensions proposées](docs/beta6-audit.md).
 
-**Référence stable 2.5.0** · Discutez avec les modèles de votre PC et retrouvez vos projets depuis le navigateur de votre téléphone, sur votre réseau local.
+**Référence stable 2.6.0** · Discutez avec les modèles de votre PC et retrouvez vos projets depuis le navigateur de votre téléphone, sur votre réseau local.
 
 Le compagnon utilise l’API locale de Bionic et peut générer des images avec ComfyUI. Ce projet communautaire est indépendant de Bionic ; ni Bionic, ni ComfyUI, ni leurs modèles ne sont inclus.
 

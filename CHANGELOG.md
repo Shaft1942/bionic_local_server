@@ -1,6 +1,6 @@
 # Journal des versions
 
-## 2.6.0-beta.11 — Canaé
+## 2.6.0 — Canaé
 
 - Canaé devient l’unique interface à l’adresse d’accueil, y compris après une mise à jour depuis 2.5.0 et avec un ancien réglage d’interface. Les anciennes adresses renvoient vers cet accueil ; l’interface legacy n’est plus servie.
 - Un nouveau chat global est sans projet. Le bouton `+` d’un projet associe explicitement le nouveau chat à ce projet. Le titre se modifie directement dans l’en-tête, avec rattachement et détachement du projet ; les historiques natifs restent intacts.
