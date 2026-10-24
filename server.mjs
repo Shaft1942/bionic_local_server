@@ -32,6 +32,7 @@ import { toolsFor, createAgentTools, normalizeFileProfile, FILE_MUTATION_TOOLS }
 import { createToolApprovals } from './lib/tool-approvals.mjs';
 import { createComfyImages } from './lib/comfy-images.mjs';
 import { createImageProviderBinding } from './lib/image-provider.mjs';
+import { describeCompanionCapabilities } from './lib/companion-capabilities.mjs';
 import { createImageArchive } from './lib/image-archive.mjs';
 import { forkConversation } from './lib/conversation-fork.mjs';
 import { createContextReceipt, addToolRead, addExternalContext, markContextTransmitted } from './lib/context-receipt.mjs';
@@ -1443,6 +1444,20 @@ async function handleRequest(req, res) {
       if(req.method==='POST'&&url.pathname==='/api/comfy/settings'){assertServiceAdmission();const input=await body(req,4096);assertServiceAdmission();const saved=await comfyImages.updateSettings(input);json(res,200,{...saved,available:await comfyImages.available?.()===true});return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/check'){json(res,200,await comfyImages.checkConnection(await body(req,4096)));return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/generate'){assertServiceAdmission();const input=await body(req,20000);assertServiceAdmission();json(res,200,await sendDirectImage(input));return;}
+      if(req.method==='GET'&&url.pathname==='/api/companion-capabilities'){
+        if (url.search) throw fail(400, 'Aucun paramètre attendu pour les capacités du compagnon.');
+        const observed = inferenceSettings.snapshot(), selected = inferenceSettings.current();
+        // Bind the active adapter before yielding. Unlike /api/models this read never
+        // reconciles a mutation journal, acquires a resource or loads a model.
+        const list = modelService.list.bind(modelService);
+        let listed, catalogueReason = null;
+        try { listed = await list(); } catch { catalogueReason = 'catalogue-unavailable'; }
+        if (observed.revision !== inferenceSettings.snapshot().revision) catalogueReason = 'inference-changed';
+        let imageSettings;
+        try { imageSettings = comfyImages.getSettings(); } catch { /* Keep unknown. No connectivity probe. */ }
+        json(res,200,describeCompanionCapabilities({ inference: observed, models: listed, catalogueReason,
+          imageProvider: imageProvider.publicInfo(), imageSettings, secrets: [selected.bionicToken, selected.llamaToken] }));return;
+      }
       if(req.method==='GET'&&url.pathname==='/api/capabilities'){
         json(res,200,{version:APP_VERSION,items:[
           {name:'Modèles et réponses',description:'Modèles servis par Bionic. Plafond automatique de 8 192 tokens, adapté au contexte estimé à chaque appel ; réglage par modèle ou conversation.'},
