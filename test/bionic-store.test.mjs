@@ -168,3 +168,9 @@ test.after(async () => {
   assert.ok(path.basename(scratch).startsWith('bionic-store-test-'));
   await rm(scratch, { recursive: true, force: true });
 });
+
+test('the native default source stays unassigned even when its display metadata says No Project and regular',async()=>{
+  const marker=path.join(root,'project.json'),other=path.join(external,'project.json'),oldOther=await readFile(other);
+  await writeFile(marker,JSON.stringify({name:'No Project',projectType:'regular'}));await writeFile(other,JSON.stringify({name:'No Project',projectType:'regular'}));
+  try{const listed=await createBionicStore({root}).listProjects();assert.equal(listed.find(item=>item.id==='default').type,'default');assert.equal(listed.find(item=>item.id==='default').name,'No Project');assert.equal(listed.find(item=>item.id==='external').type,'regular');assert.equal(listed.find(item=>item.id==='external').name,'No Project');assert.equal(JSON.parse(await readFile(marker,'utf8')).projectType,'regular','Native metadata is read without rewriting it');}finally{await rm(marker,{force:true});await writeFile(other,oldOther);}
+});
