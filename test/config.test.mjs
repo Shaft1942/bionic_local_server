@@ -14,14 +14,19 @@ test('portable defaults never grant an extra project folder or depend on an agen
   const settings=await loadSettings({root,home,env:{},platform:'win32'});
   assert.equal(settings.port,8769);assert.equal(settings.apiUrl,'http://127.0.0.1:1235');assert.equal(settings.python,'python');assert.deepEqual(settings.extraRoots,[]);assert.equal(settings.bionicRoot,path.join(home,'.lmstudio/apps/bionic'));
   assert.equal(settings.certificateProofPort,8770);
-  assert.equal(settings.uiMode,'legacy');
+  assert.equal(settings.uiMode,'llama');
 });
 
-test('llama frontend is opt-in per installation and rejects unknown modes',async t=>{
+test('Canaé is the only frontend and historical interface settings migrate without rewriting private configuration',async t=>{
   const root=await fixture(t);
-  await fs.writeFile(path.join(root,'config.local.json'),JSON.stringify({uiMode:'llama'}));
-  assert.equal((await loadSettings({root,env:{}})).uiMode,'llama');
-  assert.equal((await loadSettings({root,env:{BIONIC_MOBILE_UI_MODE:'legacy'}})).uiMode,'legacy');
+  for(const oldMode of ['legacy','llama']){
+    const original=JSON.stringify({uiMode:oldMode,port:4000,comfyEnabled:false});
+    await fs.writeFile(path.join(root,'config.local.json'),original);
+    for(const env of [{},{BIONIC_MOBILE_UI_MODE:'legacy'},{BIONIC_MOBILE_UI_MODE:'llama'}]){
+      const settings=await loadSettings({root,env});assert.equal(settings.uiMode,'llama');assert.equal(settings.port,4000);assert.equal(settings.comfyEnabled,false);
+      assert.equal(await fs.readFile(path.join(root,'config.local.json'),'utf8'),original);
+    }
+  }
   await assert.rejects(loadSettings({root,env:{BIONIC_MOBILE_UI_MODE:'remote'}}),/uiMode/);
 });
 test('local settings and explicit environment overrides apply to the matching installation',async t=>{

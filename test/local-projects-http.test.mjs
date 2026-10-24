@@ -77,16 +77,17 @@ test('indexed sessions bound idle cache and paginate history with stable message
   assert.equal((await f.request('/api/conversation?' + new URLSearchParams({ projectId: 'p', id: ids[0], limit: '0' }))).statusCode, 400);
 });
 
-test('interface localization assets use the closed HTTP allowlist with JavaScript MIME', async t => {
+test('Canaé compiled assets keep JavaScript MIME while retired localization paths stay closed', async t => {
   const f = await fixture(t), directory = path.join(f.root, 'public');
   await fs.mkdir(path.join(directory, 'locales', 'en'), { recursive: true });
   await fs.writeFile(path.join(directory, 'i18n.js'), 'globalThis.syntheticLanguage = true;');
   await fs.writeFile(path.join(directory, 'locales', 'en', 'app.js'), '// Synthetic English catalog');
+  await fs.mkdir(path.join(directory,'llama-ui','assets'),{recursive:true});await fs.writeFile(path.join(directory,'llama-ui','assets','language.js'),'export const language="fr";');
   for (const asset of ['/i18n.js', '/locales/en/app.js']) {
     const result = await f.request(asset);
-    assert.equal(result.statusCode, 200);
-    assert.match(result.headers['content-type'], /^text\/javascript/);
+    assert.equal(result.statusCode, 404);
   }
+  const current=await f.request('/llama-ui/assets/language.js');assert.equal(current.statusCode,200);assert.match(current.headers['content-type'],/^text\/javascript/);
   assert.equal((await f.request('/locales/unlisted/app.js')).statusCode, 404);
   assert.equal((await f.request('/locales/en/../../private.js')).statusCode, 404);
 });

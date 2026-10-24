@@ -6,6 +6,8 @@ Le moteur texte peut être choisi par `inferenceProvider` : `bionic` (défaut) o
 
 Les réglages courants se font dans **Paramètres** : plafonds de réponse, images/ComfyUI, sécurité et maintenance. Le [guide d’utilisation](utilisation.md) explique leur portée. La langue de l’interface se choisit par navigateur ; elle ne règle ni celle des réponses ni celle des prompts.
 
+**Canaé est la seule interface, à l’adresse `/`.** Une mise à jour depuis la 2.5 conserve les réglages et données de l’installation. Les anciennes valeurs `uiMode: "legacy"` ou `"llama"`, ainsi que `BIONIC_MOBILE_UI_MODE=legacy` ou `llama`, sont acceptées pour compatibilité et ouvrent toutes Canaé ; elles ne sélectionnent plus une autre interface. Le fichier privé n’est pas réécrit pour cette migration. Une valeur inconnue reste refusée. Les anciens favoris `/legacy/` et `/prototype/` redirigent vers `/` ; aucune page de l’ancienne interface n’est servie. Voir [entrée et migration](llama-ui-prototype.md#entrée-unique-et-mise-à-jour-depuis-la-25).
+
 Pour l’initialisation, copiez **config.example.json** en **config.local.json** à la racine du compagnon. Ce fichier est privé et ignoré par Git. Les variables d’environnement sont prioritaires ; redémarrez après leur modification ou celle du fichier. **data/config.json** contient l’authentification générée : ne le remplacez pas par l’exemple.
 
 ## Réglages usuels

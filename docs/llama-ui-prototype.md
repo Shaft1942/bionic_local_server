@@ -1,4 +1,4 @@
-# Canaé et llama-ui — 2.6.0-beta.5
+# Canaé — interface et entrée unique
 
 Cette candidate utilise une interface Svelte adaptée de llama-ui. Le compagnon conserve l’autorité sur les projets, conversations, fichiers, droits et travaux images. L’interface, le moteur de conversation et le fournisseur d’images ont des rôles distincts.
 
@@ -21,11 +21,22 @@ Les formulaires visités restent en mémoire en changeant de rubrique ou d’esp
 
 ## Connexion et installation initiale
 
-L’installation initiale définit notamment le port d’écoute et les chemins nécessaires au démarrage. Le mode d’interface `uiMode` accepte `legacy` (valeur initiale) ou `llama` dans la configuration initiale ; équivalent `BIONIC_MOBILE_UI_MODE`.
+L’installation initiale définit notamment le port d’écoute et les chemins nécessaires au démarrage. Canaé est la seule interface ; aucun réglage de mode n’est nécessaire.
 
-- `/` ouvre l’interface sélectionnée.
-- `/prototype/` ouvre llama-ui lorsque son build est installé.
-- `/legacy/` conserve l’ancienne interface sur les mêmes API et conversations.
+- `/` ouvre Canaé, indépendamment du moteur d’inférence.
+- Les anciens favoris `/prototype`, `/prototype/`, `/legacy` et `/legacy/` redirigent vers `/`.
+- `/llama-ui/index.html` redirige aussi vers l’entrée canonique ; les assets compilés restent servis sous `/llama-ui/assets/`.
+- Les autres anciennes pages et les scripts/styles de l’ancienne interface ne sont plus exposés par HTTP. Leur présence éventuelle dans les sources ou une sauvegarde de mise à jour ne rend pas une seconde interface accessible.
+
+## Entrée unique et mise à jour depuis la 2.5
+
+Installer la mise à jour avec le parcours habituel, puis recharger l’adresse du compagnon. Le code nouveau sert Canaé même si la configuration privée conservée contient `"uiMode":"legacy"` ou si le lanceur transmet encore `BIONIC_MOBILE_UI_MODE=legacy`. Les valeurs historiques `legacy` et `llama` restent lisibles ; elles désignent maintenant la même interface. Une valeur inconnue reste une erreur de configuration. Cette normalisation s’effectue en mémoire, sans remplacer `config.local.json`.
+
+Les ports, chemins, connexions, identité d’installation, code d’accès, certificats et conversations restent ceux de l’installation. Les brouillons déjà créés dans Canaé gardent leur stockage par instance et navigateur ; aucune importation implicite d’un ancien brouillon d’interface n’est effectuée. Les API, téléchargements authentifiés et preuves de certificat conservent leurs routes et protections. Les redirections n’ajoutent pas de droit et ne recopient aucun paramètre d’URL dans leur destination.
+
+Les anciens fichiers publics peuvent rester présents après une première mise à jour sans référence de sources, afin de préserver d’éventuels travaux locaux ; le serveur ne les sert plus comme interface. Ne pas supprimer les historiques ni les configurations privées pour changer d’affichage. Si un ancien onglet affiche encore son contenu déjà chargé, recharger `/` pour ouvrir Canaé.
+
+## Moteurs et modèles
 
 Le changement d’inférence se fait ensuite dans la webapp, sans redémarrer le compagnon. L’application conserve ses choix dans un fichier privé local ; il prime sur les valeurs initiales au prochain démarrage. Les jetons ne sont jamais renvoyés par l’API de lecture et ne passent pas d’un fournisseur à l’autre. Modifier une adresse exige de remplacer ou effacer explicitement son ancien jeton.
 

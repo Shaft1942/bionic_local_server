@@ -65,7 +65,7 @@ try {
  await fs.mkdir(path.join(root,'public'),{recursive:true});
  const messageAsset=await fs.readFile(path.join(sourceRoot,'public/message-text.js'),'utf8');
  await fs.writeFile(path.join(root,'public/message-text.js'),messageAsset);
- let r=await request('/message-text.js');findings.push({test:'conversation renderer is served through the explicit static asset allowlist with JavaScript MIME',pass:r.statusCode===200&&r.parts.map(String).join('')===messageAsset&&/^text\/javascript/.test(r.headers['Content-Type']||r.headers['content-type']||'')});
+ let r=await request('/message-text.js');findings.push({test:'retired conversation renderer stays on disk for imports but is not exposed as an alternate frontend asset',pass:r.statusCode===404});
  r=await request('/unlisted-reading.js');findings.push({test:'new conversation renderer does not expose arbitrary static paths',pass:r.statusCode===404});
  r=await request('/api/projects');findings.push({test:'unauthenticated API blocked',pass:r.statusCode===401,status:r.statusCode});
  r=await request('/api/conversation/move',{method:'POST',body:{projectId:'p1',id:'native-1',targetProjectId:'p2'}});findings.push({test:'conversation move requires authentication',pass:r.statusCode===401});

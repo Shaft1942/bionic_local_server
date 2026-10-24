@@ -31,10 +31,13 @@ async function until(read, accept, message) { for (let i = 0; i < 150; i++) { co
 const chatInput = text => ({ projectId: PROTOTYPE_PROJECT, model: PROTOTYPE_MODEL, requestId: randomUUID(), text, fileProfile: 'none' });
 const receiptRoute = input => '/api/chat-request?' + new URLSearchParams({ projectId: input.projectId, requestId: input.requestId });
 
-test('prototype serves optional bundle, legacy page and only bounded static assets with existing CSP', async t => {
+test('Canaé is the only page, old entry bookmarks redirect and compiled assets keep the existing CSP', async t => {
   const f = await fixture(t);
   for (const route of ['/', '/prototype/', '/prototype']) { const response = await f.request(route); assert.equal(response.status, 200); assert.match(await response.text(), /app.js/); assert.match(response.headers.get('content-security-policy'), /script-src 'self'/); }
-  const legacy = await f.request('/legacy/'); assert.equal(await legacy.text(), 'legacy-interface');
+  for(const route of ['/legacy','/legacy/','/prototype','/prototype/','/llama-ui/index.html']){
+    const redirect=await f.request(route,undefined,{redirect:'manual'});assert.equal(redirect.status,308);assert.equal(redirect.headers.get('location'),'/');assert.equal(await redirect.text(),'');
+    const page=await f.request(route);assert.match(await page.text(),/app.js/);assert.doesNotMatch(await (await f.request(route)).text(),/legacy-interface/);
+  }
   const js = await f.request('/llama-ui/assets/app.js'); assert.equal(js.headers.get('content-type'), 'text/javascript; charset=utf-8');
   const font = await f.request('/llama-ui/assets/font.woff2'); assert.equal(font.headers.get('content-type'), 'font/woff2');
   for (const route of ['/llama-ui/%2e%2e%2fdata/config.json', '/llama-ui/assets%5capp.js', '/llama-ui/.hidden.js', '/llama-ui/assets/missing.js', '/llama-ui/assets/private.key']) assert.equal((await f.request(route)).status, 404, route);

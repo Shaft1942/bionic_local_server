@@ -57,9 +57,10 @@ test('prototype requires a real opt-in transport, preserving read-only truth wit
   t.after(async () => { await f.app.close(); await fs.rm(root, { recursive: true, force: true }); });
   const session = await login(f);
   assert.equal(session.status.web.canConfigure, false); assert.equal(session.status.web.canIssueDevice, false);
-  for (const route of ['/', '/prototype/', '/llama-ui/index.html']) {
-    const document = await request(f.baseUrl, route); assert.equal(document.status, 200);
-    assert.equal(document.headers['referrer-policy'], 'strict-origin', 'Native certificate POST forms need a non-null same-origin Origin for ' + route);
+  const document = await request(f.baseUrl, '/'); assert.equal(document.status, 200);
+  assert.equal(document.headers['referrer-policy'], 'strict-origin', 'The canonical page keeps the same-origin certificate proof');
+  for (const route of ['/prototype/', '/llama-ui/index.html']) {
+    const redirect = await request(f.baseUrl, route); assert.equal(redirect.status, 308);assert.equal(redirect.headers.location,'/');
   }
   assert.equal((await session.request('/api/security/actions', { body: { action: 'prepare', mode: 'https', hosts: ['127.0.0.1'] } })).status, 503);
   assert.equal(f.stats.externalCalls, 0);
