@@ -24,6 +24,7 @@
   import { readEngineCatalogue } from './engine-catalogue';
   import LoadedModelsMenu from './LoadedModelsMenu.svelte';
   import ConversationActions from './ConversationActions.svelte';
+  import ConversationHeader from './ConversationHeader.svelte';
   import WorkspacePanel from './WorkspacePanel.svelte';
   import Approvals from './Approvals.svelte';
   import ProjectAccess from './ProjectAccess.svelte';
@@ -49,6 +50,8 @@
   let instanceId=$state(''), prototypeInfo=$state<any>(null), draftNonce=$state(''), settingsVisited=$state(false), filesVisited=$state(false), imagesVisited=$state(false), activityVisited=$state(false), settingsDirty=$state(false);
   let settingsNavigation=$state<{page:'servers';section:'inference'|'images';focus:'inference'|'gguf'|'images';revision:number}>();
   let managementTrigger:HTMLButtonElement|null=null,managementRevision=0;
+  let headerEditing=$state(false);
+  let conversationUiRevision=$state(0);
   let draftKey='', storageKey='', drafts:Record<string,Draft>={};
   let recoveryBusy=false, viewSequence=0, lastCatalog=0, mounted=true;
   const sessionCatalogue=createProjectSessions({
@@ -176,15 +179,20 @@
     saveDraft();++viewSequence;projectId=id;chat=null;error='';notice='';tab='chat';expandProject(id,true);switchDraft();persist();
     try{await refreshSessions();}catch(failure){report(failure);}
   }
-  async function newChat(pid=projectId){
-    if(pid!==projectId)await chooseProject(pid);else saveDraft();
-    ++viewSequence;chat=null;tab='chat';notice='';error='';switchDraft();draftNonce=newRequestId();saveDraft();
+  function unassignedProjectId(){return projects.find(item=>item.id==='companion-unassigned'&&item.isUnassigned)?.id||projects.find(item=>item.isUnassigned)?.id||'';}
+  function hasPendingMove(pid:string,id:string){try{const value=JSON.parse(sessionStorage.getItem(`bionic:conversation-operation:${instanceId}:${pid}:${id}`)||'null');return value?.operation==='move'&&value.projectId===pid&&value.id===id&&typeof value.targetProjectId==='string'&&projects.some(project=>project.id===value.targetProjectId);}catch{return false;}}
+  async function newChat(pid?:string){
+    const target=pid??unassignedProjectId();
+    if(!target||!projects.some(item=>item.id===target)){error=tr('Le chat sans projet est indisponible. Actualise les projets.','The chat without a project is unavailable. Refresh the projects.');return;}
+    saveDraft();++viewSequence;projectId=target;chat=null;tab='chat';notice='';error='';headerEditing=false;switchDraft();draftNonce=newRequestId();saveDraft();
+    if(!currentProject?.isUnassigned)expandProject(target,true);
+    void refreshSessions().catch(report);
     if(innerWidth<760)sidebarOpen=false;await tick();composer?.focus();
   }
   async function reloadProjects(){const result=await request('/api/projects');projects=result.projects||[];sessionCatalogue.setProjects(projects);expandedProjects=expandedProjects.filter(id=>projects.some(item=>item.id===id));}
   async function createProject(event:SubmitEvent){
     event.preventDefault();if(!projectName.trim()||creatingProject)return;creatingProject=true;
-    try{const result=await post('/api/local-projects',{name:projectName.trim()});await reloadProjects();projectForm=false;projectName='';await chooseProject(result.project.id);}
+    try{const result=await post('/api/local-projects',{name:projectName.trim()});await reloadProjects();projectForm=false;projectName='';expandProject(result.project.id,true);}
     catch(failure){report(failure);}finally{creatingProject=false;}
   }
   function chooseReasoning(choice:ReasoningChoice){reasoningChoices={...reasoningChoices,[reasoningKey]:resolveReasoning(selectedModel?.reasoning,choice)};saveDraft();}
@@ -215,9 +223,10 @@
       client.restore(Array.isArray(saved.jobs)?saved.jobs:saved.pending?[saved.pending]:[]);
     }catch{notice=tr('La restauration locale est indisponible.','Local restoration is unavailable.');}
     await reloadProjects();authenticated=true;await refreshEngines();
-    projectId=projects.some(item=>item.id===saved.projectId)?saved.projectId:projects[0]?.id||'';
+    const savedProject=projects.find(item=>item.id===saved.projectId),restoreChat=!!savedProject&&typeof saved.chatId==='string'&&!!saved.chatId;
+    projectId=restoreChat?savedProject.id:unassignedProjectId();
     if(projectId&&!projects.find(item=>item.id===projectId)?.isUnassigned)expandProject(projectId,true);
-    if(projectId){await refreshSessions();if(saved.chatId){chat={id:saved.chatId,messages:[]};try{await loadConversation(projectId,saved.chatId);}catch(failure){chat=null;report(failure);}}switchDraft();await recover();}
+    if(projectId){await refreshSessions();if(restoreChat){chat={id:saved.chatId,messages:[]};try{await loadConversation(projectId,saved.chatId);}catch(failure){if(failure instanceof ApiError&&failure.status===404&&hasPendingMove(projectId,saved.chatId))error=tr('Le rattachement précédent reste à vérifier. Utilise Vérifier la modification du titre ou du projet.','The previous project change still needs checking. Use Check title or project change.');else{chat=null;projectId=unassignedProjectId();report(failure);}}}switchDraft();await recover();}
     ready=true;
     }finally{restoring=false;}
   }
@@ -265,6 +274,7 @@
   async function send(event?:Event){
     event?.preventDefault();if(!prompt.trim()||!model||!projectId||starting||modelSelectionBusy||engineSelectionBusy||engineReadPending||engineCatalogueUnconfirmed)return;
     if(composer?.form&&!composer.form.reportValidity())return;
+    if(imageAccess&&imageModelPolicy==='unload'&&inference?.imageMemoryPolicy?.unloadSupported===false){error=tr('Ce moteur ne permet pas le déchargement pour les images. Choisis Garder chargé ou Alterner dans Outils et images.','This engine cannot unload for images. Choose Keep loaded or Alternate under Tools and images.');const panel=document.getElementById('chat-tools-options');if(panel&&!panel.matches(':popover-open'))await new Promise<void>(resolve=>{panel.addEventListener('toggle',()=>resolve(),{once:true});panel.showPopover();});document.querySelector<HTMLElement>('[data-image-memory-policy]')?.focus();return;}
     error='';notice='';followReply=true;const text=prompt.trim(),requestId=newRequestId(),pid=projectId,sequence=viewSequence;
     const snapshot:Draft={text,updatedAt:Date.now(),attachments:$state.snapshot(attachments),model,reasoning,reasoningChoices:$state.snapshot(reasoningChoices),fileProfile,webAccess,webApproval,scriptAccess,imageAccess,imageWorkflowId,imageCount,imageModelPolicy,nonce:draftNonce};
     const job:Job={requestId,projectId:pid,...(chat?.id?{id:chat.id}:{}),draftNonce,status:'starting'};
@@ -293,6 +303,13 @@
   function detach(){if(currentJob)client.detach(currentJob.requestId);}
   async function visitJob(job:Job){if(projectId!==job.projectId)await chooseProject(job.projectId);if(job.id)await openSession(job.id);else await recover();}
   async function changedLoadedModels(){saveDraft();await refreshEngines(false);saveDraft();}
+  async function selectedManagedModel(selection:{provider:string;modelId:string;inferenceRevision:string}){
+    saveDraft();await refreshEngines(false);
+    if(inference?.provider===selection.provider&&inference?.revision===selection.inferenceRevision&&models.some(item=>item.id===selection.modelId)){model=selection.modelId;saveDraft();}
+    else notice=tr('Le moteur ou son catalogue a changé. Relis le modèle avant de l’utiliser.','The engine or its catalogue changed. Refresh the model before using it.');
+  }
+  const modelManagementCallbacks={onModelSelected:selectedManagedModel,onOpenImages:()=>changeTab('images')};
+  function memoryPolicyLabel(policy:string){return policy==='alternate'?tr('Alterner','Alternate'):policy==='unload'?tr('Décharger','Unload'):tr('Garder chargé','Keep loaded');}
   async function changedInference(){saveDraft();model='';await refreshEngines();notice=tr('Moteur et modèle actifs actualisés.','Active engine and model updated.');saveDraft();}
   async function changedComposerEngine(current:unknown){model='';await refreshEngines(true,current);saveDraft();}
   function openComposerFiles(){document.getElementById('chat-file-options')?.hidePopover();document.getElementById('chat-file-options-trigger')?.focus({preventScroll:true});changeTab('files');}
@@ -313,7 +330,13 @@
     if(returnFocus?.isConnected)returnFocus.focus();
   }
   function changeTab(next:typeof tab){saveDraft();if(next==='settings')settingsVisited=true;if(next==='files')filesVisited=true;if(next==='images')imagesVisited=true;if(next==='activity')activityVisited=true;if(tab==='settings'&&next!=='settings')void refreshEngines().catch(report);tab=next;if(next==='chat')void refreshSessions().catch(report);}
-  async function changedConversation(next:any|null){const previousProjectId=projectId;saveDraft();++viewSequence;chat=next;if(next?.projectId&&next.projectId!==projectId){projectId=next.projectId;await reloadProjects();}sessionCatalogue.invalidate([previousProjectId,projectId]);if(!projects.find(item=>item.id===projectId)?.isUnassigned)expandProject(projectId,true);switchDraft();persist();await refreshSessions();}
+  async function changedConversation(next:any|null){
+    const previousProjectId=projectId,previousId=chat?.id;saveDraft();const sequence=++viewSequence,targetProjectId=next?.projectId||projectId;
+    if(next?.id===previousId&&targetProjectId!==previousProjectId){const previous=drafts[previousProjectId+':'+previousId];if(previous)drafts[targetProjectId+':'+previousId]={...previous,attachments:[],fileProfile:'none',scriptAccess:false};}
+    chat=next;projectId=targetProjectId;conversationUiRevision++;if(targetProjectId!==previousProjectId)await reloadProjects();
+    sessionCatalogue.invalidate([previousProjectId,targetProjectId]);if(sequence!==viewSequence)return;
+    if(!projects.find(item=>item.id===projectId)?.isUnassigned)expandProject(projectId,true);switchDraft();persist();await refreshSessions();
+  }
   async function navigate(target:{projectId:string;id:string;messageId?:string}){
     if(target.projectId!==projectId)await chooseProject(target.projectId);await openSession(target.id);
     while(target.messageId&&!chat?.messages?.some((item:any)=>item.id===target.messageId)&&chat?.pagination?.hasMore)await olderMessages();
@@ -334,7 +357,7 @@
 {#if !authenticated||restoring}
   <main class="login-page"><div class="login-card"><Logo class="welcome-logo" /><h1>Canaé</h1><p>{tr('Tes projets, tes fichiers, tes conversations.','Your projects, files and conversations.')}</p>
     {#if ready&&!restoring}<form onsubmit={login}><label for="access-code">{tr('Code d’accès du prototype','Prototype access code')}</label><input id="access-code" type="password" bind:value={code} required autocomplete="current-password" /><Button type="submit" disabled={loginBusy}>{loginBusy?tr('Connexion…','Connecting…'):tr('Se connecter','Sign in')}</Button></form>{:else}<p role="status">{tr('Connexion au compagnon…','Connecting to the companion…')}</p>{/if}
-    {#if error}<p class="error" role="alert">{error}</p>{/if}<small>2.6.0-beta.10</small></div></main>
+    {#if error}<p class="error" role="alert">{error}</p>{/if}<small>2.6.0-beta.11</small></div></main>
 {:else}
   <div class="companion-shell" class:sidebar-hidden={!sidebarOpen}>
     {#if sidebarOpen}<aside class="navigation" aria-label="Navigation">
@@ -343,12 +366,12 @@
       <label class="search-field"><Search /><input aria-label={tr('Rechercher un chat','Search chats')} bind:value={search} placeholder={tr('Rechercher un chat','Search chats')} /></label>
       <div class="section-label"><span>{tr('Projets','Projects')}</span><Button variant="ghost" size="icon" aria-label={tr('Créer un projet','Create a project')} onclick={()=>projectForm=!projectForm}><Plus /></Button></div>
       {#if projectForm}<form class="project-form" onsubmit={createProject}><input aria-label={tr('Nom du projet','Project name')} bind:value={projectName} placeholder={tr('Nom du projet','Project name')} maxlength="120" required /><Button type="submit" size="sm" disabled={creatingProject}>{tr('Créer','Create')}</Button></form>{/if}
-      <ProjectConversations {projects} groups={sessionGroups} {projectId} chatId={chat?.id} expanded={expandedProjects} {search} onExpand={expandProject} onProject={chooseProject} onConversation={openProjectSession} onNewChat={newChat} onLoad={loadSessionGroup} />
-      <div class="navigation-footer"><span class="version">2.6.0-beta.10 · {inference?.provider==='llamacpp'?'llama-server':inference?.provider==='bionic'?'Bionic':tr('Moteur local','Local engine')}</span><div><a class="legacy-link" href="/legacy/">{tr('Ancienne interface','Legacy interface')}</a><div class="footer-controls"><LoadedModelsMenu {request} {models} {inference} onModelsChange={changedLoadedModels} onManage={openModelManagement} disabled={starting||modelSelectionBusy} /><Button variant="ghost" size="icon" aria-label={tr('Se déconnecter','Sign out')} onclick={logout}><LogOut /></Button></div></div></div>
+      <ProjectConversations {projects} groups={sessionGroups} {projectId} chatId={chat?.id} expanded={expandedProjects} {search} onExpand={expandProject} onProject={id=>expandProject(id,!expandedProjects.includes(id))} onConversation={openProjectSession} onNewChat={newChat} onLoad={loadSessionGroup} />
+      <div class="navigation-footer"><span class="version">2.6.0-beta.11 · {inference?.provider==='llamacpp'?'llama-server':inference?.provider==='bionic'?'Bionic':tr('Moteur local','Local engine')}</span><div><div class="footer-controls"><LoadedModelsMenu {request} {models} {inference} {...modelManagementCallbacks} onModelsChange={changedLoadedModels} onManage={openModelManagement} disabled={starting||modelSelectionBusy} /><Button variant="ghost" size="icon" aria-label={tr('Se déconnecter','Sign out')} onclick={logout}><LogOut /></Button></div></div></div>
     </aside>{/if}
     <main class="workspace">
-      <header class="workspace-header"><div class="workspace-title">{#if !sidebarOpen}<Button variant="ghost" size="icon" aria-label={tr('Ouvrir la navigation','Open navigation')} onclick={()=>sidebarOpen=true}><PanelLeftOpen /></Button>{/if}<span>{chat?.name||currentProject?.name||tr('Nouveau chat','New chat')}</span></div>
-        <nav class="workspace-tabs" hidden={tab!=='chat'} aria-label={tr('Espace du projet','Project workspace')}>{#each workspaceItems as item}<button aria-label={tr(item.fr,item.en)} class:active={tab===item.id} onclick={()=>changeTab(item.id as typeof tab)}><item.icon /><span>{tr(item.fr,item.en)}</span></button>{/each}</nav>
+      <header class="workspace-header"><div class="workspace-title">{#if !sidebarOpen}<Button variant="ghost" size="icon" aria-label={tr('Ouvrir la navigation','Open navigation')} onclick={()=>sidebarOpen=true}><PanelLeftOpen /></Button>{/if}<ConversationHeader {request} {projectId} {chat} {projects} {instanceId} locked={currentJobs.length>0} beforeChange={saveDraft} onChange={changedConversation} onEditingChange={value=>headerEditing=value} onFailure={message=>error=message}/></div>
+        <nav class="workspace-tabs" hidden={tab!=='chat'||headerEditing} aria-label={tr('Espace du projet','Project workspace')}>{#each workspaceItems as item}<button aria-label={tr(item.fr,item.en)} class:active={tab===item.id} onclick={()=>changeTab(item.id as typeof tab)}><item.icon /><span>{tr(item.fr,item.en)}</span></button>{/each}</nav>
       </header>
       {#if prototypeInfo?.syntheticComfyUI||prototypeInfo?.syntheticProjects}<div class="global-notice status fixture-notice">{tr('Démonstration isolée','Isolated demonstration')} · {prototypeInfo.realInference?tr('modèle réel','real model'):tr('modèle simulé','simulated model')} · {prototypeInfo.syntheticComfyUI?tr('ComfyUI simulé','simulated ComfyUI'):'ComfyUI'} · {tr('projets de test','test projects')}</div>{/if}
       {#if error}<div class="global-notice error" role="alert"><span>{error}</span><button aria-label={tr('Masquer l’erreur','Dismiss error')} onclick={()=>error=''}><X /></button></div>{/if}
@@ -363,7 +386,7 @@
         {#if activityVisited}<div class="popup-panel" hidden={tab!=='activity'}>{#key projectId}<WorkspacePanel {request} {projectId} {chat} {instanceId} language={preferences.language} onConversationChange={changedConversation} onNavigate={navigate} onImages={()=>changeTab('images')} />{/key}</div>{/if}
       </WorkspaceDialog>
         <div class="conversation" class:empty={!chat?.messages?.length}>
-          {#if chat?.id}<div class="conversation-tools">{#if chat.source!=='web'||chat.origin}<span class="quiet">{chat.source!=='web'?tr('Historique d’origine · actions passives','Original history · passive actions'):tr('Copie avec origine conservée','Copy with preserved origin')}</span>{/if}<ConversationActions {request} {projectId} {chat} {projects} {instanceId} language={preferences.language} onConversationChange={changedConversation} onNavigate={navigate} /></div>{/if}
+          {#if chat?.id}<div class="conversation-tools">{#if chat.source!=='web'||chat.origin}<span class="quiet">{chat.source!=='web'?tr('Historique d’origine · actions passives','Original history · passive actions'):tr('Copie avec origine conservée','Copy with preserved origin')}</span>{/if}{#key conversationUiRevision}<ConversationActions {request} {projectId} {chat} {projects} {instanceId} language={preferences.language} onConversationChange={changedConversation} onNavigate={navigate} />{/key}</div>{/if}
           <div class="messages" bind:this={messageList} onscroll={event=>{const element=event.currentTarget;followReply=element.scrollHeight-element.scrollTop-element.clientHeight<100;}}>
             {#if !chat?.messages?.length}<div class="welcome"><Logo class="welcome-logo" /><h1>{tr('Qu’est-ce qu’on fait aujourd’hui ?','What shall we do today?')}</h1><p>{tr('Un projet, ses fichiers, tes idées en images.','A project, its files, your ideas in pictures.')}</p><div class="welcome-actions"><Button variant="outline" onclick={()=>changeTab('files')}><Files />{tr('Explorer les fichiers','Explore files')}</Button><Button variant="outline" onclick={()=>changeTab('images')}><Image />{tr('Créer une image','Create an image')}</Button></div></div>
             {:else}<div class="message-column">
@@ -371,7 +394,7 @@
               {#each chat.messages as message,index (message.id||index)}<article id={'message-'+message.id} class="chat-message" class:user={message.role==='user'} aria-label={message.role==='user'?tr('Votre message','Your message'):tr('Réponse du modèle','Model reply')}>
                 {#snippet messageActions()}
                   {#if message.role==='user'||message.role==='assistant'}<CopyMessage text={message.text||''} role={message.role} compact />{/if}
-                  <ConversationActions {request} {projectId} {chat} {instanceId} messageId={message.id} language={preferences.language} compact onConversationChange={changedConversation} onNavigate={navigate} />
+                  {#key conversationUiRevision}<ConversationActions {request} {projectId} {chat} {instanceId} messageId={message.id} language={preferences.language} compact onConversationChange={changedConversation} onNavigate={navigate} />{/key}
                 {/snippet}
                 {#if message.role==='user'}<UserBubble content={message.text||''} actions={messageActions} />{:else}<div class="message-header"><div class="assistant-name"><Logo class="message-logo" /><span>{message.model||chat.model||'Assistant'}{message.provider?.provider?' · '+message.provider.provider:''}</span></div>{@render messageActions()}</div><Markdown content={message.text||''} />{/if}
                 {#if Array.isArray(message.attachments)&&message.attachments.length}<MessageAttachments attachments={message.attachments} />{/if}
@@ -402,7 +425,7 @@
               <ComposerPopover id="chat-tools-options" menu="tools" label={tr('Outils et images','Tools and images')}>
                 {#snippet trigger()}<SlidersHorizontal aria-hidden="true" />{/snippet}
                 <h3>{tr('Outils et images','Tools and images')}</h3><div class="composer-tool-options" onchange={()=>queueMicrotask(saveDraft)}><div class="tool-grid"><label><input type="checkbox" bind:checked={webAccess} />{tr('Recherche web','Web search')}</label><label><input type="checkbox" bind:checked={webApproval} disabled={!webAccess} />{tr('Accord pour chaque appel web','Approve each web call')}</label><label><input type="checkbox" bind:checked={scriptAccess} disabled={currentProject?.isUnassigned} />{tr('Scripts avec approbation','Scripts with approval')}</label><label><input type="checkbox" bind:checked={imageAccess} disabled={!comfy?.enabled||!comfy?.available} />{tr('Génération d’images','Image generation')}</label>
-              {#if imageAccess}<label>{tr('Workflow','Workflow')}<select aria-label={tr('Workflow du chat','Chat workflow')} bind:value={imageWorkflowId}>{#each comfy?.workflows||[] as workflow}<option value={workflow.id}>{workflow.name||workflow.label||workflow.id}</option>{/each}</select></label>{#key projectId+':'+(chat?.id||'new')}<ImageCountField id="chat-image-count" bind:value={imageCount} disabled={!comfy?.enabled||!comfy?.available} onValueChange={()=>queueMicrotask(saveDraft)}/>{/key}<label>{tr('Modèle texte pendant les images','Text model during images')}<select aria-label={tr('Politique mémoire des images','Image memory policy')} bind:value={imageModelPolicy}><option value="">{tr('Réglage de l’application','Application setting')}</option><option value="keep">{tr('Garder chargé','Keep loaded')}</option><option value="unload">{tr('Décharger','Unload')}</option><option value="alternate">{tr('Alterner','Alternate')}</option></select></label>{/if}
+              {#if imageAccess}<label>{tr('Workflow','Workflow')}<select aria-label={tr('Workflow du chat','Chat workflow')} bind:value={imageWorkflowId}>{#each comfy?.workflows||[] as workflow}<option value={workflow.id}>{workflow.name||workflow.label||workflow.id}</option>{/each}</select></label>{#key projectId+':'+(chat?.id||'new')}<ImageCountField id="chat-image-count" bind:value={imageCount} disabled={!comfy?.enabled||!comfy?.available} onValueChange={()=>queueMicrotask(saveDraft)}/>{/key}<label>{tr('Modèle texte pendant les images','Text model during images')}<select data-image-memory-policy aria-label={tr('Politique mémoire des images','Image memory policy')} bind:value={imageModelPolicy}><option value="">{tr('Réglage de l’application','Application setting')+(inference?.imageMemoryPolicy?.defaultAdjusted?' · '+memoryPolicyLabel(inference.imageMemoryPolicy.effectiveDefaultPolicy):'')}</option><option value="keep">{tr('Garder chargé','Keep loaded')}</option><option value="unload" disabled={inference?.imageMemoryPolicy?.unloadSupported===false}>{tr('Décharger','Unload')}</option><option value="alternate">{tr('Alterner','Alternate')}</option></select></label>{#if inference?.imageMemoryPolicy?.reason}<p class="quiet" role="status">{inference.imageMemoryPolicy.reason}</p>{/if}{#if imageModelPolicy==='unload'&&inference?.imageMemoryPolicy?.unloadSupported===false}<Button type="button" variant="outline" onclick={()=>{imageModelPolicy='alternate';saveDraft();}}>{tr('Utiliser Alterner pour ce message','Use Alternate for this message')}</Button>{/if}{/if}
                 </div><p class="quiet">{tr('Les droits sont fixés à l’envoi. Les mêmes outils sont disponibles quel que soit le moteur d’inférence.','Permissions are fixed when sent. The same tools are available with every inference engine.')}</p></div>
               </ComposerPopover>
               <DraftDownload text={prompt} compact onFailure={message=>draftFailure=message} />
