@@ -1,5 +1,13 @@
 # Journal des versions
 
+## 2.6.0-beta.8 — Canaé — candidate locale
+
+- **Paramètres → Aide et capacités** retrouve le guide FR/EN et ses raccourcis. Les capacités séparent support, permissions et disponibilité ; les données inconnues restent explicites.
+- Les blocs de code utilisateur et assistant sont copiables séparément, avec le même retour fiable et la sélection manuelle de secours que la copie des messages. Le rendu Markdown utilisateur et les aperçus des pièces jointes sont restaurés.
+- Le brouillon du champ de message peut être téléchargé en texte sans être envoyé ni effacé. L'import de plusieurs fichiers et leur ajout explicite au chat retrouvent un parcours natif.
+- Le suivi des demandes et la validation des événements/reçus sont extraits de l'écran. Une réponse perdue retrouve la conversation et son brouillon, sans deuxième envoi ; les données invalides ne deviennent pas des états confirmés.
+- Les corrections images, copie et métriques de bêta 7, le champ Modèle unique, les modèles chargés et les serveurs regroupés restent conservés. Voir [la portée de cette candidate](docs/beta8-parity.md).
+
 ## 2.6.0-beta.7 — Canaé — candidate locale
 
 - Les images générées s'affichent dans la conversation, avec suivi après la fin du texte, aperçu, ouverture et téléchargement. Leur état est retrouvé après rechargement, sans relancer de génération.

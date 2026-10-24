@@ -1,4 +1,4 @@
-// Real companion HTTP on an owned fixture, only ARC-01 capabilities intercepted.
+// Real companion HTTP on an owned fixture, then intercepted error/future-contract cases.
 // No engine, generation, GPU, user configuration or personal instance is used.
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -22,13 +22,14 @@ try {
     await fs.writeFile(registry, JSON.stringify({ pid: process.pid, url: fixture.baseUrl, status: 'running', owned: true }));
     const context = await browser.newContext({ viewport: { width, height: 900 }, locale: 'fr-FR', hasTouch: width === 320, reducedMotion: 'reduce' });
     const page = await context.newPage(), errors = [], posts = [], csp = [];
-    let mode = 'ok', payload = capabilitiesFixture(), reads = 0;
+    let mode = 'actual', payload = capabilitiesFixture(), reads = 0;
     page.setDefaultTimeout(12000);
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => { if (/violates the following|content.security.policy|refused to (?:execute|apply|load)/i.test(message.text())) csp.push(message.text()); });
     page.on('request', request => { if (request.method() !== 'GET') posts.push(new URL(request.url()).pathname); assert.equal(new URL(request.url()).origin, fixture.baseUrl); });
     await page.route('**/api/companion-capabilities', async route => {
       reads++; assert.equal(route.request().method(), 'GET');
+      if (mode === 'actual') return route.continue();
       if (mode === 'network') return route.abort('connectionreset');
       await route.fulfill({ status: mode === 'auth' ? 401 : 200, contentType: 'application/json', body: JSON.stringify(mode === 'auth' ? { error: 'Synthetic unauthorized' } : mode === 'malformed' ? { schemaVersion: 99 } : payload) });
     });
@@ -54,7 +55,11 @@ try {
       await openHelp();
       await help().getByText('Bionic', { exact: true }).waitFor();
       assert.equal(reads, 1);
+      assert.match(await page.locator('.model-capabilities summary').innerText(), /synthetic-prototype/);
       assert.match(await help().innerText(), /Connexion et exécution non testées/);
+      mode = 'ok'; await click(reload());
+      await page.locator('.model-capabilities summary').filter({ hasText: payload.inference.models[0].id }).waitFor();
+      assert.equal(reads, 2, 'Actual backend contract consumed before simulated edge cases');
       await noOverflow(); await screenshot('fr-help');
       // Index links open native details and move keyboard focus to their summary.
       await click(help().getByRole('navigation', { name: 'Rubriques d’aide' }).getByRole('link', { name: 'Internet et scripts : choisir ce que tu autorises', exact: true }));
@@ -110,7 +115,7 @@ try {
       assert.equal(posts.length, writesBefore, 'No POST from help, recovery, language or shortcuts');
       assert.equal(fixture.stats.modelCalls, 0); assert.equal(fixture.stats.promptPosts, 0);
       assert.deepEqual(errors, []); assert.deepEqual(csp, []);
-      results.push({ width, fr: true, en: true, keyboard: width === 1280, touch: width === 320, helpVisible: true, guides: 8, shortcutFocus: true, unknownHonest: true, authNetworkMalformedRecovery: true, noPosts: true, noGeneration: true });
+      results.push({ width, fr: true, en: true, actualBackendContract: true, keyboard: width === 1280, touch: width === 320, helpVisible: true, guides: 8, shortcutFocus: true, unknownHonest: true, authNetworkMalformedRecovery: true, noPosts: true, noGeneration: true });
     } catch (error) { console.error(JSON.stringify({ width, errors, csp, posts, text: (await page.locator('body').innerText()).slice(0, 2500) })); await screenshot('failure'); throw error; }
     finally { await context.close(); await fixture.app.close(); await fs.writeFile(registry, JSON.stringify({ pid: process.pid, status: 'stopped', owned: true })); }
   }

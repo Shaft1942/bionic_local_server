@@ -57,6 +57,7 @@ export function parseEvent(value: unknown): ChatEvent {
 export function parseReceipt(value: unknown, projectId: string): RequestReceipt {
   if (!object(value) || !status(value.status) || value.projectId !== undefined && value.projectId !== projectId) throw new ContractError();
   if (value.id !== undefined && value.id !== null && !string(value.id)) throw new ContractError();
+  if (['done', 'complete', 'completed'].includes(value.status) && !string(value.id)) throw new ContractError();
   for (const key of ['phase', 'message']) if (value[key] !== undefined && typeof value[key] !== 'string') throw new ContractError();
   return { id: value.id as string | null | undefined, projectId, status: value.status, phase: value.phase as string | undefined, message: value.message as string | undefined };
 }

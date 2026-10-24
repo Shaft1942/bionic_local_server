@@ -34,9 +34,16 @@ Pour un essai manuel, utilisez un dossier, un port et des projets distincts de v
 | `lib/companion-lifecycle.mjs`, `lib/ndjson-writer.mjs` | Arrêt borné, checkpoints et clients lents |
 | `lib/certificate-*.mjs`, `vendor/` | Identités locales et transport HTTPS/mTLS |
 | `public/` | Interface, reçus, galeries, paramètres et catalogues |
+| `ui/src/lib/companion/` | Présentation Canaé, navigation et interactions ; les sources Svelte sont compilées dans `public/llama-ui/` |
+| `ui/src/lib/companion/client/`, `api.ts` | Client applicatif du suivi des demandes, contrats ciblés et validation des événements/reçus externes |
+| `lib/companion-capabilities.mjs` | Projection descriptive des supports/permissions/paramètres, sans effet sur les moteurs |
 | `test/`, `scripts/browser-*.mjs` | Tests synthétiques et parcours de développement |
 
 Importer `server.mjs` n’ouvre pas de port et ne crée pas de fichiers. `createCompanion(options)` initialise un dossier explicite avec des dépendances injectables ; les tests remplacent les moteurs, fichiers natifs et transports concernés. L’appelant possède l’écoute et la fermeture des ressources.
+
+Le même serveur livre l'API et le build de Canaé. Les composants possèdent la présentation, les brouillons et la navigation ; le client applicatif possède le suivi des intentions et la récupération par lecture. Les règles et les permissions restent dans les services et adaptateurs backend. Le [contrat de capacités](capabilities.md) distingue le support intrinsèque, les permissions et la disponibilité ; son affichage n'accorde aucun droit. Cette séparation est progressive : toutes les frontières ne sont pas encore typées.
+
+Pour modifier l'interface Canaé, installer les dépendances verrouillées avec `npm --prefix ui ci`, puis exécuter `npm --prefix ui run check` et `npm run build:ui`. Vérifier le build effectivement servi et mettre à jour la liste fermée du manifeste quand les noms d'assets changent. Les dépendances de développement ne sont pas nécessaires à l'utilisateur de l'archive compilée.
 
 ## Invariants
 

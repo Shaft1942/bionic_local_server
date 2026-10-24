@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { mount, unmount } from 'svelte';
+  import CopyMessage from './CopyMessage.svelte';
   import { unified } from 'unified';
   import remarkParse from 'remark-parse';
   import remarkGfm from 'remark-gfm';
@@ -26,6 +28,31 @@
     }
     return container.innerHTML;
   });
+
+  // Add controls after sanitization. The Markdown can never supply component props or events.
+  function codeControls(node: HTMLDivElement, _html: string) {
+    let cleanups: (() => void)[] = [];
+    function render() {
+      for (const cleanup of cleanups) cleanup();
+      cleanups = [];
+      for (const pre of node.querySelectorAll('pre')) {
+        const code = pre.querySelector('code');
+        if (!code) continue;
+        const host = document.createElement('div');
+        host.className = 'code-copy-toolbar';
+        pre.before(host);
+        const component = mount(CopyMessage, { target: host, props: { text: code.textContent || '', role: 'code' } });
+        cleanups.push(() => { void unmount(component); host.remove(); });
+      }
+    }
+    render();
+    return { update: render, destroy: () => { for (const cleanup of cleanups) cleanup(); } };
+  }
 </script>
 
-<div class="companion-markdown">{@html html}</div>
+<div class="companion-markdown" use:codeControls={html}>{@html html}</div>
+
+<style>
+  .companion-markdown :global(.code-copy-toolbar) { margin-block-start: .75rem; min-width: 0; }
+  .companion-markdown :global(.code-copy-toolbar + pre) { margin-block-start: .25rem; }
+</style>

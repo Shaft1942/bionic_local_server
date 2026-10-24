@@ -9,6 +9,8 @@
   import MessageImages from './MessageImages.svelte';
   import MessageStats from './MessageStats.svelte';
   import CopyMessage from './CopyMessage.svelte';
+  import DraftDownload from './DraftDownload.svelte';
+  import MessageAttachments from './MessageAttachments.svelte';
   import FilesPanel from './FilesPanel.svelte';
   import ImagesPanel from './ImagesPanel.svelte';
   import ImageCountField from './ImageCountField.svelte';
@@ -183,10 +185,12 @@
   }
   async function login(event:SubmitEvent){event.preventDefault();if(loginBusy)return;loginBusy=true;error='';try{await post('/api/login',{code});code='';await start();}catch(failure){report(failure);}finally{ready=true;loginBusy=false;}}
   async function logout(){try{saveDraft();await post('/api/logout',{});client.disconnect();authenticated=false;chat=null;projects=[];sessions=[];}catch(failure){report(failure);}}
-  function attach(file:any){
-    if(attachments.length>=4){error=tr('Tu peux joindre jusqu’à quatre fichiers.','You can attach up to four files.');return;}
-    if(!attachments.some(item=>item.rootId===file.rootId&&item.path===file.path))attachments=[...attachments,file];
-    tab='chat';notice=tr('Fichier joint au prochain message.','File attached to the next message.');saveDraft();
+  function attach(file:any,target?:{projectId:string;chatId:string;keepOpen:boolean}):boolean{
+    if(target&&(target.projectId!==projectId||target.chatId!==(chat?.id||''))){error=tr('La conversation a changé. Le fichier reste dans son projet.','The conversation changed. The file remains in its project.');return false;}
+    if(attachments.length>=4){error=tr('Tu peux joindre jusqu’à quatre fichiers.','You can attach up to four files.');return false;}
+    if(attachments.some(item=>item.rootId===file.rootId&&item.path===file.path)){error=tr('Ce fichier est déjà joint.','This file is already attached.');return false;}
+    attachments=[...attachments,file];
+    if(!target?.keepOpen)tab='chat';notice=tr('Fichier joint au prochain message.','File attached to the next message.');saveDraft();return true;
   }
   function onStream(event:ChatEvent,text:string,requestId:string,job:Job){
     if(event.type==='start'||event.type==='queued'){
@@ -274,7 +278,7 @@
 {#if !authenticated}
   <main class="login-page"><div class="login-card"><Logo class="welcome-logo" /><h1>Canaé</h1><p>{tr('Tes projets, tes fichiers, tes conversations.','Your projects, files and conversations.')}</p>
     {#if ready}<form onsubmit={login}><label for="access-code">{tr('Code d’accès du prototype','Prototype access code')}</label><input id="access-code" type="password" bind:value={code} required autocomplete="current-password" /><Button type="submit" disabled={loginBusy}>{loginBusy?tr('Connexion…','Connecting…'):tr('Se connecter','Sign in')}</Button></form>{:else}<p role="status">{tr('Connexion au compagnon…','Connecting to the companion…')}</p>{/if}
-    {#if error}<p class="error" role="alert">{error}</p>{/if}<small>2.6.0-beta.7</small></div></main>
+    {#if error}<p class="error" role="alert">{error}</p>{/if}<small>2.6.0-beta.8</small></div></main>
 {:else}
   <div class="companion-shell" class:sidebar-hidden={!sidebarOpen}>
     {#if sidebarOpen}<aside class="navigation" aria-label="Navigation">
@@ -291,7 +295,7 @@
         {#if sessionPage?.hasMore}<Button variant="ghost" size="sm" disabled={sessionsBusy} onclick={()=>refreshSessions(true)}>{tr('Charger d’autres conversations','Load more conversations')}</Button>{/if}
         {#if sessionWarnings.length}<p class="quiet" role="status">{tr('Liste partielle : ','Partial list: ')+sessionWarnings.join(' · ')}</p>{/if}
       </nav>
-      <div class="navigation-footer"><span class="version">2.6.0-beta.7 · {inference?.provider==='llamacpp'?'llama-server':inference?.provider==='bionic'?'Bionic':tr('Moteur local','Local engine')}</span><div><a class="legacy-link" href="/legacy/">{tr('Ancienne interface','Legacy interface')}</a><div class="footer-controls"><LoadedModelsMenu {request} {models} {inference} onModelsChange={changedLoadedModels} disabled={starting||modelSelectionBusy} /><Button variant="ghost" size="icon" aria-label={tr('Se déconnecter','Sign out')} onclick={logout}><LogOut /></Button></div></div></div>
+      <div class="navigation-footer"><span class="version">2.6.0-beta.8 · {inference?.provider==='llamacpp'?'llama-server':inference?.provider==='bionic'?'Bionic':tr('Moteur local','Local engine')}</span><div><a class="legacy-link" href="/legacy/">{tr('Ancienne interface','Legacy interface')}</a><div class="footer-controls"><LoadedModelsMenu {request} {models} {inference} onModelsChange={changedLoadedModels} disabled={starting||modelSelectionBusy} /><Button variant="ghost" size="icon" aria-label={tr('Se déconnecter','Sign out')} onclick={logout}><LogOut /></Button></div></div></div>
     </aside>{/if}
     <main class="workspace">
       <header class="workspace-header"><div class="workspace-title">{#if !sidebarOpen}<Button variant="ghost" size="icon" aria-label={tr('Ouvrir la navigation','Open navigation')} onclick={()=>sidebarOpen=true}><PanelLeftOpen /></Button>{/if}<span>{chat?.name||currentProject?.name||tr('Nouveau chat','New chat')}</span></div>
@@ -305,7 +309,7 @@
         {#if settingsVisited}<div class="settings-host" hidden={tab!=='settings'}>
           <SettingsPanel active={tab==='settings'} onDirtyChange={(value:boolean)=>settingsDirty=value} {request} {projectId} chatId={chat?.id} modelId={model} onInferenceChange={changedInference} onPreferencesChange={changedPreferences} {beforeMaintenance} onClose={()=>changeTab('chat')} />
         </div>{/if}
-        {#if filesVisited}<div class="popup-panel" hidden={tab!=='files'}>{#key projectId}<ProjectAccess project={currentProject} {request} onChanged={reloadProjects} /><FilesPanel {projectId} {request} {instanceId} chatId={chat?.id} onAttach={attach} onDirtyChange={(value:boolean)=>filesDirty=value} />{/key}</div>{/if}
+        {#if filesVisited}<div class="popup-panel" hidden={tab!=='files'}>{#key projectId}<ProjectAccess project={currentProject} {request} onChanged={reloadProjects} /><FilesPanel {projectId} {request} {instanceId} chatId={chat?.id} attachmentCount={attachments.length} onAttach={attach} onDirtyChange={(value:boolean)=>filesDirty=value} />{/key}</div>{/if}
         {#if imagesVisited}<div class="popup-panel" hidden={tab!=='images'}>{#key projectId}<ImagesPanel {projectId} {request} {instanceId} syntheticComfyUI={prototypeInfo?.syntheticComfyUI===true} chatId={chat?.id} />{/key}</div>{/if}
         {#if activityVisited}<div class="popup-panel" hidden={tab!=='activity'}>{#key projectId}<WorkspacePanel {request} {projectId} {chat} {instanceId} language={preferences.language} onConversationChange={changedConversation} onNavigate={navigate} onImages={()=>changeTab('images')} />{/key}</div>{/if}
       </WorkspaceDialog>
@@ -317,7 +321,7 @@
               {#if chat.pagination}<div class="history-controls">{#if chat.pagination.hasMore}<Button variant="outline" size="sm" disabled={historyBusy} onclick={olderMessages}>{tr('Charger les messages précédents','Load earlier messages')}</Button>{/if}<span class="quiet">{chat.messages.length} / {chat.pagination.total} {tr('messages','messages')}{chat.historyWindowReset?' · '+tr('Fenêtre actualisée','Window refreshed'):''}</span></div>{/if}
               {#each chat.messages as message,index (message.id||index)}<article id={'message-'+message.id} class="chat-message" class:user={message.role==='user'} aria-label={message.role==='user'?tr('Votre message','Your message'):tr('Réponse du modèle','Model reply')}>
                 {#if message.role==='user'}<UserBubble content={message.text||''} />{:else}<div class="assistant-name"><Logo class="message-logo" /><span>{message.model||chat.model||'Assistant'}{message.provider?.provider?' · '+message.provider.provider:''}</span></div><Markdown content={message.text||''} />{/if}
-                {#if message.attachments?.length}<div class="message-attachment-list">{#each message.attachments as file}<span><Files />{file.name||file.path}</span>{/each}</div>{/if}
+                {#if Array.isArray(message.attachments)&&message.attachments.length}<MessageAttachments attachments={message.attachments} />{/if}
                 <Approvals {request} {projectId} {chat} {message} language={preferences.language} onConversationChange={changedConversation} onNavigate={navigate} />
                 {#each message.actions||[] as action}<details class="action-receipt"><summary>{(message.historicalActions||message.fromFork)?tr('Action historique','Historical action'):action.ok===false?tr('Action refusée','Action refused'):tr('Action effectuée','Action performed')} · {action.tool||action.name||action.path||tr('Outil','Tool')}</summary><pre>{JSON.stringify(action,null,2)}</pre></details>{/each}
                 {#if message.contextReceipt||message.outputBudget||message.metrics}<details class="action-receipt"><summary>{tr('Contexte, permissions et statistiques','Context, permissions and statistics')}</summary><pre>{JSON.stringify({context:message.contextReceipt,output:message.outputBudget,metrics:message.metrics},null,2)}</pre></details>{/if}
@@ -340,6 +344,7 @@
             <details class="tool-options" onchange={()=>queueMicrotask(saveDraft)}><summary>{tr('Outils et images','Tools and images')}</summary><div class="tool-grid"><label><input type="checkbox" bind:checked={webAccess} />{tr('Recherche web','Web search')}</label><label><input type="checkbox" bind:checked={webApproval} disabled={!webAccess} />{tr('Accord pour chaque appel web','Approve each web call')}</label><label><input type="checkbox" bind:checked={scriptAccess} disabled={currentProject?.isUnassigned} />{tr('Scripts avec approbation','Scripts with approval')}</label><label><input type="checkbox" bind:checked={imageAccess} disabled={!comfy?.enabled||!comfy?.available} />{tr('Génération d’images','Image generation')}</label>
               {#if imageAccess}<label>{tr('Workflow','Workflow')}<select aria-label={tr('Workflow du chat','Chat workflow')} bind:value={imageWorkflowId}>{#each comfy?.workflows||[] as workflow}<option value={workflow.id}>{workflow.name||workflow.label||workflow.id}</option>{/each}</select></label>{#key projectId+':'+(chat?.id||'new')}<ImageCountField id="chat-image-count" bind:value={imageCount} disabled={!comfy?.enabled||!comfy?.available} onValueChange={()=>queueMicrotask(saveDraft)}/>{/key}<label>{tr('Modèle texte pendant les images','Text model during images')}<select aria-label={tr('Politique mémoire des images','Image memory policy')} bind:value={imageModelPolicy}><option value="">{tr('Réglage de l’application','Application setting')}</option><option value="keep">{tr('Garder chargé','Keep loaded')}</option><option value="unload">{tr('Décharger','Unload')}</option><option value="alternate">{tr('Alterner','Alternate')}</option></select></label>{/if}
             </div><p class="quiet">{tr('Les droits sont fixés à l’envoi. Les mêmes outils sont disponibles quel que soit le moteur d’inférence.','Permissions are fixed when sent. The same tools are available with every inference engine.')}</p></details>
+            <DraftDownload text={prompt} />
           </form><p class="composer-hint">{currentJobs.length?tr('Les nouveaux messages rejoignent la file. Tu peux quitter la page.','New messages join the queue. You can leave this page.'):tr('Entrée pour envoyer · Maj + Entrée pour une nouvelle ligne','Enter to send · Shift + Enter for a new line')}</p></div>
         </div>
     </main>

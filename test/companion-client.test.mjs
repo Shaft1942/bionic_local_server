@@ -15,6 +15,32 @@ test.after(() => hook.deregister());
 const job = { requestId: 'synthetic-request-0001', projectId: 'synthetic-project', draftNonce: 'draft-1', status: 'starting' };
 const payload = { requestId: job.requestId, projectId: job.projectId, model: 'synthetic-model', sessionId: null, text: 'Texte synthétique' };
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
+
+test('the first admission can create a web continuation but later admissions cannot replace its identity', async () => {
+  for (const first of ['start', 'queued']) {
+    const events = [];
+    const { client, state } = fixture({ send: async (_payload, _signal, receive) => {
+      receive({ type: first, id: 'web-A', ...(first === 'start' ? { replyId: 'reply-A' } : {}) });
+      receive({ type: 'start', id: 'web-B', replyId: 'reply-B' });
+    } });
+    client.track({ ...job, id: 'native-original' });
+    assert.equal((await client.send({ ...payload, sessionId: 'native-original' }, event => events.push(event))).kind, 'uncertain');
+    assert.equal(events.length, 1); assert.equal(state.jobs[0].id, 'web-A');
+  }
+});
+
+test('a successful terminal receipt without canonical id preserves tracking until a valid GET recovers it', async () => {
+  for (const terminalStatus of ['done', 'complete', 'completed']) {
+    for (const id of [undefined, null, '']) assert.throws(() => parseReceipt({ status: terminalStatus, id }, job.projectId), ContractError);
+  }
+  for (const status of ['starting', 'error', 'deleted']) assert.doesNotThrow(() => parseReceipt({ status, id: null }, job.projectId));
+  let valid = false;
+  const { client, state } = fixture({ lookup: async () => valid ? { status: 'completed', id: 'web-restored' } : { status: 'completed' } });
+  client.restore([job]); await client.recover();
+  assert.equal(state.jobs.length, 1); assert.equal(state.receipts.length, 0); assert.equal(state.failures.length, 1);
+  valid = true; await client.recover();
+  assert.equal(state.jobs.length, 0); assert.equal(state.receipts.length, 1); assert.equal(state.sends, 0);
+});
 function fixture(overrides = {}, observers = {}) {
   const state = { jobs: [], streams: [], changes: [], receipts: [], failures: [], sends: 0, cancels: 0, reads: 0 };
   const client = createChatClient({

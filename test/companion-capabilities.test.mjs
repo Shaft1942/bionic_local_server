@@ -7,10 +7,20 @@ import { Readable } from 'node:stream';
 import { EventEmitter } from 'node:events';
 import { createCompanion } from '../server.mjs';
 import { describeCompanionCapabilities } from '../lib/companion-capabilities.mjs';
+import { createModelService } from '../lib/model-service.mjs';
 
 const model = (extra = {}) => ({ id: 'synthetic-model', type: 'llm', loaded: true, contextLength: 4096, tools: true, vision: true,
   reasoning: { allowedOptions: ['off', 'high', 'unsafe', 'high'] }, ...extra });
 const describe = (extra = {}) => describeCompanionCapabilities({ inference: { provider: 'bionic', revision: 'synthetic-revision' }, models: [model()], ...extra });
+
+test('real Bionic adapter preserves unknown vision evidence without changing the conservative send guard', async () => {
+  for (const [capabilities, expected] of [[undefined, 'unknown'], [{}, 'unknown'], [{ vision: 'yes' }, 'unknown'], [{ vision: false }, 'unsupported'], [{ vision: true }, 'supported']]) {
+    const service = createModelService({ baseUrl: 'http://127.0.0.1:19998', fetchImpl: async () => Response.json({ models: [{ key: 'vision-fixture', type: 'llm', capabilities }] }) });
+    const models = await service.list();
+    assert.equal(models[0].vision, capabilities?.vision === true);
+    assert.equal(describe({ models }).inference.models[0].support.vision.state, expected);
+  }
+});
 
 test('projection separates provider support, model evidence, parameters and request permissions', () => {
   const source = model(), dto = describe({ models: [source] }), selected = dto.inference.models[0];

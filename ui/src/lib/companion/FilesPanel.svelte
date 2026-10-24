@@ -111,6 +111,13 @@
 		const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })), link = document.createElement('a');
 		link.href = url; link.download = 'brouillon-' + file.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 	}
+	function attachCurrent() {
+		if (!file || !onAttach) return;
+		const accepted = onAttach({ rootId: file.rootId, path: file.path, hash: file.hash, name: file.name }, { projectId, chatId, keepOpen: false });
+		notice = accepted === true ? tr('Fichier joint au prochain message du chat.', 'File attached to the next chat message.')
+			: accepted === false ? tr('Fichier non joint. Vérifie la conversation et la limite de quatre pièces ; le fichier reste dans le projet.', 'File not attached. Check the conversation and the four-attachment limit; the file remains in the project.')
+			: tr('Jointure demandée. Vérifie les pièces jointes du chat.', 'Attachment requested. Check the chat attachments.');
+	}
 	function chooseImport(attach: boolean) { if (busy || importing) return; attachImports = attach; uploader.click(); }
 	async function readImports() {
 		await run(async () => { await browse('Imports telephone', 'project'); notice = tr('Fichiers du serveur relus. Aucun import renvoyé. Un nom seul ne confirme pas un résultat incertain.','Server files refreshed. No import was resent. A name alone does not confirm an uncertain result.'); });
@@ -179,7 +186,7 @@
 				{#if file.text !== undefined}<label class="editor-label" for="project-file-editor">{tr('Contenu de','Contents of')} {file.name}</label><textarea id="project-file-editor" class="file-editor" bind:value={text} readonly={!file.editable} disabled={busy} oninput={() => queueMicrotask(rememberDraft)} spellcheck="false"></textarea>
 				{:else if file.kind === 'image'}<img class="file-preview" src={'/api/file/download?' + query(file.path, file.rootId) + '&inline=1'} alt={file.name} />
 				{:else}<p class="empty">{tr('L’aperçu de ce format n’est pas disponible. Tu peux le télécharger.',"No preview is available for this format. You can download it.")}</p>{/if}
-				<div class="actions"><Button disabled={busy || !dirty || conflict} onclick={() => void save()}>{tr('Enregistrer',"Save")}</Button><Button variant="outline" disabled={busy || !file.attachable || !!file.truncated || dirty || !onAttach} onclick={() => { if (file && onAttach) { onAttach({ rootId: file.rootId, path: file.path, hash: file.hash, name: file.name }); notice = tr('Fichier joint au prochain message du chat.',"File attached to the next chat message."); } }}>{tr('Joindre au chat',"Attach to chat")}</Button>{#if dirty}<Button variant="ghost" onclick={downloadDraft}>{tr('Télécharger le brouillon',"Download draft")}</Button>{/if}{#if conflict}<Button variant="outline" disabled={busy} onclick={() => void compare()}>{tr('Comparer la version serveur',"Compare server version")}</Button>{/if}</div>
+				<div class="actions"><Button disabled={busy || !dirty || conflict} onclick={() => void save()}>{tr('Enregistrer',"Save")}</Button><Button variant="outline" disabled={busy || !file.attachable || !!file.truncated || dirty || !onAttach} onclick={attachCurrent}>{tr('Joindre au chat',"Attach to chat")}</Button>{#if dirty}<Button variant="ghost" onclick={downloadDraft}>{tr('Télécharger le brouillon',"Download draft")}</Button>{/if}{#if conflict}<Button variant="outline" disabled={busy} onclick={() => void compare()}>{tr('Comparer la version serveur',"Compare server version")}</Button>{/if}</div>
 				{#if file.hash}<p class="hash">{tr('Version :','Version:')} {baseHash.slice(0, 16)}…</p>{/if}
 				{#if serverVersion}<div class="comparison"><h3>{tr('Version actuelle sur le serveur',"Current server version")}</h3><pre>{serverVersion.text ?? tr('Aucun aperçu texte',"No text preview")}</pre><Button variant="outline" disabled={busy} onclick={useServerVersion}>{tr('Utiliser la version serveur',"Use server version")}</Button></div>{/if}
 			{:else}<div class="empty editor-empty"><span aria-hidden="true"><FileText size={36}/></span><h3>{tr('Un projet, ses fichiers',"A project and its files")}</h3><p>{tr('Ouvre un fichier à gauche pour le consulter ou le joindre au chat.',"Open a file on the left to inspect it or attach it to the chat.")}</p></div>{/if}

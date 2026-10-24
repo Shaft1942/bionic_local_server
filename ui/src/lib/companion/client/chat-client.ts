@@ -45,6 +45,7 @@ export function createChatClient(observer: Observer, io: Transport = transport) 
       if (!job || sent.has(job.requestId)) throw new Error('Request must be tracked once before sending.');
       sent.add(job.requestId);
       const controller = new AbortController(); controllers.set(job.requestId, controller); texts.set(job.requestId, ''); publish();
+      let admittedId: string | undefined;
       try {
         await io.send(payload, controller.signal, event => {
           if (event.requestId !== undefined && event.requestId !== job.requestId) throw new ContractError();
@@ -52,6 +53,10 @@ export function createChatClient(observer: Observer, io: Transport = transport) 
           if (!current) return;
           // A native conversation can become a web continuation at admission.
           // Once bound, later events must keep that conversation identity.
+          if (event.type === 'start' || event.type === 'queued') {
+            if (admittedId !== undefined && event.id !== admittedId) throw new ContractError();
+            admittedId = event.id;
+          }
           if (event.type !== 'start' && event.type !== 'queued' && event.id && current.id && event.id !== current.id) throw new ContractError();
           if (event.type === 'delta') texts.set(job.requestId, (texts.get(job.requestId) || '') + event.text);
           if (event.type === 'start' || event.type === 'queued') update(job.requestId, { id: event.id, status: event.type === 'queued' ? 'queued' : 'running', phase: event.phase });
