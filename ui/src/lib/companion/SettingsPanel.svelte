@@ -14,29 +14,50 @@
   import './settings/settings.css';
   type SettingsPage='conversation'|'servers'|'appearance'|'security'|'maintenance'|'help';
   type ServerSection='inference'|'images';
-  let { request, projectId, chatId = '', modelId = '', onInferenceChange, onPreferencesChange, onClose, beforeMaintenance, active=true, onDirtyChange, navigationRequest }: { request: Request; projectId: string; chatId?: string; modelId?: string; onInferenceChange?: () => void; onPreferencesChange?: (value: Preferences & { clearDrafts?: boolean }) => void; onClose?: () => void; beforeMaintenance?: () => boolean | Promise<boolean>; active?:boolean; onDirtyChange?:(dirty:boolean)=>void; navigationRequest?:{page:SettingsPage;section?:ServerSection;revision:number} } = $props();
+  type ServerFocus='inference'|'gguf'|'images';
+  let { request, projectId, chatId = '', modelId = '', onInferenceChange, onPreferencesChange, onClose, beforeMaintenance, active=true, onDirtyChange, navigationRequest }: { request: Request; projectId: string; chatId?: string; modelId?: string; onInferenceChange?: () => void; onPreferencesChange?: (value: Preferences & { clearDrafts?: boolean }) => void; onClose?: () => void; beforeMaintenance?: () => boolean | Promise<boolean>; active?:boolean; onDirtyChange?:(dirty:boolean)=>void; navigationRequest?:{page:SettingsPage;section?:ServerSection;focus?:ServerFocus;revision:number} } = $props();
   let page = $state('conversation'), revision = $state(0), error = $state(''), cleared = $state(false);
   let visited=$state(['conversation']);
   let serverSection=$state<ServerSection>('inference'),visitedServerSections=$state<ServerSection[]>(['inference']);
   let dirtyGroups=$state<Record<string,boolean>>({});
+  let content:HTMLDivElement;
+  let focusSequence=0, handledNavigationRevision:number|undefined;
   const dirty=$derived(Object.values(dirtyGroups).some(Boolean));
   function changed(group:string,value:boolean){if(dirtyGroups[group]!==value)dirtyGroups={...dirtyGroups,[group]:value};}
   $effect(()=>{onDirtyChange?.(dirty);});
   const pages = $derived([{ id:'conversation',label:tr('Conversation','Conversation') },{id:'servers',label:tr('Serveurs du PC','PC servers')},{id:'appearance',label:tr('Apparence et brouillons','Appearance and drafts')},{id:'security',label:tr('Connexion sécurisée','Secure connection')},{id:'maintenance',label:tr('Mises à jour et diagnostic','Updates and diagnostics')},{id:'help',label:tr('Aide et capacités','Help and capabilities')}]);
   function updatePreference(next: Partial<Preferences>) { try { const value = setPreferences(next); onPreferencesChange?.(value); error = ''; } catch { error = tr('Préférence appliquée à cet onglet ; stockage du navigateur indisponible.','Preference applied to this tab; browser storage unavailable.'); } }
   function clearDrafts() { onPreferencesChange?.({ ...preferences, clearDrafts: true }); cleared = true; }
-  function selectPage(next:string){page=next;if(!visited.includes(next))visited=[...visited,next];error='';document.querySelector('.settings-content')?.scrollTo(0,0);}
-  function selectServerSection(next:ServerSection){serverSection=next;if(!visitedServerSections.includes(next))visitedServerSections=[...visitedServerSections,next];error='';document.querySelector('.settings-content')?.scrollTo(0,0);}
-  async function navigateFromHelp(next:SettingsPage,section?:ServerSection){selectPage(next);if(section)selectServerSection(section);await tick();const target=document.querySelector<HTMLElement>('.settings-page:not([hidden]) h2, .settings-page:not([hidden]) h3');if(target){target.tabIndex=-1;target.focus();}}
-  $effect(()=>{const target=navigationRequest;if(target)untrack(()=>{selectPage(target.page);if(target.page==='servers'&&target.section)selectServerSection(target.section);});});
+  function selectPage(next:string){focusSequence++;page=next;if(!visited.includes(next))visited=[...visited,next];error='';content?.scrollTo(0,0);}
+  function selectServerSection(next:ServerSection){focusSequence++;serverSection=next;if(!visitedServerSections.includes(next))visitedServerSections=[...visitedServerSections,next];error='';content?.scrollTo(0,0);}
+  async function navigateTo(next:SettingsPage,section?:ServerSection,focus?:ServerFocus){
+    selectPage(next);
+    const nextSection=next==='servers'?(focus?(focus==='images'?'images':'inference'):section||serverSection):undefined;
+    if(nextSection)selectServerSection(nextSection);
+    const sequence=++focusSequence;
+    await tick();
+    if(sequence!==focusSequence||!active||page!==next||!content?.isConnected)return;
+    const selector=next==='servers'?`#settings-${focus||nextSection}-section`:'.settings-page:not([hidden])';
+    const container=content.querySelector<HTMLElement>(selector);
+    if(!container||container.closest('[hidden]'))return;
+    const target=container.querySelector<HTMLElement>('h2, h3');
+    if(target){
+      target.tabIndex=-1;
+      target.focus({preventScroll:true});
+      const top=content.scrollTop+target.getBoundingClientRect().top-content.getBoundingClientRect().top-8;
+      content.scrollTo({top:Math.max(0,Math.min(top,content.scrollHeight-content.clientHeight)),behavior:'instant'});
+    }
+  }
+  function navigateFromHelp(next:SettingsPage,section?:ServerSection){void navigateTo(next,section);}
+  $effect(()=>{const target=navigationRequest;if(active&&target)untrack(()=>{if(target.revision===handledNavigationRevision)return;handledNavigationRevision=target.revision;void navigateTo(target.page,target.section,target.focus);});});
   function refresh(){if(confirm(tr('Relire les paramètres et abandonner les modifications non enregistrées ?','Reload settings and discard unsaved changes?'))){dirtyGroups={};revision++;}}
-  onMount(() => { const close = (event: KeyboardEvent) => { if (active&&event.key === 'Escape') onClose?.(); };const leave=(event:BeforeUnloadEvent)=>{if(dirty){event.preventDefault();event.returnValue='';}};addEventListener('beforeunload',leave);addEventListener('keydown', close); return () => {removeEventListener('keydown', close);removeEventListener('beforeunload',leave);}; });
+  onMount(() => { const close = (event: KeyboardEvent) => { if (active&&event.key === 'Escape'&&!event.defaultPrevented) {event.preventDefault();event.stopPropagation();onClose?.();} };const leave=(event:BeforeUnloadEvent)=>{if(dirty){event.preventDefault();event.returnValue='';}};addEventListener('beforeunload',leave);addEventListener('keydown', close); return () => {removeEventListener('keydown', close);removeEventListener('beforeunload',leave);}; });
 </script>
 
 <section class="native-settings" aria-label={tr('Paramètres','Settings')}>
   <header class="settings-title"><div><h1>{tr('Paramètres','Settings')}</h1><p>{tr('Le compagnon, adapté à ta façon de travailler.','The companion, adapted to the way you work.')}</p></div><div class="settings-actions"><Button variant="ghost" size="icon" aria-label={tr('Actualiser les paramètres','Refresh settings')} onclick={refresh}><RefreshCw /></Button>{#if onClose}<Button variant="ghost" size="icon" aria-label={tr('Fermer les paramètres','Close settings')} onclick={onClose}><X /></Button>{/if}</div></header>
   <div class="settings-layout"><nav class="settings-navigation" aria-label={tr('Catégories des paramètres','Settings categories')}>{#each pages as item}<button aria-current={page === item.id ? 'page' : undefined} onclick={() => selectPage(item.id)}>{item.label}</button>{/each}<a href="/legacy/">{tr('Ancienne interface','Previous interface')}</a></nav>
-  <div class="settings-content">
+  <div class="settings-content" bind:this={content}>
     {#key revision}
     {#if page==='servers'}
       <h2>{tr('Serveurs du PC','PC servers')}</h2><p class="settings-description">{tr('Configure les connexions et le lancement des moteurs de conversation et de génération d’images.','Configure connections and startup for conversation and image generation engines.')}</p>
@@ -45,10 +66,10 @@
         <button aria-current={serverSection==='images'?'page':undefined} onclick={()=>selectServerSection('images')}>{tr('Génération d’images','Image generation')}</button>
       </nav>
     {/if}
-    <div class="settings-page" hidden={page!=='conversation'&&!(page==='servers'&&serverSection==='inference')}><InferenceSettings {request} {projectId} {chatId} {modelId} {onInferenceChange} scope={page==='servers'?'engines':'conversation'} active={active&&(page==='conversation'||page==='servers'&&serverSection==='inference')} onDirtyChange={value=>changed('inference',value)} /></div>
-    {#if visited.includes('servers')&&visitedServerSections.includes('images')}<div class="settings-page" hidden={page!=='servers'||serverSection!=='images'}><ImageSettings {request} onDirtyChange={value=>changed('images',value)} /></div>{/if}
+    <div id="settings-inference-section" class="settings-page" hidden={page!=='conversation'&&!(page==='servers'&&serverSection==='inference')}><InferenceSettings {request} {projectId} {chatId} {modelId} {onInferenceChange} scope={page==='servers'?'engines':'conversation'} active={active&&(page==='conversation'||page==='servers'&&serverSection==='inference')} onDirtyChange={value=>changed('inference',value)} /></div>
+    {#if visited.includes('servers')&&visitedServerSections.includes('images')}<div id="settings-images-section" class="settings-page" hidden={page!=='servers'||serverSection!=='images'}><ImageSettings {request} onDirtyChange={value=>changed('images',value)} /></div>{/if}
     {#if visited.includes('servers')}<div class="settings-page" hidden={page!=='servers'}><div class="settings-divider"></div><ServicesSettings {request} scope={serverSection==='inference'?'bionic':'comfyui'} active={active&&page==='servers'} onDirtyChange={value=>changed('services',value)} /></div>{/if}
-    {#if visited.includes('servers')&&visitedServerSections.includes('inference')}<div class="settings-page" hidden={page!=='servers'||serverSection!=='inference'}><div class="settings-divider"></div><LlamaServerSettings {request} {onInferenceChange} active={active&&page==='servers'&&serverSection==='inference'} onDirtyChange={value=>changed('llama',value)} /></div>{/if}
+    {#if visited.includes('servers')&&visitedServerSections.includes('inference')}<div id="settings-gguf-section" class="settings-page" hidden={page!=='servers'||serverSection!=='inference'}><div class="settings-divider"></div><LlamaServerSettings {request} {onInferenceChange} active={active&&page==='servers'&&serverSection==='inference'} onDirtyChange={value=>changed('llama',value)} /></div>{/if}
     {#if visited.includes('security')}<div class="settings-page" hidden={page!=='security'}><SecuritySettings {request} active={active&&page==='security'} /></div>{/if}
     {#if visited.includes('maintenance')}<div class="settings-page" hidden={page!=='maintenance'}><MaintenanceSettings {request} {beforeMaintenance} active={active&&page==='maintenance'} /></div>{/if}
     {#if visited.includes('help')}<div class="settings-page" hidden={page!=='help'}><HelpSettings {request} active={active&&page==='help'} navigate={navigateFromHelp} /></div>{/if}
@@ -68,6 +89,7 @@
 <style>
   .settings-navigation button{min-height:44px;}
   .settings-navigation button:focus-visible{outline:2px solid var(--ring);outline-offset:2px;}
+  .settings-content :global(h2:focus-visible),.settings-content :global(h3:focus-visible){outline:2px solid var(--ring);outline-offset:4px;}
   @media(max-width:650px){.settings-navigation{flex-wrap:wrap;}.settings-navigation button{min-height:44px;white-space:normal;}.settings-navigation button:last-of-type{margin-right:auto;}}
   .server-navigation{display:flex;flex-wrap:wrap;gap:6px;margin:18px 0 24px;padding-bottom:12px;border-bottom:1px solid var(--border);}
   .server-navigation button{padding:9px 13px;border-radius:8px;color:var(--muted-foreground);font-size:13px;line-height:1.4;text-align:left;}

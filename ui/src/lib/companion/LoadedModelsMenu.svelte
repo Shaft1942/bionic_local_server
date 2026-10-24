@@ -5,8 +5,8 @@
   import { tr } from './preferences.svelte';
   import { post, message, uuid, type Request } from './settings/types';
 
-  let { request, models, inference, onModelsChange, disabled=false }: {
-    request:Request;models:any[];inference:any;onModelsChange?:()=>void|Promise<void>;disabled?:boolean;
+  let { request, models, inference, onModelsChange, onManage, disabled=false }: {
+    request:Request;models:any[];inference:any;onModelsChange?:()=>void|Promise<void>;onManage?:(target:'chat'|'inference'|'gguf'|'images',returnFocus:HTMLButtonElement)=>void|Promise<void>;disabled?:boolean;
   }=$props();
   let panel:HTMLDivElement,trigger:HTMLButtonElement;
   let open=$state(false),loading=$state(false),busy=$state(''),failure=$state(''),notice=$state('');
@@ -98,6 +98,7 @@
     }finally{busy='';await changed();await tick();position();}
   }
   async function changed(){try{await onModelsChange?.();}catch(error){if(!failure)failure=message(error);}}
+  function manage(target:'chat'|'inference'|'gguf'|'images'){panel.hidePopover();void onManage?.(target,trigger);}
   function toggled(event:ToggleEvent){open=event.newState==='open';if(open){void tick().then(position);void refresh();}}
   onMount(()=>{mounted=true;addEventListener('resize',position);return()=>{mounted=false;sequence++;removeEventListener('resize',position);};});
 </script>
@@ -109,6 +110,14 @@
   <header><h2 id="loaded-models-title">{tr('Modèles chargés','Loaded models')}</h2><div class="menu-actions"><Button type="button" variant="ghost" size="icon" aria-label={tr('Actualiser les modèles chargés','Refresh loaded models')} onclick={()=>refresh()} disabled={loading||!!busy}><RefreshCw /></Button><Button type="button" variant="ghost" size="icon" aria-label={tr('Fermer les modèles chargés','Close loaded models')} onclick={()=>panel.hidePopover()}><X /></Button></div></header>
   <div class="loaded-content" aria-busy={loading||!!busy}>
     <p class="menu-description">{tr('Modèles du moteur actif et processus llama-server possédé.','Models from the active engine and the owned llama-server process.')}</p>
+    {#if onManage}
+      <nav class="management-links" aria-label={tr('Gestion des moteurs et modèles','Engine and model management')}>
+        <button type="button" onclick={()=>manage('chat')}>{tr('Choisir le moteur et le modèle','Choose engine and model')}</button>
+        <button type="button" onclick={()=>manage('inference')}>{tr('Connexions et serveurs d’inférence','Inference connections and servers')}</button>
+        <button type="button" onclick={()=>manage('gguf')}>{tr('Charger ou remplacer un GGUF','Load or replace a GGUF')}</button>
+        <button type="button" onclick={()=>manage('images')}>{tr('Serveur d’images · ComfyUI','Image server · ComfyUI')}</button>
+      </nav>
+    {/if}
     {#if loading}<p role="status">{tr('Lecture des instances…','Reading instances…')}</p>{/if}
     {#each instances as instance (instance.id)}
       <section class="loaded-row" aria-label={instance.model.name+' · '+instance.id}>
@@ -143,6 +152,10 @@
   .menu-actions :global(svg){width:15px;height:15px;}
   .loaded-content{padding:0 14px 14px;font-size:12px;line-height:1.55;}
   .menu-description{color:var(--muted-foreground);margin:12px 0;}
+  .management-links{display:flex;flex-direction:column;gap:2px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+  .management-links button{min-height:44px;padding:9px 10px;border-radius:7px;text-align:left;font-size:12px;line-height:1.5;overflow-wrap:anywhere;}
+  .management-links button:hover{background:var(--muted);}
+  .management-links button:focus-visible{outline:2px solid var(--ring);outline-offset:-2px;}
   .loaded-row{display:flex;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid var(--border);}
   .loaded-details{min-width:0;flex:1;}
   h3{margin:0 0 4px;font-size:13px;font-weight:550;line-height:1.45;overflow-wrap:anywhere;}

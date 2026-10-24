@@ -1437,6 +1437,36 @@ async function handleRequest(req, res) {
         json(res, 200, { projectId: record.projectId, id: record.id, status: record.status, phase: record.phase, message: record.message, ...(chat ? { position: queuePosition(chat, requestId) } : {}) }); return;
       }
       if(req.method==='GET'&&url.pathname==='/api/comfy/memory-module'){const module=await defaultFS.readFile(new URL('./comfyui/custom_nodes/free_memory_after_workflow.py',import.meta.url));res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Disposition':'attachment; filename="free_memory_after_workflow.py"','Cache-Control':'no-store'});res.end(module);return;}
+      if (url.pathname === '/api/comfy/free') {
+        res.setHeader('Cache-Control', 'no-store');
+        if (typeof comfyImages.manualUnload !== 'function' || typeof comfyImages.manualUnloadStatus !== 'function') throw fail(503, 'Le déchargement manuel est indisponible pour ce service d’images.');
+        const session = sessions.get(cookie(req));
+        if (!session.localServiceNonce) session.localServiceNonce = randomBytes(32).toString('base64url');
+        const status = requestId => {
+          const snapshot = comfyImages.manualUnloadStatus(requestId);
+          let reason = snapshot.reason;
+          if (!reason) {
+            try {
+              assertServiceAdmission();
+              if (updatePreparing || updateMaintenance || Object.values(activeWork()).some(Boolean) || inFlightMutations > Number(req.method === 'POST')) throw fail(409, 'Attends la fin des réponses, images et opérations en cours.');
+            } catch (error) { reason = error.status ? error.message : 'État des travaux indisponible.'; }
+          }
+          return { ...snapshot, canUnload: !reason && snapshot.canUnload, reason, csrfNonce: session.localServiceNonce };
+        };
+        if (req.method === 'GET') {
+          if ([...url.searchParams.keys()].some(key => key !== 'requestId') || url.searchParams.getAll('requestId').length > 1) throw fail(400, 'Lecture de déchargement invalide.');
+          json(res, 200, status(url.searchParams.has('requestId') ? url.searchParams.get('requestId') : undefined)); return;
+        }
+        if (req.method !== 'POST') throw fail(405, 'Méthode de déchargement invalide.');
+        if (url.search) throw fail(400, 'Aucun paramètre attendu pour cette action.');
+        if (req.headers.origin !== protocol + '//' + req.headers.host || req.headers['x-local-service-csrf'] !== session.localServiceNonce) throw Object.assign(fail(403, 'Déchargement refusé. Actualise les paramètres d’images.'), { code: 'csrf-refused' });
+        assertServiceAdmission();
+        const input = await body(req, 2048);
+        assertServiceAdmission();
+        const release = reserveLocalService();
+        try { await comfyImages.manualUnload(input); } finally { release(); }
+        json(res, 200, status(input.requestId)); return;
+      }
       if(req.method==='POST'&&url.pathname==='/api/comfy/discover'){json(res,200,await comfyImages.discoverServers(await body(req,4096)));return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/loras'){json(res,200,await comfyImages.listLoras(await body(req,4096)));return;}
       if(req.method==='GET'&&url.pathname==='/api/comfy/settings'){json(res,200,{...await comfyImages.getSettings(),available:await comfyImages.available?.()===true});return;}

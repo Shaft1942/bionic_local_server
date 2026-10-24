@@ -46,6 +46,8 @@
   let tab=$state<'chat'|'files'|'images'|'activity'|'settings'>('chat'), sidebarOpen=$state(true), search=$state(''), expandedProjects=$state<string[]>([]);
   let projectForm=$state(false), projectName=$state(''), creatingProject=$state(false), historyBusy=$state(false), filesDirty=$state(false);
   let instanceId=$state(''), prototypeInfo=$state<any>(null), draftNonce=$state(''), settingsVisited=$state(false), filesVisited=$state(false), imagesVisited=$state(false), activityVisited=$state(false), settingsDirty=$state(false);
+  let settingsNavigation=$state<{page:'servers';section:'inference'|'images';focus:'inference'|'gguf'|'images';revision:number}>();
+  let managementTrigger:HTMLButtonElement|null=null,managementRevision=0;
   let draftKey='', storageKey='', drafts:Record<string,Draft>={};
   let recoveryBusy=false, viewSequence=0, lastCatalog=0, mounted=true;
   const sessionCatalogue=createProjectSessions({
@@ -289,6 +291,22 @@
   async function changedLoadedModels(){saveDraft();await refreshEngines(false);saveDraft();}
   async function changedInference(){saveDraft();model='';await refreshEngines();notice=tr('Moteur et modèle actifs actualisés.','Active engine and model updated.');saveDraft();}
   async function changedComposerEngine(current:unknown){model='';await refreshEngines(true,current);saveDraft();}
+  async function openModelManagement(target:'chat'|'inference'|'gguf'|'images',returnFocus:HTMLButtonElement){
+    if(target==='chat'){
+      managementTrigger=null;changeTab('chat');if(innerWidth<760)sidebarOpen=false;
+      await tick();const control=document.getElementById('chat-engine');
+      if(control instanceof HTMLSelectElement&&!control.disabled)control.focus();else composer?.focus();
+      control?.scrollIntoView({block:'nearest'});return;
+    }
+    managementTrigger=returnFocus;
+    settingsNavigation={page:'servers',section:target==='images'?'images':'inference',focus:target,revision:++managementRevision};
+    changeTab('settings');
+  }
+  async function closeModelManagement(){
+    if(managementTrigger&&tab==='settings'&&settingsDirty&&!confirm(tr('Fermer les réglages ? Les modifications non enregistrées seront conservées dans cette page jusqu’au rechargement.','Close settings? Unsaved changes will remain on this page until it is reloaded.')))return;
+    const returnFocus=managementTrigger;managementTrigger=null;changeTab('chat');await tick();
+    if(returnFocus?.isConnected)returnFocus.focus();
+  }
   function changeTab(next:typeof tab){saveDraft();if(next==='settings')settingsVisited=true;if(next==='files')filesVisited=true;if(next==='images')imagesVisited=true;if(next==='activity')activityVisited=true;if(tab==='settings'&&next!=='settings')void refreshEngines().catch(report);tab=next;if(next==='chat')void refreshSessions().catch(report);}
   async function changedConversation(next:any|null){const previousProjectId=projectId;saveDraft();++viewSequence;chat=next;if(next?.projectId&&next.projectId!==projectId){projectId=next.projectId;await reloadProjects();}sessionCatalogue.invalidate([previousProjectId,projectId]);if(!projects.find(item=>item.id===projectId)?.isUnassigned)expandProject(projectId,true);switchDraft();persist();await refreshSessions();}
   async function navigate(target:{projectId:string;id:string;messageId?:string}){
@@ -321,7 +339,7 @@
       <div class="section-label"><span>{tr('Projets','Projects')}</span><Button variant="ghost" size="icon" aria-label={tr('Créer un projet','Create a project')} onclick={()=>projectForm=!projectForm}><Plus /></Button></div>
       {#if projectForm}<form class="project-form" onsubmit={createProject}><input aria-label={tr('Nom du projet','Project name')} bind:value={projectName} placeholder={tr('Nom du projet','Project name')} maxlength="120" required /><Button type="submit" size="sm" disabled={creatingProject}>{tr('Créer','Create')}</Button></form>{/if}
       <ProjectConversations {projects} groups={sessionGroups} {projectId} chatId={chat?.id} expanded={expandedProjects} {search} onExpand={expandProject} onProject={chooseProject} onConversation={openProjectSession} onNewChat={newChat} onLoad={loadSessionGroup} />
-      <div class="navigation-footer"><span class="version">2.6.0-beta.9 · {inference?.provider==='llamacpp'?'llama-server':inference?.provider==='bionic'?'Bionic':tr('Moteur local','Local engine')}</span><div><a class="legacy-link" href="/legacy/">{tr('Ancienne interface','Legacy interface')}</a><div class="footer-controls"><LoadedModelsMenu {request} {models} {inference} onModelsChange={changedLoadedModels} disabled={starting||modelSelectionBusy} /><Button variant="ghost" size="icon" aria-label={tr('Se déconnecter','Sign out')} onclick={logout}><LogOut /></Button></div></div></div>
+      <div class="navigation-footer"><span class="version">2.6.0-beta.9 · {inference?.provider==='llamacpp'?'llama-server':inference?.provider==='bionic'?'Bionic':tr('Moteur local','Local engine')}</span><div><a class="legacy-link" href="/legacy/">{tr('Ancienne interface','Legacy interface')}</a><div class="footer-controls"><LoadedModelsMenu {request} {models} {inference} onModelsChange={changedLoadedModels} onManage={openModelManagement} disabled={starting||modelSelectionBusy} /><Button variant="ghost" size="icon" aria-label={tr('Se déconnecter','Sign out')} onclick={logout}><LogOut /></Button></div></div></div>
     </aside>{/if}
     <main class="workspace">
       <header class="workspace-header"><div class="workspace-title">{#if !sidebarOpen}<Button variant="ghost" size="icon" aria-label={tr('Ouvrir la navigation','Open navigation')} onclick={()=>sidebarOpen=true}><PanelLeftOpen /></Button>{/if}<span>{chat?.name||currentProject?.name||tr('Nouveau chat','New chat')}</span></div>
@@ -330,10 +348,10 @@
       {#if prototypeInfo?.syntheticComfyUI||prototypeInfo?.syntheticProjects}<div class="global-notice status fixture-notice">{tr('Démonstration isolée','Isolated demonstration')} · {prototypeInfo.realInference?tr('modèle réel','real model'):tr('modèle simulé','simulated model')} · {prototypeInfo.syntheticComfyUI?tr('ComfyUI simulé','simulated ComfyUI'):'ComfyUI'} · {tr('projets de test','test projects')}</div>{/if}
       {#if error}<div class="global-notice error" role="alert"><span>{error}</span><button aria-label={tr('Masquer l’erreur','Dismiss error')} onclick={()=>error=''}><X /></button></div>{/if}
       {#if jobs.length||notice}<div class="global-notice status" role="status"><span>{currentJob?.disconnected?tr('Connexion perdue · suivi sur le serveur','Connection lost · tracked on the server'):currentJob?.status==='queued'?tr('Dans la file d’attente','Queued'):jobs.length?jobs.length+' '+tr('demande(s) suivie(s)','tracked request(s)'):notice}</span><div>{#if jobs.length}<Button variant="ghost" size="sm" onclick={()=>recover(true)}><RefreshCw />{tr('Vérifier','Check')}</Button>{#if !currentJob}<Button variant="ghost" size="sm" onclick={()=>visitJob(jobs[0])}>{tr('Voir la demande','View request')}</Button>{/if}{/if}</div></div>{/if}
-      <WorkspaceDialog open={tab!=='chat'} title={tr(workspaceItems.find(item=>item.id===tab)?.fr||'Espace du projet',workspaceItems.find(item=>item.id===tab)?.en||'Project workspace')} onClose={()=>changeTab('chat')}>
+      <WorkspaceDialog open={tab!=='chat'} title={tr(workspaceItems.find(item=>item.id===tab)?.fr||'Espace du projet',workspaceItems.find(item=>item.id===tab)?.en||'Project workspace')} onClose={closeModelManagement}>
         {#snippet navigation()}<nav class="workspace-tabs" aria-label={tr('Espace du projet','Project workspace')}>{#each workspaceItems as item}<button aria-label={tr(item.fr,item.en)} class:active={tab===item.id} onclick={()=>changeTab(item.id as typeof tab)}><item.icon /><span>{tr(item.fr,item.en)}</span></button>{/each}</nav>{/snippet}
         {#if settingsVisited}<div class="settings-host" hidden={tab!=='settings'}>
-          <SettingsPanel active={tab==='settings'} onDirtyChange={(value:boolean)=>settingsDirty=value} {request} {projectId} chatId={chat?.id} modelId={model} onInferenceChange={changedInference} onPreferencesChange={changedPreferences} {beforeMaintenance} onClose={()=>changeTab('chat')} />
+          <SettingsPanel active={tab==='settings'} navigationRequest={settingsNavigation} onDirtyChange={(value:boolean)=>settingsDirty=value} {request} {projectId} chatId={chat?.id} modelId={model} onInferenceChange={changedInference} onPreferencesChange={changedPreferences} {beforeMaintenance} onClose={closeModelManagement} />
         </div>{/if}
         {#if filesVisited}<div class="popup-panel" hidden={tab!=='files'}>{#key projectId}<ProjectAccess project={currentProject} {request} onChanged={reloadProjects} /><FilesPanel {projectId} {request} {instanceId} chatId={chat?.id} {draftNonce} attachmentCount={attachments.length} onAttach={attach} onDirtyChange={(value:boolean)=>filesDirty=value} />{/key}</div>{/if}
         {#if imagesVisited}<div class="popup-panel" hidden={tab!=='images'}>{#key projectId}<ImagesPanel {projectId} {request} {instanceId} syntheticComfyUI={prototypeInfo?.syntheticComfyUI===true} chatId={chat?.id} />{/key}</div>{/if}
