@@ -36,12 +36,37 @@ Chaque modèle expose `id`, `loaded` (booléen ou null), `contextLength` (entier
 | Paramètre du contrat | Détails | Propriétaire de l'effet |
 | --- | --- | --- |
 | `maxOutputTokens` | `{ support, min: 1, max: 5000000, automatic: 8192, contextBound: true }` ; borne de préférence, réduite selon le budget de contexte | [model-preferences.mjs](../lib/model-preferences.mjs), puis `max_tokens` du transport |
-| `reasoningEffort` | `{ support, options }` ; uniquement les choix Bionic annoncés et validés, liste vide sinon | [reasoning.mjs](../lib/reasoning.mjs), puis `reasoning_effort` du transport |
+| `reasoningEffort` | `{ support, options }` ; choix Bionic annoncés et validés, liste vide pour llama.cpp sans niveaux énumérés | [reasoning.mjs](../lib/reasoning.mjs), puis `reasoning_effort` du transport |
+| `reasoning` | `{ support, kind, options }` ; contrôle effectif : `toggle` llama.cpp ou effort Bionic | `chat_template_kwargs.enable_thinking` pour le toggle natif, `reasoning_effort` pour Bionic |
 | `temperature`, `topP`, `topK`, `seed`, `repeatPenalty` | `{ support: { state: unsupported, reasonCode: parameter-not-forwarded } }` | Le [transport](../lib/model-transport.mjs) ne les transmet pas pour le texte |
 
 Le `seed` non pris en charge ici concerne le texte. Les paramètres image seed/format/LoRA restent dans les contrats existants des workflows ; ils ne sont pas ajoutés à ce premier lot. `loaded` et `contextLength` sont des observations du catalogue, pas un reçu d'admission ou de réservation GPU.
 
 `modelManagement: unsupported` pour llama.cpp décrit uniquement l'API du connecteur direct. Le chargement d'un GGUF par lancement de llama-server avec un profil possédé reste une capacité distincte du superviseur local et du sélecteur de modèles existants, hors de cette première projection. Un client ne doit pas utiliser ce champ pour masquer ou nier ce parcours.
+
+## Choix de réflexion et toggle llama.cpp
+
+Le catalogue `/api/models` conserve `model.reasoning.allowedOptions` et `.default`. Bionic garde ses choix natifs (off/on ou niveaux annoncés ; minimal et max uniquement s'ils sont annoncés), avec le mapping existant off→none et on→medium. Aucun niveau n'est inventé à partir d'un nom de modèle.
+
+Pour llama.cpp direct, l'adaptateur examine uniquement le `chat_template` de `/props` déjà lu. Un contrôle booléen externe simple de `enable_thinking` donne :
+
+```json
+{"kind":"toggle","allowedOptions":["off","on"],"default":null,"transport":"chat-template-enable-thinking","evidenceSource":"props-template-control"}
+```
+
+Le détecteur borné ne lance pas Jinja. Il ignore les commentaires, chaînes et blocs raw, exige une branche booléenne reconnue et refuse les réaffectations constantes ou ambiguës, les macros, contrôles indirects et blocs malformés. Un unique auto-défaut top-level `enable_thinking | default(false)` ou true reste admissible : il ne remplace pas le booléen fourni. Les balises de pensée seules ne démontrent aucun contrôle. Une forme non reconnue donne `reasoning:null`, interprété comme inconnu, pas une interdiction du modèle distant. Cette inspection statique atteste un contrôle déclaré, pas l'effet d'une génération réelle ni une analyse sémantique complète de tout programme Jinja.
+
+| Choix | Surcharge llama.cpp |
+| --- | --- |
+| Défaut (`default`, null ou absent) | `{}` ; conserver les réglages du serveur, sans déduire leur valeur du défaut du template |
+| off | `{"chat_template_kwargs":{"enable_thinking":false}}` |
+| on | `{"chat_template_kwargs":{"enable_thinking":true}}` |
+
+La forme est validée strictement dans le transport : aucune autre clé n'est acceptée par cette surcharge. Pour un toggle, le transport relit le catalogue et les propriétés immédiatement avant le POST de génération, exige le même alias chargé, un contexte confirmé et le contrôle toujours présent. Une modification observée refuse avant le POST. Le chemin défaut ne relit rien de plus et n'envoie aucun champ reasoning. Le protocole distant n'offre pas de transaction atomique entre cette lecture et le POST ; une modification externe à cet instant reste une limite.
+
+Dans `/api/companion-capabilities`, `models[].reasoning` reprend le descripteur public allowlisté, `support.reasoning` et `parameters.reasoning` décrivent le contrôle proposé. `support.reasoningEffort` reste séparé : false déclaré par `/props.chat_template_caps.supports_reasoning_effort` signifie niveaux non pris en charge ; true sans énumération laisse les niveaux **inconnus**, avec options vides. L'existence d'un toggle ne transforme pas off/on en niveaux low/medium/high. `inference.settings.capabilities.reasoning` annonce `reported-per-model` pour les deux connecteurs.
+
+Référence documentaire primaire consultée le 24 octobre 2026, llama.cpp à révision `df9beac7153166550571c70cc667f270b745da49` : [API serveur et paramètres de chat](https://github.com/ggml-org/llama.cpp/blob/df9beac7153166550571c70cc667f270b745da49/tools/server/README.md), [capacités Jinja](https://github.com/ggml-org/llama.cpp/blob/df9beac7153166550571c70cc667f270b745da49/common/jinja/caps.h), [détecteur UI upstream](https://github.com/ggml-org/llama.cpp/blob/df9beac7153166550571c70cc667f270b745da49/tools/ui/src/lib/utils/chat-template-thinking-detector.ts). Le détecteur du compagnon est volontairement plus conservateur que les heuristiques de balises upstream. Cette référence ne prouve pas la version d'une installation locale ; les faits effectivement reçus de son catalogue font autorité.
 
 `permissions.fileAccess` porte `request-scoped / file-profile-required`, `webAccess` porte `request-scoped / web-access-required`, `scriptAccess` porte `request-scoped / exact-code-approval-required`, `imageAccess` porte `request-scoped / image-access-required`. Un projet de travail, le profil de fichiers et les accords exacts restent contrôlés au point d'effet. Les scripts sur PC demandent toujours la validation humaine du code précis.
 

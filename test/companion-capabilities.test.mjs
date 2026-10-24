@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { scryptSync } from 'node:crypto';
+import { scryptSync, randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { EventEmitter } from 'node:events';
 import { createCompanion } from '../server.mjs';
@@ -40,13 +40,13 @@ test('projection separates provider support, model evidence, parameters and requ
   assert.deepEqual(source.reasoning.allowedOptions, ['off', 'high', 'unsafe', 'high'], 'projection never mutates the source');
 });
 
-test('llama.cpp does not inherit Bionic management, reasoning or vision; unknown tools remain unknown', () => {
+test('llama.cpp does not inherit Bionic management, effort or vision; unknown capabilities remain unknown', () => {
   const dto = describe({ inference: { provider: 'llamacpp' }, models: [model({ tools: 'unknown' })] });
   assert.equal(dto.inference.support.modelManagement.state, 'unsupported');
   const selected = dto.inference.models[0];
   assert.equal(selected.support.tools.state, 'unknown');
   assert.equal(selected.support.vision.state, 'unsupported');
-  assert.equal(selected.support.reasoningEffort.state, 'unsupported');
+  assert.equal(selected.support.reasoningEffort.state, 'unknown');
   assert.deepEqual(selected.parameters.reasoningEffort.options, []);
   assert.equal(selected.parameters.maxOutputTokens.support.state, 'supported');
   const uncertain = describe({ models: [model({ tools: undefined, vision: 'true', contextLength: -2, loaded: 'true', reasoning: {} })] }).inference.models[0];
@@ -54,6 +54,20 @@ test('llama.cpp does not inherit Bionic management, reasoning or vision; unknown
   assert.equal(uncertain.support.vision.state, 'unknown');
   assert.equal(uncertain.support.reasoningEffort.state, 'unknown');
   assert.equal(uncertain.loaded, null); assert.equal(uncertain.contextLength, null);
+});
+
+test('capability projection distinguishes native thinking control from graded reasoning effort', () => {
+  const native = { kind: 'toggle', allowedOptions: ['off', 'on'], default: null, transport: 'chat-template-enable-thinking', evidenceSource: 'props-template-control' };
+  for (const reasoningEffortCapability of [true, false, undefined]) {
+    const dto = describe({ inference: { provider: 'llamacpp' }, models: [model({ reasoning: native, reasoningEffortCapability })] }).inference.models[0];
+    assert.deepEqual(dto.reasoning, native); assert.equal(dto.support.reasoning.state, 'supported');
+    assert.deepEqual(dto.parameters.reasoning.options, ['off', 'on']); assert.equal(dto.parameters.reasoning.kind, 'toggle');
+    assert.equal(dto.support.reasoningEffort.state, reasoningEffortCapability === false ? 'unsupported' : 'unknown');
+    assert.deepEqual(dto.parameters.reasoningEffort.options, []);
+  }
+  const absent = describe({ inference: { provider: 'llamacpp' }, models: [model({ reasoning: null, reasoningEffortCapability: true })] }).inference.models[0];
+  assert.equal(absent.reasoning, null); assert.equal(absent.support.reasoning.state, 'unknown');
+  assert.deepEqual(absent.parameters.reasoning.options, []); assert.deepEqual(absent.parameters.reasoningEffort.options, []);
 });
 
 test('malformed, duplicated or excessive catalogues fail closed without arbitrary metadata or secret echoes', () => {
@@ -95,7 +109,8 @@ async function fixture(t, provider = 'bionic', options = {}) {
   const fixtureDirectory = path.resolve(import.meta.dirname, '../work/companion-capabilities-tests');
   await fs.mkdir(fixtureDirectory, { recursive: true });
   const root = await fs.realpath(await fs.mkdtemp(path.join(fixtureDirectory, 'fixture-')));
-  const state = { calls: [], writes: [], fsErrors: [], imageReads: 0, forbidden: [], enabled: true, failCatalogue: false, hold: null, reached: false };
+  const state = { calls: [], writes: [], fsErrors: [], imageReads: 0, forbidden: [], enabled: true, failCatalogue: false, hold: null, reached: false,
+    thinkingTemplate: undefined, propsReads: 0, dropThinkingAt: 0, allowGeneration: false, payloads: [] };
   await fs.mkdir(path.join(root, 'data'));
   await fs.writeFile(path.join(root, 'data', 'config.json'), JSON.stringify({ instanceId: 'synthetic-instance', salt: 'synthetic', passwordHash: scryptSync('synthetic-code', 'synthetic', 32).toString('hex'), adminToken: 'synthetic-admin' }));
   if (testInferenceOperation) await fs.writeFile(path.join(root, 'data', 'inference-operations.json'), JSON.stringify({ version: 1, operations: [{ id: 'synthetic-mutation', operation: 'unload', status: 'unknown', provider: 'bionic' }] }));
@@ -106,14 +121,25 @@ async function fixture(t, provider = 'bionic', options = {}) {
   const instrumentedFS = new Proxy(fs, { get(target, key) { return writes.has(key) ? async (...args) => { state.writes.push(key); try { return await target[key](...args); } catch (error) { state.fsErrors.push({ operation: key, code: error.code }); throw error; } } : target[key]; } });
   const fetchImpl = async (url, request = {}) => {
     const route = new URL(url).pathname; state.calls.push({ route, method: request.method || 'GET' });
-    if (request.method && request.method !== 'GET') return forbidden('engine-mutation')();
+    if (request.method && request.method !== 'GET') {
+      if (state.allowGeneration && route === '/v1/chat/completions') {
+        state.payloads.push(JSON.parse(request.body));
+        return new Response('data: ' + JSON.stringify({ choices: [{ delta: { content: 'Réponse synthétique.' }, finish_reason: 'stop' }] }) + '\n\ndata: [DONE]\n\n');
+      }
+      return forbidden('engine-mutation')();
+    }
     if (state.failCatalogue) throw new Error('synthetic-provider-error-with-credential');
     if (route === '/api/v1/models') {
       state.reached = true; if (state.hold) await state.hold;
       return Response.json({ models: [{ key: 'synthetic-model', type: 'llm', display_name: 'synthetic-private-image-data', loaded_instances: [{ id: 'loaded-model', config: { context_length: 4096 } }], capabilities: { vision: true, trained_for_tool_use: false, reasoning: { allowed_options: ['off', 'high'] } } }] });
     }
     if (route === '/v1/models') return Response.json({ data: [{ id: 'synthetic-model', meta: { n_ctx_train: 8192 } }] });
-    if (route === '/props') return Response.json({ total_slots: 1, default_generation_settings: { n_ctx: 2048 } });
+    if (route === '/props') {
+      state.propsReads++;
+      return Response.json({ total_slots: 1, default_generation_settings: { n_ctx: 2048 },
+        chat_template: state.propsReads >= state.dropThinkingAt && state.dropThinkingAt ? '{% set enable_thinking = false %}{% if enable_thinking %}forced{% endif %}' : state.thinkingTemplate,
+        chat_template_caps: { supports_reasoning_effort: false } });
+    }
     return forbidden('unexpected-route')();
   };
   const app = await createCompanion({ root, fs: instrumentedFS, settings: { port: 19981, apiUrl: 'http://127.0.0.1:19982', llamaUrl: 'http://127.0.0.1:19983', inferenceProvider: provider,
@@ -163,6 +189,48 @@ test('HTTP observes each real adapter catalogue without generation, writes, imag
     const legacy = (await f.request('/api/capabilities')).json(); assert(Array.isArray(legacy.items)); assert.equal(typeof legacy.version, 'string');
     const imageInfo = (await f.request('/api/image-provider')).json(); assert.equal(imageInfo.identity.id, 'comfyui');
   }
+});
+
+const thinkingTemplate = '{%- set enable_thinking = enable_thinking | default(false) -%}{%- if enable_thinking -%}yes{%- else -%}no{%- endif -%}';
+const syntheticProjects = { listProjects: async () => [{ id: 'p1', name: 'Synthetic reasoning project' }], listSessions: async () => [] };
+const chatInput = (model, reasoning) => ({ projectId: 'p1', model, requestId: randomUUID(), text: 'Question synthétique', fileProfile: 'none', reasoning });
+
+test('HTTP catalogue, capabilities and chat preserve the native toggle end to end, with no override for default', async t => {
+  const f = await fixture(t, 'llamacpp', { nativeStore: syntheticProjects }); await f.login();
+  f.state.thinkingTemplate = thinkingTemplate; f.state.allowGeneration = true;
+  const model = (await f.request('/api/models')).json().models[0];
+  assert.deepEqual(model.reasoning.allowedOptions, ['off', 'on']); assert.equal(model.reasoning.kind, 'toggle');
+  assert.equal((await f.request('/api/inference/settings')).json().capabilities.reasoning, 'reported-per-model');
+  const contract = (await f.request('/api/companion-capabilities')).json().inference.models[0];
+  assert.deepEqual(contract.parameters.reasoning.options, ['off', 'on']); assert.deepEqual(contract.parameters.reasoningEffort.options, []);
+  for (const choice of ['on', 'off', 'default']) {
+    f.state.propsReads = 0;
+    const res = await f.request('/api/chat', chatInput(model.id, choice));
+    assert.equal(res.statusCode, 200, res.parts.join(''));
+    const events = res.parts.join('').trim().split('\n').map(line => JSON.parse(line));
+    assert(events.some(event => event.type === 'done'), res.parts.join('')); assert(!events.some(event => event.type === 'error'));
+    const sent = f.state.payloads.at(-1);
+    assert.equal(sent.reasoning_effort, undefined);
+    assert.deepEqual(sent.chat_template_kwargs, choice === 'default' ? undefined : { enable_thinking: choice === 'on' });
+    assert.equal(f.state.propsReads, choice === 'default' ? 2 : 3, 'only toggle adds transport capability revalidation');
+  }
+  assert.equal(f.state.payloads.length, 3); assert.deepEqual(f.state.forbidden, []);
+});
+
+test('HTTP malformed choices and a template change between admission and inference never reach a generation POST', async t => {
+  const f = await fixture(t, 'llamacpp', { nativeStore: syntheticProjects }); await f.login();
+  f.state.thinkingTemplate = thinkingTemplate; f.state.allowGeneration = true;
+  const model = (await f.request('/api/models')).json().models[0];
+  for (const choice of ['low', 'max', {}, ['on'], true]) assert.equal((await f.request('/api/chat', chatInput(model.id, choice))).statusCode, 400);
+  assert.equal(f.state.payloads.length, 0);
+  f.state.propsReads = 0; f.state.dropThinkingAt = 3;
+  const refused = await f.request('/api/chat', chatInput(model.id, 'on'));
+  assert(refused.parts.join('').includes('reasoning-unavailable') || refused.parts.join('').includes('réflexion'), refused.parts.join(''));
+  assert.equal(f.state.payloads.length, 0, 'admission evidence cannot authorize an obsolete toggle');
+  f.state.dropThinkingAt = 0;
+  const recovered = await f.request('/api/chat', chatInput(model.id, 'off'));
+  assert(recovered.parts.join('').includes('"type":"done"'), recovered.parts.join(''));
+  assert.equal(f.state.payloads.length, 1); assert.deepEqual(f.state.payloads[0].chat_template_kwargs, { enable_thinking: false });
 });
 
 test('catalogue refusal is unknown, preserves no raw error, and a later GET recovers without replay', async t => {
