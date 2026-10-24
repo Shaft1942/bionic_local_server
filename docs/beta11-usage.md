@@ -1,6 +1,6 @@
 # Canaé beta.11
 
-Canaé s’ouvre à l’adresse habituelle du compagnon. La mise à jour depuis2.5.0 garde les données et les réglages, tout en ouvrant cette interface. Les anciennes adresses d’entrée renvoient vers le même accueil ; aucun accès séparé à legacy n’est proposé.
+Canaé s’ouvre à l’adresse habituelle du compagnon. La mise à jour depuis 2.5.0 garde les données et les réglages, tout en ouvrant cette interface. Les anciennes adresses d’entrée renvoient vers le même accueil ; aucun accès séparé à legacy n’est proposé.
 
 ## Conversations
 

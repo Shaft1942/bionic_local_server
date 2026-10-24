@@ -2,7 +2,7 @@
 
 # Canaé — local companion
 
-**Canaé 2.6.0-beta.11** is the single frontend, including after an update from2.5.0. New global chats have no project; titles can be edited inline and the management panel brings engines, models and images together. See the [beta.11 guide (French)](docs/beta11-usage.md). Compact controls, drafts, reasoning choices and tools remain available.
+**Canaé 2.6.0-beta.11** is the single frontend, including after an update from 2.5.0. New global chats have no project; titles can be edited inline and the management panel brings engines, models and images together. See the [beta.11 guide (French)](docs/beta11-usage.md). Compact controls, drafts, reasoning choices and tools remain available.
 
 **Stable reference 2.5.0** · Chat with the models on your PC and access your projects from your phone’s browser over your local network.
 
