@@ -123,6 +123,25 @@ function engineFixture() {
   return { state, service: createLlamaCppModelService(options), transport: createModelTransport({ ...options, provider: 'llamacpp' }) };
 }
 
+test('PAR scalar guard probes remain unknown and refuse before generation POST', async t => {
+  const cases = {
+    truthyNumber: '{% if 1 %}always{% elif enable_thinking %}never{% endif %}',
+    truthyString: '{% if "fixed" %}always{% elif enable_thinking %}never{% endif %}',
+    falseyNumber: '{% if 0 %}{% if enable_thinking %}never{% endif %}{% endif %}',
+  };
+  for (const [name, template] of Object.entries(cases)) {
+    const f = engineFixture(); f.state.template = template;
+    assert.equal(llamaThinkingCapability({ chat_template: template }), null);
+    await assert.rejects(f.transport.request({ model: f.state.alias, messages: [], reasoning: { chat_template_kwargs: { enable_thinking: true } } }), { status: 400 });
+    const generationPosts = f.state.calls.filter(call => call.method === 'POST').length;
+    assert.equal(generationPosts, 0); t.diagnostic(JSON.stringify({ name, toggleDetected: false, generationPosts }));
+  }
+  for (const literal of ['-1', '1.5', '0.0', '1e3', 'not 0', "''", "not 'fixed'", 'None']) {
+    assert.equal(llamaThinkingCapability({ chat_template: `{% if ${literal} %}{% if enable_thinking %}ambiguous{% endif %}{% endif %}` }), null);
+  }
+  assert.deepEqual(llamaThinkingCapability({ chat_template: '{% if false %}dead{% elif enable_thinking %}reachable{% endif %}' }).allowedOptions, ['off', 'on']);
+});
+
 test('adapter to transport revalidates native toggle and transmits exactly true/false; default adds no catalogue read', async () => {
   const f = engineFixture(), [selected] = await f.service.list();
   for (const choice of ['off', 'on']) {
