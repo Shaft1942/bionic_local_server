@@ -1,10 +1,10 @@
 [Français](README.md) · [English](README.en.md)
 
-# Bionic Mobile — compagnon local
+# Canaé — compagnon local
 
-**Candidate locale 2.5.1-beta.2** : bouton **+** pour ouvrir un chat dans chaque projet, annonces et suivi de rendu vérifiés à partir des reçus ComfyUI. Elle reprend aussi la reprise du contrôle des serveurs et leur configuration assistée de la bêta.1. Internet est activé pour les nouveaux choix ; les images le sont quand ComfyUI est disponible. Les désactivations explicites restent conservées. Voir [les changements de cette bêta](docs/beta-2.5.1.md). Cette mention ne constitue pas une publication.
+**Candidate locale Canaé 2.6.0-beta.3** : interface llama-ui, fenêtres centrées, paramètres natifs avec curseurs et sécurité HTTP/HTTPS/mTLS. Un seul moteur de conversation est sélectionné dans la webapp ; les GGUF sont partagés avec Bionic sans copie. Internet et images disponibles sont proposés par défaut, en conservant les désactivations explicites. Voir [la candidate et ses limites](docs/llama-ui-prototype.md). Cette mention ne constitue pas une publication.
 
-**Version 2.5.0** · Discutez avec les modèles de votre PC et retrouvez vos projets depuis le navigateur de votre téléphone, sur votre réseau local.
+**Référence stable 2.5.0** · Discutez avec les modèles de votre PC et retrouvez vos projets depuis le navigateur de votre téléphone, sur votre réseau local.
 
 Le compagnon utilise l’API locale de Bionic et peut générer des images avec ComfyUI. Ce projet communautaire est indépendant de Bionic ; ni Bionic, ni ComfyUI, ni leurs modèles ne sont inclus.
 

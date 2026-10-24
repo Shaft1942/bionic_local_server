@@ -1,15 +1,9 @@
 <script>
-	import logoMark from '$lib/assets/logo.svg?raw';
 	let { class: className = '' } = $props();
 </script>
 
-<div class={className}>
-	{@html logoMark}
-</div>
+<img class={className} src="/icon.svg" alt="" aria-hidden="true" draggable="false" />
 
 <style>
-	div :global(svg) {
-		width: var(--size, 1rem);
-		height: var(--size, 1rem);
-	}
+	img { width:var(--size,1rem);height:var(--size,1rem);object-fit:contain;flex-shrink:0;border-radius:18%; }
 </style>

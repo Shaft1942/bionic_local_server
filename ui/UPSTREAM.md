@@ -11,4 +11,7 @@ Only navigation, text drafts and an outstanding request reference are stored in 
 
 Build: `npm ci --prefix ui --ignore-scripts`, then `node scripts/build-llama-ui.mjs` from the application root. The emitted assets are in `public/llama-ui/`, with an absolute `/llama-ui/` asset base; the server may expose the entry at `/prototype/` or opt in at `/`.
 
-The dependency lock describes the compiled companion entry. The complete upstream app, model manager, MCP client, browser tools and IndexedDB stores are not shipped; this prototype does not claim that all upstream pages are wired. No PWA service worker is installed by this entry. UserBubble adapts the upstream bubble to passive companion text. Card imports constants directly; Logo omits the inline style prop to respect the CSP.
+The dependency lock describes the compiled companion entry. The complete upstream app, model manager, MCP client, browser tools and IndexedDB stores are not shipped; this prototype does not claim that all upstream pages are wired. No PWA service worker is installed by this entry. UserBubble adapts the upstream bubble to passive companion text. Card imports constants directly; Logo displays the local Canaé mascot asset without inline style props.
+# Canaé identity
+
+The application name and mascot are supplied by the application owner. The current icon is a viewport onto the approved black-and-white Labrador with a bow tie, embedded from the supplied raster board without redrawing its pixels. It is not claimed to be a new vector drawing or part of the upstream llama.cpp identity. The original upstream UI provenance and license remain applicable to their components.

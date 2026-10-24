@@ -1,6 +1,10 @@
-# Interface llama-ui — 2.6.0-beta.2
+# Canaé et llama-ui — 2.6.0-beta.3
 
 Cette candidate utilise une interface Svelte adaptée de llama-ui. Le compagnon conserve l’autorité sur les projets, conversations, fichiers, droits et travaux images. L’interface, le moteur de conversation et le fournisseur d’images ont des rôles distincts.
+
+Fichiers, Images, Activité et Paramètres s’ouvrent dans une fenêtre centrée. Échap ou la croix ferment la fenêtre et rendent le focus au bouton d’ouverture. La conversation et son brouillon restent présents ; fermer les paramètres conserve les modifications non enregistrées en mémoire dans cet onglet. Le raccourci Paramètres en bas à gauche a été supprimé.
+
+Les cases à cocher utilisent leur affichage natif. Les valeurs numériques pour lesquelles une progression a du sens disposent d’un curseur et d’une saisie exacte : LoRA −2 à 20, budget de réponse de 1 à 5 millions de tokens (échelle logarithmique), contexte de lancement et couches GPU du profil llama-server. Un plafond demandé ne garantit pas que le modèle ou le serveur peut l’accepter ; le contexte effectivement confirmé reste l’autorité. Les URL, ports, graines et jetons gardent une saisie adaptée.
 
 ## Paramètres dans la webapp
 
@@ -8,7 +12,8 @@ Ouvrir **Paramètres** depuis la navigation ou la barre du projet. Les rubriques
 
 - **Conversation** : sélectionner Bionic ou llama-server, saisir leurs adresses locales et éventuellement des jetons séparés, tester la connexion, appliquer le moteur actif, régler le plafond de réponse par modèle ou conversation. Un seul moteur est actif à la fois. Les modèles sont actualisables et les instances Bionic déchargeables avec confirmation.
 - **Images et ComfyUI** : adresse et activation du fournisseur, découverte bornée, workflow, deux LoRA par profil et forces, contrôle de compatibilité, politique du modèle texte et nettoyage après workflow.
-- **Serveurs du PC** : état, profil de lancement, détection d’une installation, choix natif sur le PC et commandes explicites Bionic/ComfyUI. Les nonces, révisions et accords restent ceux du serveur. llama-server direct est installé et démarré séparément dans ce premier connecteur.
+- **Modèles llama-server** : bibliothèque GGUF partagée, profil de lancement possédé, choix du fichier, contexte et couches GPU, démarrage/remplacement/arrêt explicites. Aucun téléchargement ni chargement automatique.
+- **Serveurs du PC** : état, profil de lancement, détection d’une installation, choix natif sur le PC et commandes explicites Bionic/ComfyUI. Les nonces, révisions et accords restent ceux du serveur.
 - **Apparence et brouillons** : thème système/clair/sombre, français/anglais et durée des brouillons (onglet, une heure, un jour, sept jours). Ces choix sont propres au navigateur et à l’instance. Effacer les brouillons ne supprime ni les conversations ni le suivi des demandes.
 - **Connexion sécurisée** : état HTTP/HTTPS/mTLS, autorité publique, appareils, création/révocation et préparation guidée. Les changements de transport conservent leurs preuves et confirmations. Les exports privés restent temporaires et ne sont pas mémorisés dans les préférences.
 - **Mises à jour et diagnostic** : canal Stable/Bêta, vérification, installation explicite, diagnostic et liens d’aide. Une installation est refusée tant qu’un fichier modifié doit être sauvegardé.
@@ -24,6 +29,14 @@ L’installation initiale définit notamment le port d’écoute et les chemins 
 - `/legacy/` conserve l’ancienne interface sur les mêmes API et conversations.
 
 Le changement d’inférence se fait ensuite dans la webapp, sans redémarrer le compagnon. L’application conserve ses choix dans un fichier privé local ; il prime sur les valeurs initiales au prochain démarrage. Les jetons ne sont jamais renvoyés par l’API de lecture et ne passent pas d’un fournisseur à l’autre. Modifier une adresse exige de remplacer ou effacer explicitement son ancien jeton.
+
+Sur le PC de cette préversion, la bibliothèque autorisée est `E:/AI/Models`. Seuls les répertoires autorisés et leurs sous-dossiers sont parcourus avec des bornes ; les liens et projecteurs multimodaux sont exclus du profil texte. Les en-têtes sont lus sans parcourir les poids. La présence d’un GGUF ne garantit pas sa compatibilité avec la version de llama-server installée. Le fichier est ouvert à son emplacement d’origine, comme par Bionic.
+
+Le profil possédé utilise un port distinct (1238 par défaut) et zéro couche GPU initialement. Le serveur externe sur 1237 ne peut pas être adopté ou arrêté. Un modèle encore chargé dans un moteur configuré bloque le nouveau lancement ; son état ambigu bloque également l’opération. Une fois le profil démarré explicitement, sa connexion se sélectionne dans **Conversation**. Les modifications de dossier, binaire et port exigent le navigateur du PC serveur ; la sélection d’un modèle de cette bibliothèque est accessible sur le réseau authentifié.
+
+La propriété du processus repose sur son handle enfant, jamais sur un PID seul. Une déconnexion du navigateur ne le relance pas. Après un redémarrage du compagnon, un ancien processus encore présent reste détecté sans être adopté : son arrêt se fait sur le PC. Ce profil doit être réservé à Canaé ; les demandes qu’un client tiers lui enverrait directement ne sont pas comptées comme travaux de Canaé.
+
+La sécurité utilise le contrôleur de transport normal du compagnon. HTTP, HTTPS et mTLS restent distincts ; attacher ce contrôleur n’active pas HTTPS. La préparation exige une preuve depuis le navigateur avant activation. Les clés de l’autorité ne sont jamais exportées ; les exports d’appareils sont temporaires, liés à la session et à usage unique, et ne sont pas proposés depuis une connexion HTTP. Les essais automatisés utilisent des certificats synthétiques ; la confiance d’un téléphone physique doit être vérifiée sur cet appareil.
 
 Le contrôle de connexion lit uniquement le catalogue et les propriétés, avec bornes de temps et de taille. Il ne charge aucun modèle. Le changement de moteur est refusé pendant une réponse, une attente, une image, une approbation ou un effet inconnu. Après une gestion Bionic ambiguë, **Actualiser les modèles** relit le catalogue et réconcilie l’état sans rejouer le chargement ou le déchargement. Voir [les limites de llama-server](llamacpp.md).
 

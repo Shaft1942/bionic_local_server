@@ -28,7 +28,10 @@ export async function collectReleaseFiles(root = repositoryRoot) {
     const resolved = await realpath(filename), inside = path.relative(resolvedRoot, resolved);
     if (path.isAbsolute(inside) || inside === '..' || inside.startsWith('..' + path.sep) || !(await lstat(filename)).isFile()) throw new Error('Chemin hors distribution.');
     const bytes = await readFile(filename);
-    if (bytes.length > 2_000_000) throw new Error(`Fichier source trop volumineux : ${relative}`);
+    // The supplied Canaé board is embedded losslessly in this one passive SVG.
+    // All other sources keep the existing bound; no binary/private path is added.
+    const maximum = relative === 'public/icon.svg' ? 2_097_152 : 2_000_000;
+    if (bytes.length > maximum) throw new Error(`Fichier source trop volumineux : ${relative}`);
     if (bytes.includes(0)) throw new Error(`Fichier binaire non autorisé : ${relative}`);
     inspectContent(relative, bytes.toString('utf8'));
     files.push({ path: relative, bytes });

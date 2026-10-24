@@ -1,6 +1,6 @@
 [Accueil français](../README.md) · [English README](../README.en.md) · [English user guide](en/guide.md)
 
-# Documentation de Bionic Mobile
+# Documentation de Canaé
 
 Ces guides décrivent la version **2.5.0**. Commencez par le parcours correspondant à votre besoin ; l’aide intégrée est accessible dans **Paramètres → Aide**.
 

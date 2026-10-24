@@ -9,6 +9,7 @@
   import FilesPanel from './FilesPanel.svelte';
   import ImagesPanel from './ImagesPanel.svelte';
   import SettingsPanel from './SettingsPanel.svelte';
+  import WorkspaceDialog from './WorkspaceDialog.svelte';
   import ConversationActions from './ConversationActions.svelte';
   import WorkspacePanel from './WorkspacePanel.svelte';
   import Approvals from './Approvals.svelte';
@@ -27,11 +28,12 @@
   let jobs=$state<Job[]>([]), streamingIds=$state<string[]>([]);
   let tab=$state<'chat'|'files'|'images'|'activity'|'settings'>('chat'), sidebarOpen=$state(true), search=$state(''), collapsedProjects=$state<string[]>([]);
   let projectForm=$state(false), projectName=$state(''), creatingProject=$state(false), historyBusy=$state(false), sessionsBusy=$state(false), filesDirty=$state(false);
-  let instanceId=$state(''), prototypeInfo=$state<any>(null), draftNonce=$state(''), settingsVisited=$state(false), settingsDirty=$state(false);
+  let instanceId=$state(''), prototypeInfo=$state<any>(null), draftNonce=$state(''), settingsVisited=$state(false), filesVisited=$state(false), imagesVisited=$state(false), activityVisited=$state(false), settingsDirty=$state(false);
   let draftKey='', storageKey='', drafts:Record<string,Draft>={};
   let controllers=new Map<string,AbortController>(), streamTexts=new Map<string,string>(), recoveryBusy=false, viewSequence=0, sessionsSequence=0, lastCatalog=0, mounted=true;
   let messageList=$state<HTMLDivElement>(), composer=$state<HTMLTextAreaElement|null>(null);
   let followReply=true;
+  const workspaceItems=[{id:'chat',fr:'Chat',en:'Chat',icon:MessageSquare},{id:'files',fr:'Fichiers',en:'Files',icon:Files},{id:'images',fr:'Images',en:'Images',icon:Image},{id:'activity',fr:'Activité',en:'Activity',icon:Activity},{id:'settings',fr:'Paramètres',en:'Settings',icon:Settings}];
   const currentProject=$derived(projects.find(item=>item.id===projectId));
   const selectedModel=$derived(models.find(item=>item.id===model));
   const visibleSessions=$derived(sessions.filter(item=>(item.name||'').toLocaleLowerCase().includes(search.toLocaleLowerCase())));
@@ -231,7 +233,7 @@
   async function stop(job=currentJob){if(!job?.id)return;try{await post('/api/cancel',{projectId:job.projectId,id:job.id,requestId:job.requestId});notice=tr('Arrêt demandé au serveur.','Stop requested on the server.');await recover(true);}catch(failure){report(failure);}}
   function detach(){if(!currentJob)return;updateJob(currentJob.requestId,{disconnected:true});controllers.get(currentJob.requestId)?.abort();}
   async function visitJob(job:Job){if(projectId!==job.projectId)await chooseProject(job.projectId);if(job.id)await openSession(job.id);else await recover();}
-  function changeTab(next:typeof tab){saveDraft();if(next==='settings')settingsVisited=true;if(tab==='settings'&&next!=='settings')void refreshEngines().catch(report);tab=next;if(next==='chat')void refreshSessions().catch(report);}
+  function changeTab(next:typeof tab){saveDraft();if(next==='settings')settingsVisited=true;if(next==='files')filesVisited=true;if(next==='images')imagesVisited=true;if(next==='activity')activityVisited=true;if(tab==='settings'&&next!=='settings')void refreshEngines().catch(report);tab=next;if(next==='chat')void refreshSessions().catch(report);}
   async function changedConversation(next:any|null){saveDraft();++viewSequence;if(!next&&chat?.id)sessions=sessions.filter(item=>item.id!==chat.id);chat=next;if(next?.projectId&&next.projectId!==projectId){projectId=next.projectId;sessions=[];sessionPage=null;await reloadProjects();}switchDraft();persist();await refreshSessions();}
   async function navigate(target:{projectId:string;id:string;messageId?:string}){
     if(target.projectId!==projectId)await chooseProject(target.projectId);await openSession(target.id);
@@ -251,13 +253,13 @@
 </script>
 
 {#if !authenticated}
-  <main class="login-page"><div class="login-card"><Logo class="welcome-logo" /><h1>Bionic Compagnon</h1><p>{tr('Ton espace local, avec l’interface llama-ui.','Your local workspace, with llama-ui.')}</p>
+  <main class="login-page"><div class="login-card"><Logo class="welcome-logo" /><h1>Canaé</h1><p>{tr('Ton espace local, avec l’interface llama-ui.','Your local workspace, with llama-ui.')}</p>
     {#if ready}<form onsubmit={login}><label for="access-code">{tr('Code d’accès du prototype','Prototype access code')}</label><input id="access-code" type="password" bind:value={code} required autocomplete="current-password" /><Button type="submit" disabled={loginBusy}>{loginBusy?tr('Connexion…','Connecting…'):tr('Se connecter','Sign in')}</Button></form>{:else}<p role="status">{tr('Connexion au compagnon…','Connecting to the companion…')}</p>{/if}
-    {#if error}<p class="error" role="alert">{error}</p>{/if}<small>2.6.0-beta.2 · llama-ui</small></div></main>
+    {#if error}<p class="error" role="alert">{error}</p>{/if}<small>2.6.0-beta.3 · llama-ui</small></div></main>
 {:else}
   <div class="companion-shell" class:sidebar-hidden={!sidebarOpen}>
     {#if sidebarOpen}<aside class="navigation" aria-label="Navigation">
-      <div class="brand-row"><a href="/prototype/" class="brand"><Logo class="brand-logo" /><span>Bionic <span class="subtle">llama-ui</span></span></a><Button variant="ghost" size="icon" aria-label={tr('Fermer la navigation','Close navigation')} onclick={()=>sidebarOpen=false}><PanelLeftClose /></Button></div>
+      <div class="brand-row"><a href="/prototype/" class="brand"><Logo class="brand-logo" /><span>Canaé</span></a><Button variant="ghost" size="icon" aria-label={tr('Fermer la navigation','Close navigation')} onclick={()=>sidebarOpen=false}><PanelLeftClose /></Button></div>
       <Button variant="outline" class="new-chat" onclick={()=>newChat()}><Plus />{tr('Nouveau chat','New chat')}</Button>
       <label class="search-field"><Search /><input aria-label={tr('Rechercher un chat','Search chats')} bind:value={search} placeholder={tr('Rechercher un chat','Search chats')} /></label>
       <div class="section-label"><span>{tr('Projets','Projects')}</span><Button variant="ghost" size="icon" aria-label={tr('Créer un projet','Create a project')} onclick={()=>projectForm=!projectForm}><Plus /></Button></div>
@@ -270,25 +272,24 @@
         {#if sessionPage?.hasMore}<Button variant="ghost" size="sm" disabled={sessionsBusy} onclick={()=>refreshSessions(true)}>{tr('Charger d’autres conversations','Load more conversations')}</Button>{/if}
         {#if sessionWarnings.length}<p class="quiet" role="status">{tr('Liste partielle : ','Partial list: ')+sessionWarnings.join(' · ')}</p>{/if}
       </nav>
-      <div class="navigation-footer"><Button variant={tab==='settings'?'secondary':'ghost'} onclick={()=>changeTab('settings')}><Settings />{tr('Paramètres','Settings')}</Button><span class="version">2.6.0-beta.2 · {inference?.provider==='llamacpp'?'llama-server':inference?.provider==='bionic'?'Bionic':tr('Moteur local','Local engine')}</span><div><a class="legacy-link" href="/legacy/">{tr('Ancienne interface','Legacy interface')}</a><Button variant="ghost" size="icon" aria-label={tr('Se déconnecter','Sign out')} onclick={logout}><LogOut /></Button></div></div>
+      <div class="navigation-footer"><span class="version">2.6.0-beta.3 · {inference?.provider==='llamacpp'?'llama-server':inference?.provider==='bionic'?'Bionic':tr('Moteur local','Local engine')}</span><div><a class="legacy-link" href="/legacy/">{tr('Ancienne interface','Legacy interface')}</a><Button variant="ghost" size="icon" aria-label={tr('Se déconnecter','Sign out')} onclick={logout}><LogOut /></Button></div></div>
     </aside>{/if}
     <main class="workspace">
       <header class="workspace-header"><div class="workspace-title">{#if !sidebarOpen}<Button variant="ghost" size="icon" aria-label={tr('Ouvrir la navigation','Open navigation')} onclick={()=>sidebarOpen=true}><PanelLeftOpen /></Button>{/if}<span>{chat?.name||currentProject?.name||tr('Nouveau chat','New chat')}</span></div>
-        <nav class="workspace-tabs" aria-label={tr('Espace du projet','Project workspace')}>{#each [{id:'chat',fr:'Chat',en:'Chat',icon:MessageSquare},{id:'files',fr:'Fichiers',en:'Files',icon:Files},{id:'images',fr:'Images',en:'Images',icon:Image},{id:'activity',fr:'Activité',en:'Activity',icon:Activity},{id:'settings',fr:'Paramètres',en:'Settings',icon:Settings}] as item}<button aria-label={tr(item.fr,item.en)} class:active={tab===item.id} onclick={()=>changeTab(item.id as typeof tab)}><item.icon /><span>{tr(item.fr,item.en)}</span></button>{/each}</nav>
+        <nav class="workspace-tabs" hidden={tab!=='chat'} aria-label={tr('Espace du projet','Project workspace')}>{#each workspaceItems as item}<button aria-label={tr(item.fr,item.en)} class:active={tab===item.id} onclick={()=>changeTab(item.id as typeof tab)}><item.icon /><span>{tr(item.fr,item.en)}</span></button>{/each}</nav>
       </header>
       {#if prototypeInfo?.syntheticComfyUI||prototypeInfo?.syntheticProjects}<div class="global-notice status fixture-notice">{tr('Démonstration isolée','Isolated demonstration')} · {prototypeInfo.realInference?tr('modèle réel','real model'):tr('modèle simulé','simulated model')} · {prototypeInfo.syntheticComfyUI?tr('ComfyUI simulé','simulated ComfyUI'):'ComfyUI'} · {tr('projets de test','test projects')}</div>{/if}
       {#if error}<div class="global-notice error" role="alert"><span>{error}</span><button aria-label={tr('Masquer l’erreur','Dismiss error')} onclick={()=>error=''}><X /></button></div>{/if}
       {#if jobs.length||notice}<div class="global-notice status" role="status"><span>{currentJob?.disconnected?tr('Connexion perdue · suivi sur le serveur','Connection lost · tracked on the server'):currentJob?.status==='queued'?tr('Dans la file d’attente','Queued'):jobs.length?jobs.length+' '+tr('demande(s) suivie(s)','tracked request(s)'):notice}</span><div>{#if jobs.length}<Button variant="ghost" size="sm" onclick={()=>recover(true)}><RefreshCw />{tr('Vérifier','Check')}</Button>{#if !currentJob}<Button variant="ghost" size="sm" onclick={()=>visitJob(jobs[0])}>{tr('Voir la demande','View request')}</Button>{/if}{/if}</div></div>{/if}
-      {#if settingsVisited}<div class="settings-host" hidden={tab!=='settings'}>
-        <SettingsPanel active={tab==='settings'} onDirtyChange={(value:boolean)=>settingsDirty=value} {request} {projectId} chatId={chat?.id} modelId={model} onInferenceChange={async()=>{saveDraft();model='';reasoning='default';await refreshEngines();notice=tr('Moteur actif actualisé. Les demandes précédentes gardent leur origine.','Active engine updated. Previous requests keep their origin.');}} onPreferencesChange={changedPreferences} {beforeMaintenance} onClose={()=>changeTab('chat')} />
-      </div>{/if}
-      {#if tab==='files'}
-        {#key projectId}<ProjectAccess project={currentProject} {request} onChanged={reloadProjects} /><FilesPanel {projectId} {request} {instanceId} chatId={chat?.id} onAttach={attach} onDirtyChange={(value:boolean)=>filesDirty=value} />{/key}
-      {:else if tab==='images'}
-        {#key projectId}<ImagesPanel {projectId} {request} {instanceId} syntheticComfyUI={prototypeInfo?.syntheticComfyUI===true} chatId={chat?.id} />{/key}
-      {:else if tab==='activity'}
-        {#key projectId}<WorkspacePanel {request} {projectId} {chat} {instanceId} language={preferences.language} onConversationChange={changedConversation} onNavigate={navigate} onImages={()=>changeTab('images')} />{/key}
-      {:else if tab==='chat'}
+      <WorkspaceDialog open={tab!=='chat'} title={tr(workspaceItems.find(item=>item.id===tab)?.fr||'Espace du projet',workspaceItems.find(item=>item.id===tab)?.en||'Project workspace')} onClose={()=>changeTab('chat')}>
+        {#snippet navigation()}<nav class="workspace-tabs" aria-label={tr('Espace du projet','Project workspace')}>{#each workspaceItems as item}<button aria-label={tr(item.fr,item.en)} class:active={tab===item.id} onclick={()=>changeTab(item.id as typeof tab)}><item.icon /><span>{tr(item.fr,item.en)}</span></button>{/each}</nav>{/snippet}
+        {#if settingsVisited}<div class="settings-host" hidden={tab!=='settings'}>
+          <SettingsPanel active={tab==='settings'} onDirtyChange={(value:boolean)=>settingsDirty=value} {request} {projectId} chatId={chat?.id} modelId={model} onInferenceChange={async()=>{saveDraft();model='';reasoning='default';await refreshEngines();notice=tr('Moteur actif actualisé. Les demandes précédentes gardent leur origine.','Active engine updated. Previous requests keep their origin.');}} onPreferencesChange={changedPreferences} {beforeMaintenance} onClose={()=>changeTab('chat')} />
+        </div>{/if}
+        {#if filesVisited}<div class="popup-panel" hidden={tab!=='files'}>{#key projectId}<ProjectAccess project={currentProject} {request} onChanged={reloadProjects} /><FilesPanel {projectId} {request} {instanceId} chatId={chat?.id} onAttach={attach} onDirtyChange={(value:boolean)=>filesDirty=value} />{/key}</div>{/if}
+        {#if imagesVisited}<div class="popup-panel" hidden={tab!=='images'}>{#key projectId}<ImagesPanel {projectId} {request} {instanceId} syntheticComfyUI={prototypeInfo?.syntheticComfyUI===true} chatId={chat?.id} />{/key}</div>{/if}
+        {#if activityVisited}<div class="popup-panel" hidden={tab!=='activity'}>{#key projectId}<WorkspacePanel {request} {projectId} {chat} {instanceId} language={preferences.language} onConversationChange={changedConversation} onNavigate={navigate} onImages={()=>changeTab('images')} />{/key}</div>{/if}
+      </WorkspaceDialog>
         <div class="conversation" class:empty={!chat?.messages?.length}>
           {#if chat?.id}<div class="conversation-tools">{#if chat.source!=='web'||chat.origin}<span class="quiet">{chat.source!=='web'?tr('Historique d’origine · actions passives','Original history · passive actions'):tr('Copie avec origine conservée','Copy with preserved origin')}</span>{/if}<ConversationActions {request} {projectId} {chat} {projects} {instanceId} language={preferences.language} onConversationChange={changedConversation} onNavigate={navigate} /></div>{/if}
           <div class="messages" bind:this={messageList} onscroll={event=>{const element=event.currentTarget;followReply=element.scrollHeight-element.scrollTop-element.clientHeight<100;}}>
@@ -320,7 +321,6 @@
             </div><p class="quiet">{tr('Les droits sont fixés à l’envoi. Les mêmes outils sont disponibles quel que soit le moteur d’inférence.','Permissions are fixed when sent. The same tools are available with every inference engine.')}</p></details>
           </form><p class="composer-hint">{currentJobs.length?tr('Les nouveaux messages rejoignent la file. Tu peux quitter la page.','New messages join the queue. You can leave this page.'):tr('Entrée pour envoyer · Maj + Entrée pour une nouvelle ligne','Enter to send · Shift + Enter for a new line')}</p></div>
         </div>
-      {/if}
     </main>
   </div>
 {/if}

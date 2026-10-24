@@ -1,10 +1,10 @@
 [Français](README.md) · [English](README.en.md)
 
-# Bionic Mobile — local companion
+# Canaé — local companion
 
-**Local candidate 2.5.1-beta.2** adds a **+** next to each project's conversation count and checks image launch announcements against ComfyUI receipts. It includes the server recovery and guided setup introduced in beta.1, as well as the existing 1–5 image batches, memory policies, gallery and image actions. Internet is enabled for new choices; images become enabled when configured ComfyUI is available. Explicit opt-outs remain respected. This candidate has not been published.
+**Local candidate Canaé 2.6.0-beta.3** adds the llama-ui interface, centered windows, native settings with sliders and HTTP/HTTPS/mTLS security. Select one conversation engine in the webapp and share GGUF files with Bionic without copying them. Internet and available images are enabled by default; explicit opt-outs remain respected. See [the candidate and its limits](docs/llama-ui-prototype.md). This candidate has not been published.
 
-**Version 2.5.0** · Chat with the models on your PC and access your projects from your phone’s browser over your local network.
+**Stable reference 2.5.0** · Chat with the models on your PC and access your projects from your phone’s browser over your local network.
 
 The companion uses Bionic’s local API and can generate images through ComfyUI. This community project is independent of Bionic; Bionic, ComfyUI and their models are not included.
 

@@ -28,7 +28,7 @@ globalThis.BionicI18n.register("fr", {
   },
   "app.modelContext": " · Contexte : {count} tokens",
   "app.unloadNamed": "Décharger {name}{instance}",
-  "app.documentTitle": "{waiting}Bionic · compagnon local",
+  "app.documentTitle": "{waiting}Canaé · compagnon local",
   "app.approvalsPending": "{count} à valider · ",
   "app.sessionApproval": "À valider{queued}",
   "app.sessionRunning": "Réponse en cours{queued}",

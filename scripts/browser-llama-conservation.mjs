@@ -19,7 +19,7 @@ try{
   const context=await browser.newContext({locale:'fr-FR',viewport:{width,height:900}}),page=await context.newPage(),errors=[],posts=[];
   page.setDefaultTimeout(20000);page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(request.method()==='POST'&&new URL(request.url()).pathname==='/api/chat')posts.push(request.postDataJSON());});
   const navigation=()=>page.getByRole('navigation',{name:'Espace du projet',exact:true});
-  const openSidebar=async()=>{const button=page.getByRole('button',{name:'Ouvrir la navigation',exact:true});if(await button.isVisible())await button.click();};
+  const openSidebar=async()=>{if(await page.locator('dialog[open]').count())await page.getByRole('button',{name:'Fermer la fenêtre',exact:true}).click();const button=page.getByRole('button',{name:'Ouvrir la navigation',exact:true});if(await button.isVisible())await button.click();};
   const closeSidebar=async()=>{if(width<760){const button=page.getByRole('button',{name:'Fermer la navigation',exact:true});if(await button.isVisible())try{await button.click({timeout:1000});}catch(error){if(await button.isVisible())throw error;}}};
   const tools=page.locator('.tool-options');
   try{

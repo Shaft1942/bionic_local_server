@@ -1,6 +1,6 @@
 {
   "name": "bionic-llama-ui-prototype",
-  "version": "2.6.0-beta.2",
+  "version": "2.6.0-beta.3",
   "private": true,
   "type": "module",
   "scripts": { "build": "vite build", "check": "svelte-check --tsconfig tsconfig.companion.json" },

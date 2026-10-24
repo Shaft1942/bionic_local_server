@@ -4,6 +4,7 @@
   import Button from '$lib/components/ui/button/button.svelte';
   import { tr, preferences, setPreferences, type Preferences } from './preferences.svelte';
   import type { Request } from './settings/types';
+  import LlamaServerSettings from './settings/LlamaServerSettings.svelte';
   import InferenceSettings from './settings/InferenceSettings.svelte';
   import ImageSettings from './settings/ImageSettings.svelte';
   import ServicesSettings from './settings/ServicesSettings.svelte';
@@ -17,7 +18,7 @@
   const dirty=$derived(Object.values(dirtyGroups).some(Boolean));
   function changed(group:string,value:boolean){if(dirtyGroups[group]!==value)dirtyGroups={...dirtyGroups,[group]:value};}
   $effect(()=>{onDirtyChange?.(dirty);});
-  const pages = $derived([{ id:'conversation',label:tr('Conversation','Conversation') },{id:'images',label:tr('Images et ComfyUI','Images and ComfyUI')},{id:'services',label:tr('Serveurs du PC','PC servers')},{id:'appearance',label:tr('Apparence et brouillons','Appearance and drafts')},{id:'security',label:tr('Connexion sécurisée','Secure connection')},{id:'maintenance',label:tr('Mises à jour et diagnostic','Updates and diagnostics')}]);
+  const pages = $derived([{ id:'conversation',label:tr('Conversation','Conversation') },{id:'llama',label:tr('Modèles llama-server','llama-server models')},{id:'images',label:tr('Images et ComfyUI','Images and ComfyUI')},{id:'services',label:tr('Serveurs du PC','PC servers')},{id:'appearance',label:tr('Apparence et brouillons','Appearance and drafts')},{id:'security',label:tr('Connexion sécurisée','Secure connection')},{id:'maintenance',label:tr('Mises à jour et diagnostic','Updates and diagnostics')}]);
   function updatePreference(next: Partial<Preferences>) { try { const value = setPreferences(next); onPreferencesChange?.(value); error = ''; } catch { error = tr('Préférence appliquée à cet onglet ; stockage du navigateur indisponible.','Preference applied to this tab; browser storage unavailable.'); } }
   function clearDrafts() { onPreferencesChange?.({ ...preferences, clearDrafts: true }); cleared = true; }
   function selectPage(next:string){page=next;if(!visited.includes(next))visited=[...visited,next];error='';document.querySelector('.settings-content')?.scrollTo(0,0);}
@@ -31,6 +32,7 @@
   <div class="settings-content">
     {#key revision}
     {#if visited.includes('conversation')}<div class="settings-page" hidden={page!=='conversation'}><InferenceSettings {request} {projectId} {chatId} {modelId} {onInferenceChange} active={active&&page==='conversation'} onDirtyChange={value=>changed('inference',value)} /></div>{/if}
+    {#if visited.includes('llama')}<div class="settings-page" hidden={page!=='llama'}><LlamaServerSettings {request} {onInferenceChange} active={active&&page==='llama'} onDirtyChange={value=>changed('llama',value)} /></div>{/if}
     {#if visited.includes('images')}<div class="settings-page" hidden={page!=='images'}><ImageSettings {request} onDirtyChange={value=>changed('images',value)} /></div>{/if}
     {#if visited.includes('services')}<div class="settings-page" hidden={page!=='services'}><ServicesSettings {request} active={active&&page==='services'} onDirtyChange={value=>changed('services',value)} /></div>{/if}
     {#if visited.includes('security')}<div class="settings-page" hidden={page!=='security'}><SecuritySettings {request} active={active&&page==='security'} /></div>{/if}

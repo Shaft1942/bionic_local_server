@@ -28,7 +28,7 @@ globalThis.BionicI18n.register("en", {
   },
   "app.modelContext": " · Context: {count} tokens",
   "app.unloadNamed": "Unload {name}{instance}",
-  "app.documentTitle": "{waiting}Bionic · local companion",
+  "app.documentTitle": "{waiting}Canaé · local companion",
   "app.approvalsPending": "{count} awaiting approval · ",
   "app.sessionApproval": "Awaiting approval{queued}",
   "app.sessionRunning": "Responding{queued}",

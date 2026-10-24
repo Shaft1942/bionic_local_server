@@ -1,0 +1,58 @@
+/* Native controls remain visible without CSS data images or inline styles. */
+.companion-shell input[type='checkbox'],
+.native-settings input[type='checkbox'],
+.native-settings .settings-content input[type='checkbox'] {
+  appearance: auto;
+  -webkit-appearance: auto;
+  accent-color: var(--primary);
+  background: revert;
+  background-image: none;
+  border: revert;
+  border-radius: revert;
+  box-shadow: none;
+  color-scheme: light;
+  cursor: pointer;
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  padding: 0;
+  vertical-align: middle;
+}
+.dark .companion-shell input[type='checkbox'],
+.dark .native-settings input[type='checkbox'] { color-scheme: dark; }
+.companion-shell input[type='checkbox']:disabled,
+.native-settings input[type='checkbox']:disabled { cursor: default; }
+.companion-shell input[type='checkbox']:focus-visible,
+.native-settings input[type='checkbox']:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+
+.range-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 17px 0; }
+.range-field-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.range-field-title label { min-width: 0; }
+.range-field-title input[type='number'] { width: 130px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.companion-shell .range-field input[type='range'],
+.native-settings .range-field input[type='range'] {
+  appearance: auto;
+  -webkit-appearance: auto;
+  accent-color: var(--primary);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+  height: 32px;
+  min-height: 32px;
+  min-width: 0;
+  padding: 0;
+  width: 100%;
+  margin: 0;
+}
+.dark .range-field input[type='range'] { color-scheme: dark; }
+.range-field input[type='range']:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+.range-field input[type='range']:disabled { cursor: default; opacity: .5; }
+.range-field-scale { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.range-field-hint { font-size: 11px; line-height: 1.55; color: var(--muted-foreground); margin: 0; }
+@media(max-width:650px) { .range-field input[type='range'] { min-height: 44px; } .range-field-title input[type='number'] { width: 115px; } .setting-check { min-height: 36px; align-items: center; } }
+@media(forced-colors:active) { .companion-shell input[type='checkbox'],.native-settings input[type='checkbox'] { forced-color-adjust: auto; } }

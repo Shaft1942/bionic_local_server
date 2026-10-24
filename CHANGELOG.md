@@ -1,5 +1,13 @@
 # Journal des versions
 
+## 2.6.0-beta.3 — Canaé — candidate locale
+
+- L’application devient Canaé, avec la mascotte fournie. Les identifiants techniques et le format des mises à jour restent compatibles.
+- Fichiers, images, activité et paramètres s’ouvrent dans une fenêtre centrée avec navigation au clavier, fermeture par Échap et brouillon de chat conservé. Le raccourci Paramètres dupliqué du pied de navigation est supprimé.
+- Cases à cocher natives visibles ; Internet proposé par défaut et images proposées lorsque le fournisseur configuré est détecté, sans remplacer les choix explicites. Curseurs avec saisie précise pour les LoRA, le plafond de réponse, le contexte et les couches GPU du profil llama-server.
+- Sécurité complète dans llama-ui : préparation HTTPS/mTLS, preuve navigateur, autorité publique, appareils, renouvellement/révocation et export privé temporaire. Le prototype utilise désormais le véritable contrôleur de transport, en conservant son mode initial jusqu’à une activation explicite.
+- Bibliothèque GGUF partagée avec Bionic, sans copie de poids. Profil llama-server possédé, sélection du modèle et démarrage/remplacement/arrêt explicites depuis la webapp ; processus externes exclus, refus pendant les travaux et récupération par lecture après perte de réponse.
+
 ## 2.6.0-beta.2 — candidate locale
 
 - Paramètres natifs dans llama-ui : moteur de conversation et connexion, modèles et plafonds, ComfyUI/LoRA/mémoire, serveurs du PC, apparence et brouillons, sécurité, mises à jour et diagnostic.

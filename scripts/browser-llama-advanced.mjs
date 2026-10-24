@@ -39,7 +39,7 @@ async function fixture(){
   await new Promise((resolve,reject)=>{app.server.once('error',reject);app.server.listen(0,'127.0.0.1',resolve);});
   return{app,root,files:bootstrap.files,stats,url:'http://127.0.0.1:'+app.server.address().port};
 }
-async function sidebar(page){const opener=page.getByRole('button',{name:'Ouvrir la navigation',exact:true});if(await opener.isVisible())await opener.click();}
+async function sidebar(page){if(await page.locator('dialog[open]').count())await page.getByRole('button',{name:'Fermer la fenêtre',exact:true}).click();const opener=page.getByRole('button',{name:'Ouvrir la navigation',exact:true});if(await opener.isVisible())await opener.click();}
 async function closeSidebar(page,width){if(width<760){const button=page.getByRole('button',{name:'Fermer la navigation',exact:true});if(await button.isVisible())await button.click();}}
 async function topTab(page,name){await page.getByRole('navigation',{name:'Espace du projet',exact:true}).getByRole('button',{name,exact:true}).click();}
 async function shot(page,name){if(captures)await page.screenshot({path:path.join(captures,name),fullPage:false});}
