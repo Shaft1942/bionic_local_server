@@ -99,9 +99,10 @@ try {
       await page.goto(f.url); await page.locator('#access-code').fill(PROTOTYPE_CODE); await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
       const picker = page.getByRole('combobox', { name: 'Modèle', exact: true }), prompt = page.getByRole('textbox', { name: 'Message', exact: true });
       const dialog=page.getByRole('dialog',{name:'Charger le modèle GGUF',exact:true});
-      const choose=async(value,{cancel=false,escape=false,stale=false}={})=>{
+      const choose=async(value,{cancel=false,escape=false,stale=false,tokenNoticeExpected=false}={})=>{
         const before=actionCount();await picker.selectOption(value);assert.equal(nativeDialogs,0,'GGUF confirmation must use an accessible HTML dialog, never a blocking native confirm');await dialog.waitFor();
         confirmations.push(await dialog.textContent());assert.equal(actionCount(),before,'No POST before explicit HTML confirmation');
+        if(tokenNoticeExpected)assert.match(confirmations.at(-1),/jeton du llama-server externe sera effacé/,'Fresh selection state must disclose token clearing before any POST');
         if(confirmations.length===1){await shot(page,width+'-gguf-confirmation.png');const box=await dialog.boundingBox();assert(box.height<600,'Confirmation sizes to its content');}
         if(stale)await f.changeProfile();
         if(escape)await page.keyboard.press('Escape');else await dialog.getByRole('button',{name:cancel?'Annuler':'Charger et utiliser',exact:true}).click();
@@ -124,19 +125,28 @@ try {
       await choose('gguf:' + e4b.id); await active(page, gemmaName);
       assert.equal(f.stats.starts, 1); assert.equal(actionCount(), 1); assert.equal((await f.manager.snapshot()).process.model.id, e4b.id);
       assert.equal(await prompt.inputValue(), 'Brouillon conservé pendant le choix de modèle.');
+      const refuseSame=route=>route.fulfill({status:409,contentType:'application/json',body:JSON.stringify({error:'Nouvelle sélection refusée avant effet'})});
+      await page.route('**/api/inference/select-model',refuseSame);await choose('gguf:'+e4b.id);await page.getByRole('alert').filter({hasText:'Nouvelle sélection refusée avant effet'}).waitFor();
+      await active(page,gemmaName);assert.equal(actionCount(),2);assert.equal(f.stats.starts,1);assert.equal(f.stats.stops,0);await page.unroute('**/api/inference/select-model',refuseSame);
       const beforeCancel = await picker.inputValue();
-      await choose('gguf:' + qwen.id,{cancel:true}); await active(page, gemmaName); assert.equal(await picker.inputValue(), beforeCancel); assert.equal(actionCount(), 1); assert.equal(f.stats.starts, 1);
-      await page.reload(); await active(page, gemmaName); assert.equal(await picker.inputValue(), beforeCancel); assert.equal(f.stats.starts, 1); assert.equal(actionCount(), 1);
+      await choose('gguf:' + qwen.id,{cancel:true}); await active(page, gemmaName); assert.equal(await picker.inputValue(), beforeCancel); assert.equal(actionCount(), 2); assert.equal(f.stats.starts, 1);
+      await page.reload(); await active(page, gemmaName); assert.equal(await picker.inputValue(), beforeCancel); assert.equal(f.stats.starts, 1); assert.equal(actionCount(), 2);
       const tokenState = await (await context.request.get(f.url + '/api/inference/settings')).json();
       const tokenSetup = await context.request.post(f.url + '/api/inference/settings', { data: { provider: 'llamacpp', llamaToken: 'synthetic-fixture-token', expectedRevision: tokenState.revision }, headers: { Origin: f.url } }); assert.equal(tokenSetup.status(), 200, await tokenSetup.text());
+      // Simulate an old parent prop while the independently read selection DTO
+      // correctly reports the current token and revision. Never read the token.
+      const staleParent=async route=>{if(route.request().method()!=='GET')return route.continue();const response=await route.fetch(),value=await response.json();value.hasLlamaToken=false;await route.fulfill({response,body:JSON.stringify(value)});};
+      await page.route('**/api/inference/settings',staleParent);
       await page.reload(); await active(page, gemmaName);
       const dropped = await dropReply(page, '/api/inference/select-model');
-      await choose('gguf:' + qwen.id); await dropped(); await active(page, qwenName);
-      assert.equal(f.stats.starts, 2); assert.equal(f.stats.stops, 1); assert.equal(actionCount(), 2); assert.equal((await f.manager.snapshot()).process.model.id, qwen.id);
+      await choose('gguf:' + qwen.id,{tokenNoticeExpected:true}); await dropped(); await active(page, qwenName);
+      assert.equal(f.stats.starts, 2); assert.equal(f.stats.stops, 1); assert.equal(actionCount(), 3); assert.equal((await f.manager.snapshot()).process.model.id, qwen.id);
       assert(confirmations.at(-1).includes('jeton du llama-server externe sera effacé')); assert.equal((await (await context.request.get(f.url + '/api/inference/settings')).json()).hasLlamaToken, false);
+      const recovered=await(await context.request.get(f.url+'/api/inference/model-selection')).json();assert.equal(recovered.operation.state,'succeeded');assert.equal(recovered.operation.requestId,(await f.manager.snapshot()).operation.requestId);assert.equal(await page.getByRole('alert').count(),0,'A lost response resolves only with its correlated successful receipt');
+      await page.unroute('**/api/inference/settings',staleParent);
       assert.equal(await page.getByRole('button', { name: 'Envoyer', exact: true }).isEnabled(), true);
       assert.equal(await prompt.inputValue(), 'Brouillon conservé pendant le choix de modèle.');
-      await page.reload(); await active(page, qwenName); assert.equal(actionCount(), 2); assert.equal(f.stats.starts, 2);
+      await page.reload(); await active(page, qwenName); assert.equal(actionCount(), 3); assert.equal(f.stats.starts, 2);
       f.setBusy(true); await choose('gguf:' + e4b.id); await page.getByRole('alert').filter({ hasText: 'tâche synthétique' }).waitFor(); await active(page, qwenName); assert.equal(f.stats.starts, 2); assert.equal(f.stats.stops, 1); f.setBusy(false);
       f.setExternal(true); await choose('gguf:' + e4b.id); await page.getByRole('alert').filter({ hasText: 'serveur externe' }).waitFor(); await active(page, qwenName); assert.equal(f.stats.starts, 2); assert.equal(f.stats.stops, 1); f.setExternal(false);
       f.delay(); await choose('gguf:' + e4b.id);

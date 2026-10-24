@@ -80,33 +80,41 @@
     // The native change listener runs before Svelte's bind:value listener.
     const value = (event.currentTarget as HTMLSelectElement).value;
     if (!llama || !value.startsWith('gguf:')) { model = value; onSelected?.(); return; }
-    const chosen = catalogue?.models?.find((item: any) => 'gguf:' + item.id === value);
     queueMicrotask(() => { choice = model; });
-    if (disabled || transitionBusy || loading || !chosen?.selectable || !profile?.canControl || unownedProfile || selectionState?.editable === false) return;
-    proposal={id:chosen.id,name:fileName(chosen),profileRevision:selectionState.profileRevision,inferenceRevision:selectionState.inferenceRevision,tokenNotice:inference?.hasLlamaToken===true};
+    if (disabled || transitionBusy || loading) return;
+    if(!await refresh())return;
+    const chosen = catalogue?.models?.find((item: any) => 'gguf:' + item.id === value),current=selectionState?.inference;
+    if(!mounted||disabled||!llama||!chosen?.selectable||!profile?.canControl||unownedProfile||selectionState?.editable===false||selectionState?.busy||selectionState?.reconciliationRequired)return;
+    if(current?.provider!=='llamacpp'||current.revision!==selectionState.inferenceRevision||typeof current.hasLlamaToken!=='boolean'){
+      onFailure?.(tr('État du moteur non confirmé. Relis le choix avant de continuer.','Engine state unconfirmed. Reload the selection before continuing.'));return;
+    }
+    proposal={id:chosen.id,name:fileName(chosen),profileRevision:selectionState.profileRevision,inferenceRevision:current.revision,tokenNotice:current.hasLlamaToken};
   }
   async function closeProposal(){proposal=null;await tick();picker?.focus();}
   async function confirmProposal(){
     if(!proposal||submitting)return;
     if(disabled||!llama){await closeProposal();return;}
     const target=proposal;proposal=null;
+    const requestId='composer-'+uuid();
     // Re-read before any effect: the profile, engine or ownership may have changed
     // while the user was reviewing the confirmation.
     submitting = true; targetName = target.name; onFailure?.('');
     try {
       if(!await refresh())return;
-      const chosen=catalogue?.models?.find((item:any)=>item.id===target.id);
-      if(!mounted||!llama||!chosen?.selectable||!profile?.canControl||unownedProfile||selectionState?.editable===false||selectionState?.busy||selectionState?.reconciliationRequired||target.profileRevision!==selectionState?.profileRevision||target.inferenceRevision!==selectionState?.inferenceRevision){
+      const chosen=catalogue?.models?.find((item:any)=>item.id===target.id),current=selectionState?.inference;
+      if(!mounted||!llama||!chosen?.selectable||!profile?.canControl||unownedProfile||selectionState?.editable===false||selectionState?.busy||selectionState?.reconciliationRequired||target.profileRevision!==selectionState?.profileRevision||target.inferenceRevision!==selectionState?.inferenceRevision||current?.provider!=='llamacpp'||current.revision!==target.inferenceRevision||current.hasLlamaToken!==target.tokenNotice){
         onFailure?.(unownedProfile?externalNotice():tr('Le modèle, le profil ou le moteur a changé. Relis le choix avant de confirmer à nouveau.','The model, profile or engine changed. Review the selection before confirming again.'));return;
       }
       selectionState = await post(request, '/api/inference/select-model', {
-        modelId: target.id, requestId: 'composer-' + uuid(), expectedRevision: target.profileRevision,
+        modelId: target.id, requestId, expectedRevision: target.profileRevision,
         expectedInferenceRevision: target.inferenceRevision, consent: true
       }, { 'X-Local-Service-CSRF': selectionState.csrfNonce || profile.csrfNonce });
       await refresh(); await onInferenceChange?.();
     } catch (error) {
       onFailure?.(message(error)); await refresh(); await onInferenceChange?.();
-      if (selectionState?.activeModel?.ggufId === target.id) onFailure?.('');
+      const status=(error as {status?:number})?.status;
+      const ambiguous=!status||status>=500||status===408||status===409;
+      if (ambiguous&&selectionState?.operation?.requestId===requestId&&selectionState.operation.state==='succeeded'&&selectionState?.activeModel?.ggufId===target.id) onFailure?.('');
     } finally { submitting = false; if (!pending) targetName = ''; choice = pending ? 'pending' : model;await tick();picker?.focus(); }
   }
 </script>
