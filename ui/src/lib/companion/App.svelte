@@ -20,6 +20,7 @@
   import ReasoningPicker from './ReasoningPicker.svelte';
   import EnginePicker from './EnginePicker.svelte';
   import { reasoningChoiceKey, resolveReasoning, restoreReasoningChoices, type ReasoningChoice } from './reasoning-options';
+  import { readEngineCatalogue } from './engine-catalogue';
   import LoadedModelsMenu from './LoadedModelsMenu.svelte';
   import ConversationActions from './ConversationActions.svelte';
   import WorkspacePanel from './WorkspacePanel.svelte';
@@ -71,6 +72,7 @@
   let followReply=true;
   let modelSelectionBusy=$state(false);
   let engineSelectionBusy=$state(false);
+  let engineReadPending=$state(false),engineCatalogueUnconfirmed=$state(false),engineReadSequence=0;
   const workspaceItems=[{id:'chat',fr:'Chat',en:'Chat',icon:MessageSquare},{id:'files',fr:'Fichiers',en:'Files',icon:Files},{id:'images',fr:'Images',en:'Images',icon:Image},{id:'activity',fr:'Activité',en:'Activity',icon:Activity},{id:'settings',fr:'Paramètres',en:'Settings',icon:Settings}];
   const currentProject=$derived(projects.find(item=>item.id===projectId));
   const selectedModel=$derived(models.find(item=>item.id===model));
@@ -172,10 +174,17 @@
   }
   function chooseReasoning(choice:ReasoningChoice){reasoningChoices={...reasoningChoices,[reasoningKey]:resolveReasoning(selectedModel?.reasoning,choice)};saveDraft();}
   async function refreshEngines(reportModelFailure=true,confirmedInference?:unknown){
-    const values=await Promise.allSettled([confirmedInference?Promise.resolve(confirmedInference):request('/api/inference/settings'),request('/api/models'),request('/api/comfy/settings')]);
-    if(values[0].status==='fulfilled')inference=values[0].value;
-    if(values[1].status==='fulfilled'){models=(values[1].value.models||[]).filter((item:any)=>item.type==='llm');if(!models.some(item=>item.id===model))model=models.find(item=>item.loaded)?.id||models[0]?.id||'';}else{models=[];model='';if(reportModelFailure)report(values[1].reason);}
-    if(values[2].status==='fulfilled'){comfy=values[2].value;if(!imageWorkflowId)imageWorkflowId=comfy.workflowId||'';}
+    const sequence=++engineReadSequence;engineReadPending=true;
+    try{
+      const [catalogue,images]=await Promise.allSettled([readEngineCatalogue(request,confirmedInference),request('/api/comfy/settings')]);
+      if(sequence!==engineReadSequence||!mounted)return;
+      if(catalogue.status==='fulfilled'){
+        const current=catalogue.value;inference=current.inference;engineCatalogueUnconfirmed=current.kind==='unconfirmed';
+        if(current.kind==='ready'){models=current.models.filter(item=>item.type==='llm');if(!models.some(item=>item.id===model))model=models.find(item=>item.loaded)?.id||models[0]?.id||'';}
+        else{models=[];model='';if(current.kind==='unavailable'&&reportModelFailure)report(current.failure);}
+      }else{models=[];model='';engineCatalogueUnconfirmed=true;if(reportModelFailure)report(catalogue.reason);}
+      if(images.status==='fulfilled'){comfy=images.value;if(!imageWorkflowId)imageWorkflowId=comfy.workflowId||'';}
+    }finally{if(sequence===engineReadSequence)engineReadPending=false;}
   }
   async function start(){
     const ping=await request('/api/ping');instanceId=ping.instanceId;prototypeInfo=ping.prototypeInfo||null;activatePreferences(instanceId);
@@ -235,7 +244,7 @@
     }
   }
   async function send(event?:Event){
-    event?.preventDefault();if(!prompt.trim()||!model||!projectId||starting||modelSelectionBusy||engineSelectionBusy)return;
+    event?.preventDefault();if(!prompt.trim()||!model||!projectId||starting||modelSelectionBusy||engineSelectionBusy||engineReadPending||engineCatalogueUnconfirmed)return;
     if(composer?.form&&!composer.form.reportValidity())return;
     error='';notice='';followReply=true;const text=prompt.trim(),requestId=newRequestId(),pid=projectId,sequence=viewSequence;
     const snapshot:Draft={text,updatedAt:Date.now(),attachments:$state.snapshot(attachments),model,reasoning,reasoningChoices:$state.snapshot(reasoningChoices),fileProfile,webAccess,webApproval,scriptAccess,imageAccess,imageWorkflowId,imageCount,imageModelPolicy,nonce:draftNonce};
@@ -348,13 +357,14 @@
             {#if attachments.length}<div class="attachment-chips">{#each attachments as file,index}<span><Files />{file.name||file.path}<button type="button" aria-label={tr('Retirer ','Remove ')+(file.name||file.path)} onclick={()=>{attachments=attachments.filter((_,at)=>at!==index);saveDraft();}}><X /></button></span>{/each}</div>{/if}
             <Textarea id="prompt" bind:ref={composer} bind:value={prompt} oninput={()=>queueMicrotask(saveDraft)} placeholder={tr('Écris ton message…','Write your message…')} aria-label={tr('Message','Message')} maxlength={16000} onkeydown={event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();void send();}}} />
             <div class="inference-controls" role="group" aria-label={tr('Moteur, modèle et réflexion','Engine, model and reasoning')}>
-              <EnginePicker {request} {inference} disabled={starting||modelSelectionBusy} beforeChange={saveDraft} onBusyChange={value=>engineSelectionBusy=value} onInferenceChange={changedComposerEngine} />
-              <div class="model-field"><span>{tr('Modèle','Model')}</span><ModelPicker {request} {models} {inference} bind:model disabled={starting||modelSelectionBusy||engineSelectionBusy} onBusyChange={value=>modelSelectionBusy=value} onSelected={()=>queueMicrotask(saveDraft)} onInferenceChange={changedInference} onFailure={message=>error=message} /></div>
-              <ReasoningPicker capability={selectedModel?.reasoning} value={reasoning} hasModel={!!selectedModel} disabled={starting||modelSelectionBusy||engineSelectionBusy} onChange={chooseReasoning} />
+              <EnginePicker {request} {inference} disabled={starting||modelSelectionBusy||engineReadPending||engineCatalogueUnconfirmed} beforeChange={saveDraft} onBusyChange={value=>engineSelectionBusy=value} onInferenceChange={changedComposerEngine} />
+              <div class="model-field"><span>{tr('Modèle','Model')}</span><ModelPicker {request} {models} {inference} bind:model disabled={starting||modelSelectionBusy||engineSelectionBusy||engineReadPending||engineCatalogueUnconfirmed} onBusyChange={value=>modelSelectionBusy=value} onSelected={()=>queueMicrotask(saveDraft)} onInferenceChange={changedInference} onFailure={message=>error=message} /></div>
+              <ReasoningPicker capability={selectedModel?.reasoning} value={reasoning} hasModel={!!selectedModel} disabled={starting||modelSelectionBusy||engineSelectionBusy||engineReadPending||engineCatalogueUnconfirmed} onChange={chooseReasoning} />
+              {#if engineCatalogueUnconfirmed}<div class="catalogue-recovery" role="alert"><p>{tr('Le moteur et son catalogue ne sont pas confirmés ensemble. Relis leur état avant d’envoyer un message.','The engine and its catalogue are not confirmed together. Reload their state before sending a message.')}</p><Button type="button" variant="outline" disabled={engineReadPending} onclick={()=>void refreshEngines()}>{tr('Relire le moteur et les modèles','Reload engine and models')}</Button></div>{/if}
             </div>
             <div class="composer-toolbar"><div class="composer-controls"><Button variant="ghost" size="icon" aria-label={tr('Joindre un fichier','Attach a file')} onclick={()=>changeTab('files')}><Plus /></Button>
               <select aria-label={tr('Droits sur les fichiers','File permissions')} bind:value={fileProfile} onchange={()=>queueMicrotask(saveDraft)} disabled={currentProject?.isUnassigned}><option value="none">{tr('Fichiers désactivés','Files disabled')}</option><option value="read">{tr('Lecture des fichiers','Read files')}</option><option value="write">{tr('Lecture et écriture','Read and write')}</option></select>
-            </div><div class="send-controls">{#if currentJob}{#if streamingIds.includes(currentJob.requestId)}<Button variant="ghost" size="icon" aria-label={tr('Déconnecter le flux sans arrêter la demande','Disconnect stream without stopping request')} onclick={detach}><Unplug /></Button>{/if}<Button variant="outline" size="icon" aria-label={tr('Arrêter la demande','Stop request')} disabled={!currentJob.id} onclick={()=>stop()}><Square /></Button>{/if}<Button type="submit" size="icon" class="send-button" aria-label={tr('Envoyer','Send')} disabled={!prompt.trim()||!model||!projectId||starting||modelSelectionBusy||engineSelectionBusy}><ArrowUp /></Button></div></div>
+            </div><div class="send-controls">{#if currentJob}{#if streamingIds.includes(currentJob.requestId)}<Button variant="ghost" size="icon" aria-label={tr('Déconnecter le flux sans arrêter la demande','Disconnect stream without stopping request')} onclick={detach}><Unplug /></Button>{/if}<Button variant="outline" size="icon" aria-label={tr('Arrêter la demande','Stop request')} disabled={!currentJob.id} onclick={()=>stop()}><Square /></Button>{/if}<Button type="submit" size="icon" class="send-button" aria-label={tr('Envoyer','Send')} disabled={!prompt.trim()||!model||!projectId||starting||modelSelectionBusy||engineSelectionBusy||engineReadPending||engineCatalogueUnconfirmed}><ArrowUp /></Button></div></div>
             <details class="tool-options" onchange={()=>queueMicrotask(saveDraft)}><summary>{tr('Outils et images','Tools and images')}</summary><div class="tool-grid"><label><input type="checkbox" bind:checked={webAccess} />{tr('Recherche web','Web search')}</label><label><input type="checkbox" bind:checked={webApproval} disabled={!webAccess} />{tr('Accord pour chaque appel web','Approve each web call')}</label><label><input type="checkbox" bind:checked={scriptAccess} disabled={currentProject?.isUnassigned} />{tr('Scripts avec approbation','Scripts with approval')}</label><label><input type="checkbox" bind:checked={imageAccess} disabled={!comfy?.enabled||!comfy?.available} />{tr('Génération d’images','Image generation')}</label>
               {#if imageAccess}<label>{tr('Workflow','Workflow')}<select aria-label={tr('Workflow du chat','Chat workflow')} bind:value={imageWorkflowId}>{#each comfy?.workflows||[] as workflow}<option value={workflow.id}>{workflow.name||workflow.label||workflow.id}</option>{/each}</select></label>{#key projectId+':'+(chat?.id||'new')}<ImageCountField id="chat-image-count" bind:value={imageCount} disabled={!comfy?.enabled||!comfy?.available} onValueChange={()=>queueMicrotask(saveDraft)}/>{/key}<label>{tr('Modèle texte pendant les images','Text model during images')}<select aria-label={tr('Politique mémoire des images','Image memory policy')} bind:value={imageModelPolicy}><option value="">{tr('Réglage de l’application','Application setting')}</option><option value="keep">{tr('Garder chargé','Keep loaded')}</option><option value="unload">{tr('Décharger','Unload')}</option><option value="alternate">{tr('Alterner','Alternate')}</option></select></label>{/if}
             </div><p class="quiet">{tr('Les droits sont fixés à l’envoi. Les mêmes outils sont disponibles quel que soit le moteur d’inférence.','Permissions are fixed when sent. The same tools are available with every inference engine.')}</p></details>
@@ -369,6 +379,7 @@
   .inference-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);align-items:start;gap:12px;margin:8px 0 12px;}
   .model-field{display:flex;flex-direction:column;gap:4px;min-width:0;}
   .model-field>span{font-size:11px;line-height:1.5;color:var(--muted-foreground);}
+  .catalogue-recovery{grid-column:1/-1;font-size:12px;line-height:1.6;}.catalogue-recovery p{margin:0 0 8px;}
   .model-field :global(select){width:100%;max-width:100%;min-width:0;min-height:44px;background:var(--background);color:var(--foreground);border:1px solid var(--border);border-radius:7px;padding:8px 25px 8px 10px;font-size:12px;text-overflow:ellipsis;}
   .model-field :global(select:focus-visible){outline:2px solid var(--ring);outline-offset:2px;}
   @media(max-width:650px){.inference-controls{grid-template-columns:minmax(0,1fr);gap:10px;}}

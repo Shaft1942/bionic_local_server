@@ -11,12 +11,13 @@ if (captures) await fs.mkdir(captures, { recursive: true });
 const instanceId = 'reasoning-fixture', projectId = 'reasoning-project', chatId = 'web-11111111-1111-4111-8111-111111111111';
 function fixture() {
   let provider = 'bionic', revision = 1, mode = 'ok', failReads = false, modelBusy = false;
+  let llamaUrl='http://127.0.0.1:19996',hasLlamaToken=false,profileRevision=1,profileFailure=false,localScenario=false,unloadedLocal=false;
   const posts = [], unknown = [];
   const binary = { id:'binary',name:'Modèle binaire',type:'llm',loaded:true,loadedInstances:[],reasoning:{kind:'toggle',allowedOptions:['off','on'],default:'on'} };
   const graded = { id:'graded',name:'Modèle gradué',type:'llm',loaded:true,loadedInstances:[],reasoning:{allowedOptions:['minimal','low','medium','high','xhigh','max'],default:'medium'} };
   const absent = { id:'unknown',name:'Options inconnues',type:'llm',loaded:true,loadedInstances:[],reasoning:null };
   const chat = { id:chatId,projectId,source:'web',name:'Chat de réflexion',model:'binary',reasoningByModel:{binary:'off',graded:'medium'},messages:[{id:'fixture-message',role:'assistant',text:'Réponse synthétique.',complete:true}] };
-  const current = () => ({ provider,revision:'inference-'+revision,editable:true,busy:false,reconciliationRequired:false,apiUrl:'http://127.0.0.1:19995',llamaUrl:'http://127.0.0.1:19996' });
+  const current = () => ({ provider,revision:'inference-'+revision,editable:true,busy:false,reconciliationRequired:false,apiUrl:'http://127.0.0.1:19995',llamaUrl,hasLlamaToken });
   const models = () => provider === 'bionic' ? [binary,graded,absent] : [{...binary,reasoning:{kind:'toggle',allowedOptions:['off','on'],default:null}}];
   const json = (route,value,status=200) => route.fulfill({status,contentType:'application/json',body:JSON.stringify(value)});
   async function api(route) {
@@ -28,16 +29,21 @@ function fixture() {
     else if(name==='/api/projects') await json(route,{projects:[{id:projectId,name:'Projet synthétique',locallyOwned:true}]});
     else if(name==='/api/sessions') await json(route,{sessions:[{id:chatId,projectId,name:chat.name,source:'web'}],total:1});
     else if(name==='/api/conversation') await json(route,chat);
-    else if(name==='/api/models') await json(route,{models:models(),provider,inferenceRevision:current().revision});
+    else if(name==='/api/models') {
+      if(mode==='race'){provider=provider==='bionic'?'llamacpp':'bionic';revision++;mode='ok';}
+      await json(route,unloadedLocal?{error:'Synthetic profile is not loaded'}:{models:models(),provider:mode==='bad-meta'?'unrecognized':provider,inferenceRevision:current().revision},unloadedLocal?503:200);
+    }
     else if(name==='/api/comfy/settings') await json(route,{enabled:false,available:false,workflows:[]});
     else if(name==='/api/inference/model-selection') await json(route,{busy:modelBusy,reconciliationRequired:modelBusy,editable:true,operation:modelBusy?{state:'unknown',modelId:'synthetic'}:null});
-    else if(name==='/api/llama-server') await json(route,{profile:{endpoint:current().llamaUrl,directory:'Fixture',revision:'profile-1'},process:{owned:false,state:'detected-unowned'},canControl:false});
-    else if(name==='/api/llama-server/models') await json(route,{models:[]});
+    else if(name==='/api/llama-server') await json(route,profileFailure?{error:'Synthetic profile unavailable'}:{profile:{endpoint:'http://127.0.0.1:19996',directory:'Fixture',revision:'profile-'+profileRevision},process:{owned:false,state:localScenario?'configured':'detected-unowned'},canControl:localScenario},profileFailure?503:200);
+    else if(name==='/api/llama-server/models') await json(route,{models:localScenario?[{id:'a'.repeat(64),relativePath:'Fixture-local.gguf',name:'Fixture-local.gguf',selectable:true}]:[]});
     else if(name==='/api/inference/settings') {
       if(body) {
-        assert.deepEqual(Object.keys(body).sort(),['expectedRevision','provider']); assert.equal(body.expectedRevision,current().revision);
+        assert.deepEqual(Object.keys(body).sort(),body.llamaUrl?['clearLlamaToken','expectedRevision','llamaUrl','provider']:['expectedRevision','provider']); assert.equal(body.expectedRevision,current().revision);
+        if(body.llamaUrl){assert.equal(body.llamaUrl,'http://127.0.0.1:19996');assert.equal(body.clearLlamaToken,true);assert.equal(hasLlamaToken,true);}
         if(mode==='refuse') { await json(route,{error:'Refus synthétique avant effet'},409); return true; }
         provider=body.provider; revision++;
+        if(body.llamaUrl){llamaUrl=body.llamaUrl;hasLlamaToken=false;unloadedLocal=true;}
         if(mode==='lost-read') failReads=true;
         if(mode==='lost'||mode==='lost-read') { await route.abort('failed'); return true; }
         await json(route,current());
@@ -53,7 +59,7 @@ function fixture() {
     else { unknown.push(name); await json(route,{error:'Unmocked route'},404); }
     return true;
   }
-  return {api,posts,unknown,binary,graded,current,mode(value){mode=value;},restoreReads(){failReads=false;},modelBusy(value){modelBusy=value;}};
+  return {api,posts,unknown,binary,graded,current,mode(value){mode=value;},restoreReads(){failReads=false;},modelBusy(value){modelBusy=value;},external(){provider='llamacpp';llamaUrl='http://127.0.0.1:19997';hasLlamaToken=true;localScenario=true;unloadedLocal=false;revision++;},profileFailure(value){profileFailure=value;},staleProfile(){profileRevision++;}};
 }
 const results=[];
 try { for(const width of [1280,320]) for(const language of ['fr','en']) {
@@ -110,10 +116,23 @@ try { for(const width of [1280,320]) for(const language of ['fr','en']) {
     state.modelBusy(false);await page.waitForFunction(()=>!document.querySelector('#chat-reasoning')?.disabled);
     assert.equal(state.posts.length,beforeUnknown+1,'Recovery after failed GET uses GET only');
     await page.reload();await reasonValue('off');assert.equal(await prompt().inputValue(),'Intention conservée');
+    const beforeRace=state.posts.length;state.mode('race');await apply('bionic');await page.waitForFunction(()=>document.querySelector('#chat-engine')?.value==='llamacpp'&&!document.querySelector('#chat-engine')?.disabled);assert.equal(state.posts.length,beforeRace+1,'A concurrent engine revision is repaired with GET only');
+    state.mode('bad-meta');await page.reload();const repair=button('Relire le moteur et les modèles','Reload engine and models');await repair.waitFor();assert(await button('Envoyer','Send').isDisabled());assert(await reasoning().isDisabled());const beforeRepair=state.posts.length;state.mode('ok');await repair.click();await reasonValue('off');assert.equal(state.posts.length,beforeRepair,'Explicit catalogue repair never mutates the engine');
+    // Explicit external connection -> configured local profile; no implicit model/process action.
+    state.external();state.profileFailure(true);await page.reload();await engine().waitFor();await page.waitForTimeout(60);assert.equal(await button('Utiliser les GGUF locaux','Use local GGUFs').count(),0,'Unknown local profile offers no action');
+    state.profileFailure(false);await page.reload();const local=button('Utiliser les GGUF locaux','Use local GGUFs');await local.waitFor();
+    const beforeLocal=state.posts.length;await local.click();const dialog=page.getByRole('dialog',{name:tr('Utiliser les GGUF locaux','Use local GGUFs'),exact:true});await dialog.waitFor();
+    assert.match(await dialog.innerText(),language==='fr'?/jeton.*sera effacé/:/token.*removed/);assert.match(await dialog.innerText(),language==='fr'?/ni arrêté ni adopté/:/neither stopped nor adopted/);assert.equal(state.posts.length,beforeLocal);await shot('local-confirmation');
+    await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});assert(await local.evaluate(e=>e===document.activeElement));assert.equal(state.posts.length,beforeLocal);
+    await local.click();await dialog.waitFor();state.staleProfile();await dialog.getByRole('button',{name:tr('Connecter le profil local','Connect local profile'),exact:true}).click();await page.getByRole('alert').filter({hasText:tr('La connexion ou le profil a changé','The connection or profile changed')}).waitFor();assert.equal(state.posts.length,beforeLocal,'Stale local profile cannot mutate the connection');
+    await local.click();await dialog.waitFor();state.mode('lost');await dialog.getByRole('button',{name:tr('Connecter le profil local','Connect local profile'),exact:true}).click();
+    await page.waitForFunction(()=>!document.querySelector('#chat-engine')?.disabled&&document.querySelector('[aria-label="Modèle"],[aria-label="Model"] optgroup option[value^="gguf:"]'));
+    assert.equal(state.posts.length,beforeLocal+1,'Lost local connection response is never replayed');assert.equal(state.current().llamaUrl,'http://127.0.0.1:19996');assert.equal(state.current().hasLlamaToken,false);
+    assert.equal(await model().inputValue(),'');assert(await button('Envoyer','Send').isDisabled());assert.equal(await prompt().inputValue(),'Intention conservée');assert.equal(await model().locator('option[value^="gguf:"]').count(),1,'Local GGUF remains accessible without a loaded model');assert.equal(state.posts.filter(item=>item.name==='/api/inference/select-model').length,0);
     await reasoning().focus();await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowUp');
     const size=await reasoning().boundingBox();assert(size.height>=44);if(width===320)await engine().tap();await page.keyboard.press('Escape');
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);assert.deepEqual(csp,[]);assert.deepEqual(state.unknown,[]);
-    results.push({width,language,binary:true,graded:true,unknown:true,perModelDraftReload:true,chatPreference:true,staleChoiceSanitized:true,engineGlobalExplicit:true,lostPostNoReplay:true,failedReadRecovery:true,modelSelectionDisabled:true,noUnvalidatedPost:true,chatPosts:state.posts.filter(item=>item.name==='/api/chat').length,enginePosts:state.posts.filter(item=>item.name==='/api/inference/settings').length});
+    results.push({width,language,binary:true,graded:true,unknown:true,perModelDraftReload:true,chatPreference:true,staleChoiceSanitized:true,engineGlobalExplicit:true,lostPostNoReplay:true,failedReadRecovery:true,modelSelectionDisabled:true,noUnvalidatedPost:true,engineRevisionRaceRepaired:true,invalidCatalogueBlockedAndRecovered:true,localProfileExplicit:true,tokenWarningAndClear:true,staleProfileNoPost:true,unloadedLocalGgufAccessible:true,noImplicitModelPost:true,chatPosts:state.posts.filter(item=>item.name==='/api/chat').length,enginePosts:state.posts.filter(item=>item.name==='/api/inference/settings').length});
   } catch(error) { console.error(JSON.stringify({width,language,errors,unknown:state.unknown,posts:state.posts,text:(await page.locator('body').innerText()).slice(-3500)}));await shot('failure');throw error; }
   finally { await context.close(); }
 } console.log(JSON.stringify({ok:true,syntheticOnly:true,results},null,2)); } finally { await browser.close(); }
