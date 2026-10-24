@@ -413,6 +413,7 @@ async function ownedImage(input) {
 }
 async function retryImage(input) {
   assertServiceAdmission();
+  if(modelManagementBusy)throw fail(409,'Une opération sur les modèles est en cours. Attends sa fin avant une génération.');
   if (!input || typeof input !== 'object' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(input.requestId || '') || !['same', 'new'].includes(input.seedMode)) throw fail(400, 'Identifiant de relance ou choix de graine invalide.');
   return withConversationManagement({ projectId: input.projectId, id: input.chatId }, async () => {
     const { chat } = await ownedImage(input);
@@ -638,6 +639,7 @@ async function recoverDirectImage(chat, reply) {
 }
 async function sendDirectImage(data) {
   assertServiceAdmission();
+  if(modelManagementBusy)throw fail(409,'Une opération sur les modèles est en cours. Attends sa fin avant une génération.');
   if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).some(key => !['requestId','projectId','sessionId','prompt','workflowId','negativePrompt','seed','format','imageCount'].includes(key))) throw fail(400, 'Demande image invalide.');
   const imageCount = data.imageCount === undefined ? 1 : data.imageCount;
   if (!Number.isInteger(imageCount) || imageCount < 1 || imageCount > 5) throw fail(400, 'Choisis entre 1 et 5 images.');
@@ -724,7 +726,7 @@ async function sendChat(req, res, data) {
   data = { ...data, requestId };
   pruneChatRequests();
   try {
-    if (modelManagementBusy) throw fail(409, 'Un modèle est en cours de déchargement. Attends la fin pour envoyer ton message.');
+    if (modelManagementBusy) throw fail(409, 'Une opération sur les modèles est en cours. Attends la fin pour envoyer ton message.');
     const text = typeof data.text === 'string' ? data.text.trim() : '';
     if (!text || text.length > 16000) throw fail(400, 'Saisis un message de 1 à 16 000 caractères.');
     const project = (await listProjects()).find(project => project.id === data.projectId);
@@ -752,7 +754,7 @@ async function sendChat(req, res, data) {
     let execute;
     await withAcceptanceLock(key, async () => {
       assertServiceAdmission();
-      if (modelManagementBusy) throw fail(409, 'Un modèle est en cours de déchargement. Attends la fin pour envoyer ton message.');
+      if (modelManagementBusy) throw fail(409, 'Une opération sur les modèles est en cours. Attends la fin pour envoyer ton message.');
       let chat;
       if (data.sessionId && webId(data.sessionId)) {
         chat = await readWeb(data.sessionId);
@@ -1185,7 +1187,10 @@ async function handleRequest(req, res) {
         if (updateMaintenance) throw fail(503, 'Le serveur redémarre pour une mise à jour. Réessaie après reconnexion.');
         if (!url.pathname.startsWith('/api/updates/') || url.pathname === '/api/updates/preferences') { inFlightMutations++; countedMutation = true; }
       }
-      if (req.method === 'GET' && url.pathname === '/api/inference/settings') { json(res, 200, inferenceSettingsDTO()); return; }
+      if (req.method === 'GET' && url.pathname === '/api/inference/settings') {
+        const session=sessions.get(cookie(req));session.localServiceNonce ||= randomBytes(32).toString('base64url');
+        json(res, 200, { ...inferenceSettingsDTO(), csrfNonce:session.localServiceNonce }); return;
+      }
       if (url.pathname === '/api/inference/model-selection' || url.pathname === '/api/inference/select-model') {
         res.setHeader('Cache-Control', 'no-store');
         const session = sessions.get(cookie(req));
@@ -1317,10 +1322,34 @@ async function handleRequest(req, res) {
         json(res, 200, await saveOutputPreference(await body(req, 4096))); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/models') {
+        const session=sessions.get(cookie(req));session.localServiceNonce ||= randomBytes(32).toString('base64url');
         const observedInference = inferenceSettings.snapshot();
         const listed = await modelService.list();
         if (observedInference.revision === inferenceSettings.snapshot().revision && inferenceOperations.size && !Object.entries(activeWork()).some(([key, value]) => key !== 'uncertainInference' && !!value)) await recordInferenceMutation({ status: 'reconciled' });
-        json(res, 200, { models: listed, provider: observedInference.provider, inferenceRevision: observedInference.revision, generationActive: busy.size > 0, unloading: modelManagementBusy, reconciliationRequired: inferenceOperations.size > 0 }); return;
+        json(res, 200, { models: listed, provider: observedInference.provider, inferenceRevision: observedInference.revision, generationActive: busy.size > 0, unloading: modelManagementBusy, reconciliationRequired: inferenceOperations.size > 0, csrfNonce:session.localServiceNonce }); return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/models/load') {
+        const session=sessions.get(cookie(req));
+        if (!session.localServiceNonce || req.headers.origin!==protocol+'//'+req.headers.host || req.headers['x-local-service-csrf']!==session.localServiceNonce) throw Object.assign(fail(403,'Chargement refusé. Actualise le pilotage des modèles.'),{code:'csrf-refused'});
+        assertServiceAdmission();
+        const input=await body(req,4096);
+        if(input?.consent!==true || typeof input.modelId!=='string' || !input.modelId.trim() || input.modelId.length>512)throw fail(400,'Confirme le modèle Bionic à charger.');
+        if(typeof input.expectedInferenceRevision!=='string'||! /^[\w-]{1,100}$/.test(input.expectedInferenceRevision))throw Object.assign(fail(400,'Révision de connexion invalide.'),{code:'inference-invalid-revision'});
+        const assertScope=()=>{
+          assertServiceAdmission();const current=inferenceSettings.snapshot();
+          if(current.revision!==input.expectedInferenceRevision)throw Object.assign(fail(409,'La connexion du moteur a changé. Actualise le pilotage des modèles.'),{code:'inference-stale-revision'});
+          if(current.provider!=='bionic'||typeof modelService.forInference!=='function')throw fail(409,'Le chargement manuel de ce moteur passe par son profil GGUF.');
+          if(busy.size||comfyImages.getSettings?.()?.activeJobs||comfyImages.lifecycleStatus?.().uncertain)throw fail(409,'Des générations sont actives ou attendent confirmation. Attends leur fin avant de charger un modèle.');
+          return current;
+        };
+        assertScope();if(modelManagementBusy)throw fail(409,'Une opération sur les modèles est déjà en cours.');
+        modelManagementBusy=true;let releaseModel=()=>{};
+        try{
+          releaseModel=await gpuScheduler.acquireModel();assertScope();
+          const selected=await modelService.forInference(input.modelId),current=assertScope();
+          json(res,200,{loaded:true,model:selected,models:await modelService.list(),provider:current.provider,inferenceRevision:current.revision});
+        }finally{releaseModel();modelManagementBusy=false;}
+        return;
       }
       if (req.method === 'POST' && url.pathname === '/api/models/unload') {
         assertServiceAdmission();

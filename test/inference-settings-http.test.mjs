@@ -251,7 +251,7 @@ test('manual Bionic load holds the model barrier while waiting and releases it a
   const f=await fixture(t);f.state.loaded=false;let release;f.state.modelLoadGate=new Promise(resolve=>release=resolve);
   const current=await snapshot(f),pending=f.raw('/api/models/load',{modelId:'shared-alias',expectedInferenceRevision:current.revision,consent:true},{headers:{origin:'http://127.0.0.1:8769','x-local-service-csrf':current.csrfNonce}});
   await until(()=>f.state.modelLoadReached);
-  try{assert.equal((await save(f,'llamacpp')).statusCode,409);assert.equal((await manualLoad(f)).statusCode,409);assert.equal((await f.request('/api/chat',{projectId:'p1',model:'shared-alias',requestId:randomUUID(),text:'Must wait',fileProfile:'none'})).statusCode,409);}finally{release();}
+  try{assert.equal((await save(f,'llamacpp')).statusCode,409);assert.equal((await manualLoad(f)).statusCode,409);assert.equal((await f.request('/api/chat',{projectId:'p1',model:'shared-alias',requestId:randomUUID(),text:'Must wait',fileProfile:'none'})).statusCode,409);assert.equal((await f.request('/api/comfy/generate',{projectId:'p1',prompt:'Must wait'})).statusCode,409);assert.equal(f.state.submissions.length,0);}finally{release();}
   await pending.work;assert.equal(pending.res.statusCode,200,pending.res.text());assert.equal((await f.request('/api/models')).json().unloading,false);assert.equal((await save(f,'llamacpp')).statusCode,200);
   const refused=await manualLoad(f);assert.equal(refused.statusCode,409);assert.equal(loadCalls(f).length,1);
 });
