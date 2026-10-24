@@ -1,6 +1,10 @@
 # Canaé beta.10 : un chat plus compact
 
-Les choix **moteur, modèle et réflexion** restent dans le chat, dans une barre compacte. Les options de réflexion viennent toujours du modèle sélectionné. Les aides ordinaires et l'accès au profil GGUF sont disponibles dans les options du moteur ; les erreurs et les actions de récupération restent visibles lorsqu'elles sont nécessaires.
+Les commandes sous le champ de rédaction tiennent sur **deux lignes** : moteur, modèle et réflexion sur la première ; fichiers, outils et images, téléchargement du brouillon et envoi sur la seconde. Pendant une génération, l'arrêt et la déconnexion du flux restent directement accessibles sur cette seconde ligne. La zone de rédaction conserve sa hauteur et son agrandissement automatique.
+
+Le menu **Fichiers** regroupe l'ajout d'une pièce jointe et les trois profils de droits. Le menu **Outils et images** conserve la recherche web, ses approbations, les scripts et tous les réglages d'images : workflow, quantité et politique mémoire. Les champs restent présents lorsque le menu est fermé ; une quantité invalide ouvre le réglage à corriger avant tout envoi. Échap ferme un menu et ramène au bouton qui l'a ouvert.
+
+Les options de réflexion viennent toujours du modèle sélectionné. Les aides ordinaires et l'accès au profil GGUF restent disponibles dans les options du moteur ; les erreurs et les actions de récupération restent visibles lorsqu'elles sont nécessaires. Les menus et leurs libellés accessibles donnent le détail des commandes compactes.
 
 ## Conversations et projets
 

@@ -2,7 +2,7 @@
 
 ## 2.6.0-beta.10 — Canaé — candidate locale
 
-- Les sélecteurs moteur, modèle et réflexion retrouvent une barre compacte dans le chat, avec leurs fonctions et leurs contrôles de récupération.
+- Toutes les commandes du chat tiennent sur deux lignes : moteur, modèle et réflexion, puis fichiers, outils/images, brouillon et envoi. L'arrêt et la déconnexion restent directs pendant une génération ; les menus conservent les options et la validation des champs masqués.
 - Chaque projet affiche ses conversations dans l’arborescence. La liste inférieure contient uniquement les conversations sans projet, sans réécriture des historiques.
 - Le champ de saisie attend la restauration du brouillon, pour éviter de perdre un texte commencé pendant une connexion lente.
 - Les actions de copie et de branche sont intégrées à l’en-tête du message concerné, avec accès au clavier et au tactile et copie manuelle de secours.
