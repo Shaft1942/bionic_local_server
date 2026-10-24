@@ -6,6 +6,9 @@
   import Logo from '$lib/components/app/misc/Logo.svelte';
   import UserBubble from './UserBubble.svelte';
   import Markdown from './Markdown.svelte';
+  import MessageImages from './MessageImages.svelte';
+  import MessageStats from './MessageStats.svelte';
+  import CopyMessage from './CopyMessage.svelte';
   import FilesPanel from './FilesPanel.svelte';
   import ImagesPanel from './ImagesPanel.svelte';
   import ImageCountField from './ImageCountField.svelte';
@@ -177,7 +180,7 @@
         chat={...(chat||{}),id:event.id,name:event.name||text.slice(0,70),messages:chat?.messages||[]};
         if(event.type==='start'&&!chat.messages.some((item:any)=>item.requestId===requestId)){
           chat.messages.push({id:requestId+':user',role:'user',text,requestId});
-          chat.messages.push({id:event.replyId,role:'assistant',text:'',requestId,actions:[],approvals:[]});
+          chat.messages.push({id:event.replyId,role:'assistant',text:'',requestId,model:event.model,provider:event.provider,outputBudget:event.outputBudget,contextReceipt:event.contextReceipt,actions:[],approvals:[]});
         }
         const waitingDraft=drafts[projectId+':new'];
         if(!job.id&&waitingDraft?.nonce===job.draftNonce){delete drafts[projectId+':new'];draftKey=projectId+':'+event.id;}
@@ -186,6 +189,13 @@
     }
     if(projectId===job.projectId&&chat?.id===(event.id||jobs.find(item=>item.requestId===requestId)?.id)){
       const reply=chat.messages?.find((item:any)=>item.role==='assistant'&&item.requestId===requestId);
+      if(reply){
+        for(const key of ['contextReceipt','outputBudget','metrics'])if(event[key]!==undefined)reply[key]=event[key];
+        if(event.type==='done'||event.type==='error'){
+          for(const key of ['finishedAt','outcome','limited','truncated','finishReason'])if(event[key]!==undefined)reply[key]=event[key];
+          reply.complete=event.type==='done';reply.interrupted=event.type==='error';
+        }
+      }
       if(event.type==='delta'&&reply)reply.text=streamTexts.get(requestId)||'';
       if(event.type==='action'&&reply)reply.actions=[...(reply.actions||[]),event.action];
       if(event.type==='approval'&&reply){reply.approvals=[...(reply.approvals||[]).filter((item:any)=>item.id!==event.approval?.id),event.approval].filter(Boolean);}
@@ -263,7 +273,7 @@
 {#if !authenticated}
   <main class="login-page"><div class="login-card"><Logo class="welcome-logo" /><h1>Canaé</h1><p>{tr('Tes projets, tes fichiers, tes conversations.','Your projects, files and conversations.')}</p>
     {#if ready}<form onsubmit={login}><label for="access-code">{tr('Code d’accès du prototype','Prototype access code')}</label><input id="access-code" type="password" bind:value={code} required autocomplete="current-password" /><Button type="submit" disabled={loginBusy}>{loginBusy?tr('Connexion…','Connecting…'):tr('Se connecter','Sign in')}</Button></form>{:else}<p role="status">{tr('Connexion au compagnon…','Connecting to the companion…')}</p>{/if}
-    {#if error}<p class="error" role="alert">{error}</p>{/if}<small>2.6.0-beta.6</small></div></main>
+    {#if error}<p class="error" role="alert">{error}</p>{/if}<small>2.6.0-beta.7</small></div></main>
 {:else}
   <div class="companion-shell" class:sidebar-hidden={!sidebarOpen}>
     {#if sidebarOpen}<aside class="navigation" aria-label="Navigation">
@@ -280,7 +290,7 @@
         {#if sessionPage?.hasMore}<Button variant="ghost" size="sm" disabled={sessionsBusy} onclick={()=>refreshSessions(true)}>{tr('Charger d’autres conversations','Load more conversations')}</Button>{/if}
         {#if sessionWarnings.length}<p class="quiet" role="status">{tr('Liste partielle : ','Partial list: ')+sessionWarnings.join(' · ')}</p>{/if}
       </nav>
-      <div class="navigation-footer"><span class="version">2.6.0-beta.6 · {inference?.provider==='llamacpp'?'llama-server':inference?.provider==='bionic'?'Bionic':tr('Moteur local','Local engine')}</span><div><a class="legacy-link" href="/legacy/">{tr('Ancienne interface','Legacy interface')}</a><div class="footer-controls"><LoadedModelsMenu {request} {models} {inference} onModelsChange={changedLoadedModels} disabled={starting||modelSelectionBusy} /><Button variant="ghost" size="icon" aria-label={tr('Se déconnecter','Sign out')} onclick={logout}><LogOut /></Button></div></div></div>
+      <div class="navigation-footer"><span class="version">2.6.0-beta.7 · {inference?.provider==='llamacpp'?'llama-server':inference?.provider==='bionic'?'Bionic':tr('Moteur local','Local engine')}</span><div><a class="legacy-link" href="/legacy/">{tr('Ancienne interface','Legacy interface')}</a><div class="footer-controls"><LoadedModelsMenu {request} {models} {inference} onModelsChange={changedLoadedModels} disabled={starting||modelSelectionBusy} /><Button variant="ghost" size="icon" aria-label={tr('Se déconnecter','Sign out')} onclick={logout}><LogOut /></Button></div></div></div>
     </aside>{/if}
     <main class="workspace">
       <header class="workspace-header"><div class="workspace-title">{#if !sidebarOpen}<Button variant="ghost" size="icon" aria-label={tr('Ouvrir la navigation','Open navigation')} onclick={()=>sidebarOpen=true}><PanelLeftOpen /></Button>{/if}<span>{chat?.name||currentProject?.name||tr('Nouveau chat','New chat')}</span></div>
@@ -310,8 +320,10 @@
                 <Approvals {request} {projectId} {chat} {message} language={preferences.language} onConversationChange={changedConversation} onNavigate={navigate} />
                 {#each message.actions||[] as action}<details class="action-receipt"><summary>{(message.historicalActions||message.fromFork)?tr('Action historique','Historical action'):action.ok===false?tr('Action refusée','Action refused'):tr('Action effectuée','Action performed')} · {action.tool||action.name||action.path||tr('Outil','Tool')}</summary><pre>{JSON.stringify(action,null,2)}</pre></details>{/each}
                 {#if message.contextReceipt||message.outputBudget||message.metrics}<details class="action-receipt"><summary>{tr('Contexte, permissions et statistiques','Context, permissions and statistics')}</summary><pre>{JSON.stringify({context:message.contextReceipt,output:message.outputBudget,metrics:message.metrics},null,2)}</pre></details>{/if}
-                {#each message.imageGenerations||[] as image}<button class="image-job-link" onclick={()=>changeTab('images')}>{tr('Image','Image')} · {image.status||tr('Suivi disponible','Tracking available')} · {tr('Ouvrir la galerie','Open gallery')}</button>{/each}
+                <MessageImages {request} {projectId} chatId={chat.id} {message} active={tab==='chat'} onOpenGallery={()=>changeTab('images')} />
+                {#if message.role==='assistant'}<MessageStats {message} language={preferences.language} running={jobs.some(item=>item.requestId===message.requestId&&!terminal(item.status))&&!message.finishedAt} />{/if}
                 {#if message.interrupted||message.truncated}<p class="quiet">{message.error||(message.truncated?tr('Réponse limitée par le budget de sortie.','Reply reached its output budget.'):tr('Réponse interrompue.','Reply interrupted.'))}</p>{/if}
+                {#if message.role==='user'||message.role==='assistant'}<CopyMessage text={message.text||''} role={message.role} />{/if}
                 <ConversationActions {request} {projectId} {chat} {instanceId} messageId={message.id} language={preferences.language} onConversationChange={changedConversation} onNavigate={navigate} />
               </article>{/each}
             </div>{/if}

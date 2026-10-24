@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGenerationMetrics } from '../lib/generation-metrics.mjs';
+import { createGenerationMetrics, summarizeGenerationPhases } from '../lib/generation-metrics.mjs';
 
 test('observed rate excludes initial wait and final usage delivery delay', () => {
   let time = 0; const metrics = createGenerationMetrics(() => time);
@@ -31,4 +31,27 @@ test('accepts finite native speed and rejects malformed numbers', () => {
   assert.equal(metrics.finish().tokensPerSecond, 12.5);
   assert.equal(metrics.finish().rateSource, 'bionic');
   assert.equal(metrics.finish().outputTokens, undefined);
+});
+
+test('partial multi-phase usage remains unknown instead of silently adding zero', () => {
+  const totals = summarizeGenerationPhases([
+    { inputTokens: 20, outputTokens: 10, responseSeconds: 2 },
+    { inputTokens: undefined, outputTokens: undefined, responseSeconds: 1 }
+  ], { responseSeconds: 4, totalSeconds: 6, queueSeconds: 2, partial: true });
+  assert.equal(totals.inputTokens, undefined);
+  assert.equal(totals.outputTokens, undefined);
+  assert.equal(totals.tokensPerSecond, undefined);
+  assert.equal(totals.generationPhases, 2);
+  assert.equal(totals.partial, true);
+  assert.equal(totals.totalSeconds, 6);
+});
+
+test('one completed phase retains the reported rate and multi-phase totals require complete counts', () => {
+  const phase = { inputTokens: 20, outputTokens: 10, tokensPerSecond: 5, rateSource: 'bionic' };
+  assert.equal(summarizeGenerationPhases([phase], { totalSeconds: 3, queueSeconds: 1 }).tokensPerSecond, 5);
+  const totals = summarizeGenerationPhases([phase, { inputTokens: 35, outputTokens: 0 }], { responseSeconds: 4, totalSeconds: 5, queueSeconds: 1 });
+  assert.equal(totals.inputTokens, 55);
+  assert.equal(totals.outputTokens, 10);
+  assert.equal(totals.reasoningTokens, undefined);
+  assert.equal(totals.partial, undefined);
 });

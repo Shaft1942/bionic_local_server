@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.6.0-beta.7 — Canaé — candidate locale
+
+- Les images générées s'affichent dans la conversation, avec suivi après la fin du texte, aperçu, ouverture et téléchargement. Leur état est retrouvé après rechargement, sans relancer de génération.
+- La copie du texte original revient pour chaque message utilisateur ou assistant, avec retour visible, prise en charge du HTTP local et sélection manuelle si le navigateur refuse.
+- Les tokens, la durée, le débit et l'attente sont lisibles par réponse. Les valeurs absentes restent explicites, les débits observés sont signalés comme approximatifs et les métriques d'arrêt ou d'erreur sont conservées comme partielles.
+
 ## 2.6.0-beta.6 — Canaé — candidate locale
 
 - Curseur **Nombre d’images** de 1 à 5, avec saisie précise, dans le chat et l’atelier Images. L’atelier conserve le choix après rechargement et soumet un lot suivi image par image, sans moteur de conversation requis.

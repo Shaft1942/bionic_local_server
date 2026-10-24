@@ -25,7 +25,7 @@ import { createLocalServiceSupervisor } from './lib/local-service-supervisor.mjs
 import { createLocalServiceSetup } from './lib/local-service-setup.mjs';
 import { createModelPreferences, validateModelId, validateOutputPreferences, outputBudget, estimateRequestTokens, CONTEXT_RESERVE_TOKENS } from './lib/model-preferences.mjs';
 import { reasoningRequest } from './lib/reasoning.mjs';
-import { createGenerationMetrics } from './lib/generation-metrics.mjs';
+import { createGenerationMetrics, summarizeGenerationPhases } from './lib/generation-metrics.mjs';
 import { createProjectFiles } from './lib/project-files.mjs';
 import { consumeModelStream } from './lib/file-agent.mjs';
 import { toolsFor, createAgentTools, normalizeFileProfile, FILE_MUTATION_TOOLS } from './lib/agent-tools.mjs';
@@ -915,7 +915,7 @@ async function generateChat(res, chat, item, request) {
     chat.fileAccess = fileAccess; chat.fileProfile = fileProfile; chat.webApproval = webApproval;
     chat.webAccess=webAccess;chat.scriptAccess=scriptAccess;chat.imageAccess=imageAccess;chat.imageCount=imageCount;chat.imageModelPolicy=item.imageModelPolicy??null;chat.imageWorkflowId=item.imageSelection?.workflowId??chat.imageWorkflowId;
     chat.messages.push({ id: userMessageId, role: 'user', text, createdAt: Date.now(), requestId: data.requestId, requestStatus: 'running', ...(attachments.length ? { attachments } : {}) });
-    const reply = { id: randomUUID(), role: 'assistant', text: '', createdAt: Date.now(), provider: item.provider, reasoning: reasoning.choice, requestId: data.requestId, actions: [], approvals: [], outputBudget: context.outputBudget, contextReceipt: context.receipt };
+    const reply = { id: randomUUID(), role: 'assistant', text: '', createdAt: Date.now(), model: data.model, provider: item.provider, reasoning: reasoning.choice, requestId: data.requestId, actions: [], approvals: [], outputBudget: context.outputBudget, contextReceipt: context.receipt };
     chat.messages.push(reply);
     chat.generation = { status: 'running', requestId: data.requestId, startedAt: Date.now(), replyId: reply.id };
     if (request) { request.id = chat.id; request.status = 'running'; }
@@ -927,11 +927,17 @@ async function generateChat(res, chat, item, request) {
     responseStarted = true;
     const writer = createNDJSONWriter(res, { onDetach: () => { detached = true; transportMetrics.detachedClients++; } });
     const emit = x => writer.emit(x);
-    emit({ type: 'start', id: chat.id, requestId: data.requestId, replyId: reply.id, name: chat.name, contextOmitted: context.contextOmitted, outputBudget: reply.outputBudget, contextReceipt: context.receipt, source: 'web', reasoning: reasoning.choice, fileAccess, fileProfile, webAccess, webApproval, scriptAccess, imageAccess, imageCount, imageModelPolicy:chat.imageModelPolicy, imageWorkflowId:chat.imageWorkflowId });
+    emit({ type: 'start', id: chat.id, requestId: data.requestId, replyId: reply.id, name: chat.name, model: data.model, provider: reply.provider, contextOmitted: context.contextOmitted, outputBudget: reply.outputBudget, contextReceipt: context.receipt, source: 'web', reasoning: reasoning.choice, fileAccess, fileProfile, webAccess, webApproval, scriptAccess, imageAccess, imageCount, imageModelPolicy:chat.imageModelPolicy, imageWorkflowId:chat.imageWorkflowId });
     if (availableTools.length && item.toolsCapability === 'unknown') emit({ type: 'capability', tools: 'unknown', trial: true, message: 'La capacité outils de ce modèle est inconnue. Les outils activés sont essayés pour cette demande.' });
     const updateApproval=async approval=>{const index=reply.approvals.findIndex(item=>item.id===approval.id);if(index<0)reply.approvals.push(approval);else reply.approvals[index]=approval;chat.generation.awaitingApproval=approval.status==='pending';chat.updatedAt=Date.now();await persist();emit({type:'approval',approval,replyId:reply.id});};
     const agent = createAgentTools({fileAccess,fileProfile,webAccess,webApproval,scriptAccess,imageAccess,imageCount,imageSelection:item.imageSelection,imageService:comfyImages,imageOwner:{projectId:chat.projectId,chatId:chat.id,messageId:reply.id,requestId:data.requestId},webService:options.webService,files:projectFiles,projectId:chat.projectId,privateDirectory:path.join(DATA,'tool-runs'),python:settings.python,readLimit:3000,readBudget:Math.min(12000,Math.max(1600,Math.floor(selectedModel.contextLength*0.6))),signal:controller.signal,userPrompt:text,initialReads:attachments,requestApproval:proposal=>toolApprovals.request({projectId:chat.projectId,chatId:chat.id,proposal,signal:controller.signal,onChange:updateApproval}),onState:updateApproval});
     const phases = [];
+    let phaseFinished = false;
+    const finishMetrics = (partial = false) => summarizeGenerationPhases(
+      phaseFinished ? phases : [...phases, metrics.finish()],
+      { responseSeconds: (performance.now() - startedAt) / 1000,
+        totalSeconds: (reply.finishedAt - item.queuedAt) / 1000, queueSeconds: queuedMs / 1000, partial }
+    );
     let done = false, actionCount = 0, imageRepair = false;
     try {
       let upstream = await requestModel();
@@ -948,7 +954,7 @@ async function generateChat(res, chat, item, request) {
           }
           throw error;
         } finally { releaseUpstream(); }
-        phases.push(metrics.finish());
+        phases.push(metrics.finish()); phaseFinished = true;
         reply.finishReason = response.finishReason || null;
         reply.truncated = reply.limited = response.finishReason === 'length';
         if (!response.calls.length) {
@@ -956,7 +962,7 @@ async function generateChat(res, chat, item, request) {
             if (imageRepair) throw fail(502, 'Le modèle n’a pas appelé l’outil image. Aucune génération n’a été lancée. Essaie un modèle compatible avec les outils ou la génération directe.');
             imageRepair = true;
             context.messages.push({role:'system',content:'La demande explicite de création d’image attend un véritable appel d’outil. Appelle maintenant l’outil image fourni avec le prompt issu de la conversation. Ne rédige aucun statut ni annonce de lancement.'});
-            metrics = createGenerationMetrics(); upstream = await requestModel(true); continue;
+            metrics = createGenerationMetrics(); phaseFinished = false; upstream = await requestModel(true); continue;
           }
           if (imageAccess && claimsImageLaunch(response.text)) throw fail(502, 'Aucun lancement ComfyUI confirmé par cette réponse. Consulte les cartes de suivi ; le texte du modèle ne constitue pas un état de génération.');
           if (imageAccess && response.text) { reply.text += response.text; emit({type:'delta',text:response.text}); }
@@ -1011,7 +1017,7 @@ async function generateChat(res, chat, item, request) {
             break;
           }
         }
-        metrics = createGenerationMetrics(); upstream = await requestModel();
+        metrics = createGenerationMetrics(); phaseFinished = false; upstream = await requestModel();
       }
       if (!done) throw fail(409, 'La demande a atteint sa limite d’étapes. Les actions réalisées restent visibles.');
       if (!reply.text.trim()) throw fail(502, fileAccess ? 'Le modèle n’a pas rédigé de réponse finale. Les actions déjà réalisées restent visibles dans le chat.' : 'Le modèle a produit uniquement du raisonnement. Essaie un autre modèle.');
@@ -1019,18 +1025,17 @@ async function generateChat(res, chat, item, request) {
       chat.generation.status = 'completed';
       reply.finishedAt = chat.generation.finishedAt = Date.now(); reply.outcome = 'completed';
       chat.messages.find(message => message.requestId === data.requestId && message.role === 'user').requestStatus = 'completed';
-      reply.metrics = phases.length === 1 ? phases[0] : { inputTokens: phases.reduce((n,m) => n + (m.inputTokens || 0), 0), outputTokens: phases.reduce((n,m) => n + (m.outputTokens || 0), 0), reasoningTokens: phases.reduce((n,m) => n + (m.reasoningTokens || 0), 0), responseSeconds: (performance.now() - startedAt) / 1000, firstFragmentSeconds: phases[0]?.firstFragmentSeconds, generationPhases: phases.length };
-      reply.metrics.totalSeconds = (reply.finishedAt - item.queuedAt) / 1000;
-      reply.metrics.queueSeconds = queuedMs / 1000;
+      reply.metrics = finishMetrics();
       chat.updatedAt = Date.now(); await persist();
       emit({ type: 'done', id: chat.id, replyId: reply.id, finishedAt: reply.finishedAt, outcome: reply.outcome, limited: !!reply.limited, truncated: !!reply.truncated, finishReason: reply.finishReason, outputBudget: reply.outputBudget, metrics: reply.metrics, contextReceipt: reply.contextReceipt });
     } catch (e) {
       const message = controller.signal.aborted ? 'Génération arrêtée. Le texte reçu est conservé.' : (e.status ? e.message : 'La connexion entre le PC et Bionic a été interrompue.');
       reply.interrupted = true; chat.generation.status = controller.signal.aborted ? 'stopped' : 'error'; chat.generation.message = message;
       reply.finishedAt = chat.generation.finishedAt = Date.now(); reply.outcome = chat.generation.status;
+      reply.metrics = finishMetrics(true);
       chat.messages.find(entry => entry.requestId === data.requestId && entry.role === 'user').requestStatus = chat.generation.status;
       chat.updatedAt = Date.now(); await persist();
-      emit({ type: 'error', message, replyId: reply.id, finishedAt: reply.finishedAt, outcome: reply.outcome, contextReceipt: reply.contextReceipt });
+      emit({ type: 'error', message, replyId: reply.id, finishedAt: reply.finishedAt, outcome: reply.outcome, metrics: reply.metrics, contextReceipt: reply.contextReceipt });
     } finally { if (request) { request.status = chat.generation.status; request.message = chat.generation.message; } writer.finish(); }
   } catch(error) {
     if(earlyReceipt&&!res.writableEnded&&!res.destroyed){res.write(JSON.stringify({type:'error',message:error.status?error.message:'La réponse n’a pas pu démarrer.',outcome:'error'})+'\n');res.end();}

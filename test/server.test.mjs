@@ -125,6 +125,7 @@ try {
  r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL'),reasoning:'off'}});const effortChatId=r.records().find(e=>e.type==='start')?.id;
  const savedEffort=JSON.parse(await fs.readFile(path.join(root,'data/chats',effortChatId+'.json'),'utf8'));
  findings.push({test:'off is sent as none and remembered per conversation and response',pass:lastUpstreamBody.reasoning_effort==='none'&&savedEffort.reasoningByModel.synthetic==='off'&&savedEffort.messages.at(-1).reasoning==='off'});
+ findings.push({test:'the streamed model identity belongs to this saved reply after later conversation model changes',pass:savedEffort.messages.at(-1).model==='synthetic'&&r.records().find(event=>event.type==='start').model===savedEffort.messages.at(-1).model});
  findings.push({test:'final usage after finish is requested, persisted and returned without fake speed',pass:lastUpstreamBody.stream_options?.include_usage===true&&savedEffort.messages.at(-1).metrics.outputTokens===45&&savedEffort.messages.at(-1).metrics.inputTokens===123&&r.records().at(-1).metrics.outputTokens===45&&!savedEffort.messages.at(-1).metrics.tokensPerSecond});
  r=await request('/api/chat',{method:'POST',headers:{cookie},body:{...data('NORMAL',effortChatId),reasoning:'on'}});
  findings.push({test:'on is sent as medium to binary model',pass:lastUpstreamBody.reasoning_effort==='medium'&&r.records().at(-1)?.type==='done'});
@@ -161,6 +162,8 @@ try {
  r=await request('/api/cancel',{method:'POST',headers:{cookie},body:{requestId:backgroundRequestId}});await backgroundJob;
  r=await request('/api/conversation?projectId=p1&id='+backgroundId,{headers:{cookie}});const stopped=JSON.parse(r.text());
  findings.push({test:'explicit Stop still cancels a detached job and preserves partial text',pass:stopped.generation.status==='stopped'&&stopped.messages.at(-1).interrupted&&stopped.messages.at(-1).text==='Synthetic reply'});upstream.splice(0);
+ const stoppedMetrics=stopped.messages.at(-1).metrics;
+ findings.push({test:'Stop persists elapsed and queue metrics without inventing tokens absent from the interrupted stream',pass:stoppedMetrics?.partial===true&&stoppedMetrics.totalSeconds>=stoppedMetrics.queueSeconds&&stoppedMetrics.responseSeconds>=0&&stoppedMetrics.outputTokens===undefined&&stoppedMetrics.tokensPerSecond===undefined});
  const orphanId='web-11111111-1111-4111-8111-111111111111';await fs.writeFile(path.join(root,'data/chats',orphanId+'.json'),JSON.stringify({id:orphanId,projectId:'p1',name:'Interrupted synthetic chat',generation:{status:'running',requestId:runId+'-orphan-active'},queue:[{requestId:runId+'-orphan-queued',text:'Never auto replay',status:'queued'}],messages:[{role:'user',text:'Previous request',requestId:runId+'-orphan-active',requestStatus:'running'},{role:'assistant',text:'saved fragment'}]}));r=await request('/api/conversation?projectId=p1&id='+orphanId,{headers:{cookie}});
  findings.push({test:'server restart does not leave an orphaned job presented as running forever',pass:JSON.parse(r.text()).generation.status==='interrupted'&&JSON.parse(r.text()).messages.at(-1).interrupted&&JSON.parse(r.text()).queue[0].status==='interrupted'});
  r=await request('/api/chat-request?projectId=p1&requestId='+runId+'-orphan-queued',{headers:{cookie}});
@@ -232,6 +235,8 @@ try {
  r=await request('/api/chat-request?projectId=p1&requestId='+errorQueued,{headers:{cookie}});
  const errorDisk=JSON.parse(await fs.readFile(path.join(root,'data/chats',errorId+'.json'),'utf8'));
  findings.push({test:'an upstream response error persists its dependent queue as interrupted without executing later tools',pass:JSON.parse(r.text()).status==='interrupted'&&errorDisk.queue[0].status==='interrupted'&&!upstreamBodies.some(body=>body.messages.at(-1).content==='NORMAL must not run after error')});
+ const errorMetrics=errorDisk.messages.at(-1).metrics,errorEvent=errorRes.records().findLast(event=>event.type==='error');
+ findings.push({test:'stream failure returns the same measured partial statistics that survive conversation reload',pass:errorMetrics?.partial===true&&errorMetrics.totalSeconds>=errorMetrics.queueSeconds&&errorMetrics.responseSeconds>=0&&JSON.stringify(errorEvent.metrics)===JSON.stringify(errorMetrics)&&errorMetrics.outputTokens===undefined});
  findings.push({test:'failed and stopped responses preserve terminal outcome and a real completion time',pass:errorDisk.messages.at(-1).outcome==='error'&&Number.isSafeInteger(errorDisk.messages.at(-1).finishedAt)&&errorDisk.generation.finishedAt===errorDisk.messages.at(-1).finishedAt&&JSON.parse(await fs.readFile(coldPath,'utf8')).messages.find(message=>message.requestId===coldRequest&&message.role==='assistant').outcome==='stopped'});
  const orphanRecovered=JSON.parse(await fs.readFile(path.join(root,'data/chats',orphanId+'.json'),'utf8'));
  findings.push({test:'restart recovery dates the interruption and preserves its context if available',pass:orphanRecovered.messages.at(-1).outcome==='interrupted'&&Number.isSafeInteger(orphanRecovered.messages.at(-1).finishedAt)&&orphanRecovered.generation.finishedAt===orphanRecovered.messages.at(-1).finishedAt});
