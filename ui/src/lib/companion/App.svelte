@@ -21,9 +21,11 @@
   import Approvals from './Approvals.svelte';
   import ProjectAccess from './ProjectAccess.svelte';
   import { activatePreferences, preferences, tr } from './preferences.svelte';
-  import { ApiError, newRequestId, post, query, request, sendStream, terminal } from './api';
+  import { ApiError, newRequestId, post, query, request, terminal } from './api';
+  import { createChatClient } from './client/chat-client';
+  import { ContractError } from './client/contracts';
+  import type { ChatEvent, Job } from './client/contracts';
 
-  type Job = { requestId:string; projectId:string; id?:string; draftNonce?:string; status:string; phase?:string; disconnected?:boolean };
   type Draft = { text:string; updatedAt:number; attachments:any[]; model:string; reasoning:string; fileProfile:string; webAccess:boolean; webApproval:boolean; scriptAccess:boolean; imageAccess:boolean; imageWorkflowId:string; imageCount:number; imageModelPolicy:string; nonce:string };
   let authenticated=$state(false), ready=$state(false), error=$state(''), notice=$state('');
   let code=$state(''), loginBusy=$state(false);
@@ -36,7 +38,29 @@
   let projectForm=$state(false), projectName=$state(''), creatingProject=$state(false), historyBusy=$state(false), sessionsBusy=$state(false), filesDirty=$state(false);
   let instanceId=$state(''), prototypeInfo=$state<any>(null), draftNonce=$state(''), settingsVisited=$state(false), filesVisited=$state(false), imagesVisited=$state(false), activityVisited=$state(false), settingsDirty=$state(false);
   let draftKey='', storageKey='', drafts:Record<string,Draft>={};
-  let controllers=new Map<string,AbortController>(), streamTexts=new Map<string,string>(), recoveryBusy=false, viewSequence=0, sessionsSequence=0, lastCatalog=0, mounted=true;
+  let recoveryBusy=false, viewSequence=0, sessionsSequence=0, lastCatalog=0, mounted=true;
+  const client=createChatClient({
+    changed:(next,active)=>{jobs=next;streamingIds=active;},
+    receipt:async(target,result,settled)=>{
+      const sameView=projectId===target.projectId&&(chat?.id===result.id||!!target.id&&chat?.id===target.id||!chat?.id&&target.draftNonce===draftNonce);
+      if(result.id&&sameView){
+        if(chat?.id!==result.id){
+          chat={id:result.id,messages:[]};
+          // The POST may have succeeded before its first event was received.
+          // Keep the current composer associated with the recovered conversation on reload.
+          const previousKey=target.projectId+':'+(target.id||'new'),nextKey=target.projectId+':'+result.id;
+          if(draftKey===previousKey&&drafts[previousKey]?.nonce===target.draftNonce){drafts[nextKey]=drafts[previousKey];delete drafts[previousKey];draftKey=nextKey;}
+        }
+        await loadConversation(target.projectId,result.id);
+      }
+      if(settled&&sameView)notice=result.message||tr('Réponse retrouvée sur le serveur.','Reply recovered from the server.');
+    },
+    failure:failure=>{
+      if(failure instanceof ApiError&&failure.status===404)error=tr('Demande non retrouvée. Aucun message renvoyé : vérifie à nouveau son état.','Request not found. No message was resent: check its state again.');
+      else if(failure instanceof ContractError)error=tr('Le suivi reçu est invalide. Vérifie à nouveau la demande.','The received request status is invalid. Check the request again.');
+      else report(failure);
+    }
+  });
   let messageList=$state<HTMLDivElement>(), composer=$state<HTMLTextAreaElement|null>(null);
   let followReply=true;
   let modelSelectionBusy=$state(false);
@@ -78,16 +102,10 @@
   }
   function report(failure:any) {
     error=failure?.message||tr('Le compagnon est indisponible.','The companion is unavailable.');
-    if(failure?.status===401){authenticated=false;chat=null;projects=[];sessions=[];for(const controller of controllers.values())controller.abort();}
+    if(failure?.status===401){authenticated=false;chat=null;projects=[];sessions=[];client.disconnect();}
   }
   async function scrollReply(){await tick();if(followReply&&messageList)messageList.scrollTop=messageList.scrollHeight;}
-  function updateJob(id:string,patch:Partial<Job>){jobs=jobs.map(item=>item.requestId===id?{...item,...patch}:item);}
-  function rememberGeneration(value:any,pid:string){
-    for(const active of [value?.generation,...(value?.queue||[])]){
-      if(!active?.requestId||terminal(active.status)||jobs.some(item=>item.requestId===active.requestId))continue;
-      jobs=[...jobs,{requestId:active.requestId,projectId:pid,id:value.id,status:active.status,phase:active.phase}];
-    }
-  }
+  function rememberGeneration(value:unknown,pid:string){client.remember(value,pid);}
   async function refreshSessions(append=false){
     if(!projectId||(append&&sessionsBusy))return;const pid=projectId,sequence=++sessionsSequence;const cursor=append?sessionPage?.nextCursor:'';sessionsBusy=true;
     try{const result=await request(query('/api/sessions',{projectId:pid,limit:'100',...(cursor?{cursor}:{})}));
@@ -109,7 +127,7 @@
   }
   async function loadConversation(pid:string,id:string,sequence=viewSequence){
     const result=await request(query('/api/conversation',{projectId:pid,id,limit:'100'}));rememberGeneration(result,pid);
-    for(const message of result.messages||[])if(message.role==='assistant'&&streamTexts.has(message.requestId))message.text=streamTexts.get(message.requestId);
+    for(const message of result.messages||[]){const live=client.text(message.requestId);if(message.role==='assistant'&&live!==undefined)message.text=live;}
     if(projectId===pid&&sequence===viewSequence&&chat?.id===id){chat=mergeHistory(chat,result);persist();await scrollReply();}
     return result;
   }
@@ -156,7 +174,7 @@
       const values=JSON.parse(draftStore.getItem(storageKey+':drafts')||'{}');
       const cutoff=preferences.draftHours===0?0:Date.now()-preferences.draftHours*3600000;
       drafts=Object.fromEntries(Object.entries(values).filter(([,value]:any)=>value&&typeof value.text==='string'&&value.updatedAt>=cutoff)) as Record<string,Draft>;
-      jobs=Array.isArray(saved.jobs)?saved.jobs.filter((item:any)=>item&&/^[a-zA-Z0-9-]{16,100}$/.test(item.requestId)&&typeof item.projectId==='string'):saved.pending?.requestId?[saved.pending]:[];
+      client.restore(Array.isArray(saved.jobs)?saved.jobs:saved.pending?[saved.pending]:[]);
     }catch{notice=tr('La restauration locale est indisponible.','Local restoration is unavailable.');}
     await reloadProjects();authenticated=true;await refreshEngines();
     projectId=projects.some(item=>item.id===saved.projectId)?saved.projectId:projects[0]?.id||'';
@@ -164,17 +182,14 @@
     ready=true;
   }
   async function login(event:SubmitEvent){event.preventDefault();if(loginBusy)return;loginBusy=true;error='';try{await post('/api/login',{code});code='';await start();}catch(failure){report(failure);}finally{ready=true;loginBusy=false;}}
-  async function logout(){try{saveDraft();await post('/api/logout',{});for(const controller of controllers.values())controller.abort();authenticated=false;chat=null;projects=[];sessions=[];}catch(failure){report(failure);}}
+  async function logout(){try{saveDraft();await post('/api/logout',{});client.disconnect();authenticated=false;chat=null;projects=[];sessions=[];}catch(failure){report(failure);}}
   function attach(file:any){
     if(attachments.length>=4){error=tr('Tu peux joindre jusqu’à quatre fichiers.','You can attach up to four files.');return;}
     if(!attachments.some(item=>item.rootId===file.rootId&&item.path===file.path))attachments=[...attachments,file];
     tab='chat';notice=tr('Fichier joint au prochain message.','File attached to the next message.');saveDraft();
   }
-  function onStream(event:any,text:string,requestId:string){
-    const job=jobs.find(item=>item.requestId===requestId);if(!job)return;
-    if(event.type==='delta')streamTexts.set(requestId,(streamTexts.get(requestId)||'')+(event.text||''));
+  function onStream(event:ChatEvent,text:string,requestId:string,job:Job){
     if(event.type==='start'||event.type==='queued'){
-      updateJob(requestId,{id:event.id,status:event.type==='queued'?'queued':'running',phase:event.phase});
       const sameView=projectId===job.projectId&&(job.id?chat?.id===job.id:!chat?.id&&draftNonce===job.draftNonce);
       if(sameView){
         chat={...(chat||{}),id:event.id,name:event.name||text.slice(0,70),messages:chat?.messages||[]};
@@ -182,21 +197,21 @@
           chat.messages.push({id:requestId+':user',role:'user',text,requestId});
           chat.messages.push({id:event.replyId,role:'assistant',text:'',requestId,model:event.model,provider:event.provider,outputBudget:event.outputBudget,contextReceipt:event.contextReceipt,actions:[],approvals:[]});
         }
-        const waitingDraft=drafts[projectId+':new'];
-        if(!job.id&&waitingDraft?.nonce===job.draftNonce){delete drafts[projectId+':new'];draftKey=projectId+':'+event.id;}
+        const previousKey=projectId+':'+(job.id||'new'),nextKey=projectId+':'+event.id,waitingDraft=drafts[previousKey];
+        if(previousKey!==nextKey&&draftKey===previousKey&&waitingDraft?.nonce===job.draftNonce){drafts[nextKey]=waitingDraft;delete drafts[previousKey];draftKey=nextKey;}
       }
       persist();void refreshSessions().catch(report);
     }
     if(projectId===job.projectId&&chat?.id===(event.id||jobs.find(item=>item.requestId===requestId)?.id)){
       const reply=chat.messages?.find((item:any)=>item.role==='assistant'&&item.requestId===requestId);
       if(reply){
-        for(const key of ['contextReceipt','outputBudget','metrics'])if(event[key]!==undefined)reply[key]=event[key];
+        for(const key of ['contextReceipt','outputBudget','metrics'] as const)if(event[key]!==undefined)reply[key]=event[key];
         if(event.type==='done'||event.type==='error'){
-          for(const key of ['finishedAt','outcome','limited','truncated','finishReason'])if(event[key]!==undefined)reply[key]=event[key];
+          for(const key of ['finishedAt','outcome','limited','truncated','finishReason'] as const)if(event[key]!==undefined)reply[key]=event[key];
           reply.complete=event.type==='done';reply.interrupted=event.type==='error';
         }
       }
-      if(event.type==='delta'&&reply)reply.text=streamTexts.get(requestId)||'';
+      if(event.type==='delta'&&reply)reply.text=client.text(requestId)||'';
       if(event.type==='action'&&reply)reply.actions=[...(reply.actions||[]),event.action];
       if(event.type==='approval'&&reply){reply.approvals=[...(reply.approvals||[]).filter((item:any)=>item.id!==event.approval?.id),event.approval].filter(Boolean);}
       if(event.type==='error')error=event.message;
@@ -212,42 +227,28 @@
     const snapshot:Draft={text,updatedAt:Date.now(),attachments:$state.snapshot(attachments),model,reasoning,fileProfile,webAccess,webApproval,scriptAccess,imageAccess,imageWorkflowId,imageCount,imageModelPolicy,nonce:draftNonce};
     const job:Job={requestId,projectId:pid,...(chat?.id?{id:chat.id}:{}),draftNonce,status:'starting'};
     const payload={requestId,projectId:pid,sessionId:chat?.id||null,model,reasoning,fileAccess:fileProfile!=='none',fileProfile,webAccess,webApproval,scriptAccess,imageAccess:comfy?.enabled===true&&imageAccess,text,attachments:attachments.map(({name,...reference})=>reference),...(imageAccess?{imageWorkflowId,imageCount,...(imageModelPolicy?{imageModelPolicy}:{})}:{})};
-    jobs=[...jobs,job];drafts[draftKey]=snapshot;
-    try{persist();}catch{jobs=jobs.filter(item=>item.requestId!==requestId);error=tr('Autorise le stockage local avant l’envoi pour conserver son suivi.','Allow local storage before sending so the request can be tracked.');return;}
-    prompt='';attachments=[];saveDraft();const controller=new AbortController();controllers.set(requestId,controller);streamTexts.set(requestId,'');streamingIds=[...streamingIds,requestId];
-    try{await sendStream(payload,controller.signal,event=>onStream(event,text,requestId));}
-    catch(failure:any){
-      let rejected=failure instanceof ApiError&&failure.status>=400&&failure.status<500&&![408,409].includes(failure.status);
-      if(failure instanceof ApiError&&failure.status===409){
-        try{const receipt=await request(query('/api/chat-request',{projectId:pid,requestId}));updateJob(requestId,{id:receipt.id,status:receipt.status});}
-        catch(check:any){if(check?.status===404)rejected=true;}
+    client.track(job);drafts[draftKey]=snapshot;
+    try{persist();}catch{client.remove(requestId);error=tr('Autorise le stockage local avant l’envoi pour conserver son suivi.','Allow local storage before sending so the request can be tracked.');return;}
+    prompt='';attachments=[];saveDraft();
+    try{
+      const result=await client.send(payload,(event,previous)=>onStream(event,text,requestId,previous));
+      if(result.kind!=='finished'){
+        if(result.kind==='rejected'&&sequence===viewSequence&&pid===projectId&&!prompt){prompt=text;attachments=snapshot.attachments;saveDraft();}
+        error=result.failure instanceof ApiError?result.failure.message:tr('Le flux est interrompu. Vérification de la demande sur le serveur.','Stream interrupted. Checking the request on the server.');
+        if(result.failure instanceof ApiError&&result.failure.status===401)report(result.failure);
       }
-      if(rejected){jobs=jobs.filter(item=>item.requestId!==requestId);if(sequence===viewSequence&&pid===projectId&&!prompt){prompt=text;attachments=snapshot.attachments;saveDraft();}}
-      else updateJob(requestId,{disconnected:true});
-      error=failure instanceof ApiError?failure.message:tr('Le flux est interrompu. Vérification de la demande sur le serveur.','Stream interrupted. Checking the request on the server.');
-      if(failure?.status===401)report(failure);
-    }finally{controllers.delete(requestId);streamTexts.delete(requestId);streamingIds=streamingIds.filter(id=>id!==requestId);if(authenticated&&mounted)await recover();}
+    }finally{if(authenticated&&mounted)await recover();}
   }
   async function recover(includeStreaming=false){
     if(!authenticated||recoveryBusy)return;recoveryBusy=true;
     try{
-      for(const target of [...jobs]){
-        if(!includeStreaming&&controllers.has(target.requestId))continue;
-        try{
-          const result=await request(query('/api/chat-request',{projectId:target.projectId,requestId:target.requestId}));
-          if(!jobs.some(item=>item.requestId===target.requestId))continue;
-          updateJob(target.requestId,{id:result.id||target.id,status:result.status,phase:result.phase,disconnected:false});
-          const sameView=projectId===target.projectId&&(chat?.id===result.id||!chat?.id&&target.draftNonce===draftNonce);
-          if(result.id&&sameView){if(!chat?.id)chat={id:result.id,messages:[]};await loadConversation(target.projectId,result.id);}
-          if(terminal(result.status)&&!controllers.has(target.requestId)){jobs=jobs.filter(item=>item.requestId!==target.requestId);if(sameView)notice=result.message||tr('Réponse retrouvée sur le serveur.','Reply recovered from the server.');}
-        }catch(failure:any){updateJob(target.requestId,{disconnected:true});if(failure?.status===404)error=tr('Demande non retrouvée. Aucun message renvoyé : vérifie à nouveau son état.','Request not found. No message was resent: check its state again.');else report(failure);}
-      }
+      await client.recover(includeStreaming);
       persist();
       if(Date.now()-lastCatalog>6000){lastCatalog=Date.now();await refreshSessions();}
     }catch(failure){report(failure);}finally{recoveryBusy=false;}
   }
-  async function stop(job=currentJob){if(!job?.id)return;try{await post('/api/cancel',{projectId:job.projectId,id:job.id,requestId:job.requestId});notice=tr('Arrêt demandé au serveur.','Stop requested on the server.');await recover(true);}catch(failure){report(failure);}}
-  function detach(){if(!currentJob)return;updateJob(currentJob.requestId,{disconnected:true});controllers.get(currentJob.requestId)?.abort();}
+  async function stop(job=currentJob){if(!job?.id)return;try{await client.cancel(job);notice=tr('Arrêt demandé au serveur.','Stop requested on the server.');await recover(true);}catch(failure){report(failure);}}
+  function detach(){if(currentJob)client.detach(currentJob.requestId);}
   async function visitJob(job:Job){if(projectId!==job.projectId)await chooseProject(job.projectId);if(job.id)await openSession(job.id);else await recover();}
   async function changedLoadedModels(){saveDraft();await refreshEngines(false);saveDraft();}
   async function changedInference(){saveDraft();model='';reasoning='default';await refreshEngines();notice=tr('Moteur et modèle actifs actualisés.','Active engine and model updated.');saveDraft();}
@@ -266,7 +267,7 @@
     const timer=setInterval(()=>{if(!document.hidden)void recover(true);},1800);
     const resume=()=>{if(!document.hidden)void recover(true);},save=()=>saveDraft();
     addEventListener('online',resume);addEventListener('pageshow',resume);document.addEventListener('visibilitychange',resume);addEventListener('pagehide',save);
-    return()=>{mounted=false;clearInterval(timer);removeEventListener('online',resume);removeEventListener('pageshow',resume);removeEventListener('pagehide',save);document.removeEventListener('visibilitychange',resume);for(const controller of controllers.values())controller.abort();};
+    return()=>{mounted=false;clearInterval(timer);removeEventListener('online',resume);removeEventListener('pageshow',resume);removeEventListener('pagehide',save);document.removeEventListener('visibilitychange',resume);client.disconnect();};
   });
 </script>
 
