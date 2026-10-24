@@ -28,13 +28,38 @@ test('native identity mismatch is a no-effect refusal; loss of termination recei
   const mismatch=createBionicDesktopProcess({platform:'win32',execFileImpl:async()=>({stdout:'{"state":"identity_changed","effectAttempted":false}'})});
   await assert.rejects(mismatch.stop(identity),{code:'desktop_identity_changed',effectAttempted:false});
   let calls=0;const lost=createBionicDesktopProcess({platform:'win32',execFileImpl:async()=>{calls++;throw Error('Lost native response');}});
-  await assert.rejects(lost.stop(identity),{code:'desktop_status_unconfirmed',effectAttempted:true});assert.equal(calls,1);
+  await assert.rejects(lost.stop(identity),{code:'desktop_helper_failed',effectAttempted:true});assert.equal(calls,1);
   const busy=createBionicDesktopProcess({platform:'win32',execFileImpl:async()=>({stdout:'{"state":"connections_active","effectAttempted":false}'})});
   await assert.rejects(busy.stop(identity,{apiPort:1235}),{code:'desktop_connections_active',effectAttempted:false});
   const malformed=createBionicDesktopProcess({platform:'win32',execFileImpl:async()=>({stdout:'null'})});
   await assert.rejects(malformed.stop(identity),{code:'desktop_status_unconfirmed',effectAttempted:true});
 });
-test('native identity and exit confirmation operate only on a harmless Node child owned by this test',{skip:process.platform!=='win32',timeout:60000},async()=>{
+test('cold helper budget is bounded independently from native exit wait and never repeats a call',async()=>{
+  const calls=[];
+  const helper=createBionicDesktopProcess({platform:'win32',execFileImpl:async(_file,_args,options)=>{
+    const intent=JSON.parse(Buffer.from(options.env.CANAE_DESKTOP_INTENT,'base64'));calls.push({budget:options.timeout,intent});
+    return{stdout:JSON.stringify({state:intent.action==='stop'?'stopped':'running',createdAt:identity.createdAt,executable:identity.executable})};
+  }});
+  await helper.capture(identity);await helper.inspect(identity);await helper.stop(identity,{timeoutMs:35000});await helper.stop(identity,{timeoutMs:1});
+  assert.deepEqual(calls.map(value=>value.budget),[65000,65000,90000,60100]);
+  assert.deepEqual(calls.map(value=>value.intent.timeout),[0,0,30000,100]);
+  assert.deepEqual(calls.map(value=>value.intent.action),['capture','inspect','stop','stop']);
+});
+test('command timeout and other failures have distinct sanitized diagnostics without automatic retry',async()=>{
+  for(const [error,code] of [
+    [{code:'ETIMEDOUT'},'desktop_helper_timeout'],
+    [{code:null,killed:true,signal:'SIGTERM'},'desktop_helper_timeout'],
+    [{code:'ERR_CHILD_PROCESS_STDIO_MAXBUFFER',killed:true,signal:'SIGTERM'},'desktop_helper_failed'],
+    [{code:1,killed:false},'desktop_helper_failed'],
+  ])for(const action of ['capture','inspect','stop']){
+    let calls=0;const helper=createBionicDesktopProcess({platform:'win32',execFileImpl:async()=>{calls++;throw Object.assign(Error('private executable path and output'),error,{stdout:'private stdout',stderr:'private stderr',cmd:'private command'});}});
+    await assert.rejects(helper[action](identity),failure=>{
+      assert.equal(failure.code,code);assert.equal(failure.effectAttempted,action==='stop');assert.equal(failure.message,code);
+      for(const key of ['stdout','stderr','cmd','cause'])assert.equal(failure[key],undefined);return true;
+    });assert.equal(calls,1);
+  }
+});
+test('native identity and exit confirmation operate only on a harmless Node child owned by this test',{skip:process.platform!=='win32',timeout:180000},async()=>{
   const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true});
   try{
     await once(child,'spawn');const exited=once(child,'exit');
