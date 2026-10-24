@@ -2,7 +2,7 @@
 
 # Canaé — compagnon local
 
-**Candidate locale Canaé 2.6.0-beta.8** : aide et capacités dans les paramètres, copie par bloc de code, export du brouillon, aperçus des pièces jointes et import multiple. Le suivi des réponses est extrait dans un client commun avec validation et récupération sans nouvel envoi ; voir [la parité et ses limites](docs/beta8-parity.md). Les images dans le chat, la copie des messages et les statistiques de [bêta 7](docs/beta7-chat.md) sont conservées. Interface llama-ui, fenêtres centrées, paramètres natifs avec curseurs et sécurité HTTP/HTTPS/mTLS. Un seul moteur de conversation est sélectionné dans la webapp ; les GGUF sont partagés avec Bionic sans copie. Internet et images disponibles sont proposés par défaut, en conservant les désactivations explicites. Voir [la candidate et ses limites](docs/llama-ui-prototype.md). Cette mention ne constitue pas une publication.
+**Candidate locale Canaé 2.6.0-beta.9** : moteur, modèle et réflexion réunis dans le chat, choix natifs du modèle et confirmation GGUF dans l’application ; voir [les nouveautés beta.9](docs/beta9-models.md). Les acquis beta.8 restent conservés : aide, copie par bloc, brouillons, pièces jointes et imports multiples.
 
 La bêta 6 ajoute le curseur de quantité d’images dans le chat et l’atelier et renforce les reprises des moteurs et des sauvegardes. Voir [l’audit, les corrections et les extensions proposées](docs/beta6-audit.md).
 

@@ -1,5 +1,12 @@
 # Journal des versions
 
+## 2.6.0-beta.9 — Canaé — candidate locale
+
+- Le moteur d’inférence, le modèle et la réflexion sont accessibles ensemble dans le chat. Les choix de réflexion viennent du modèle sélectionné et se conservent dans le brouillon ; le réglage par défaut laisse le moteur décider.
+- llama.cpp transmet le contrôle activé/désactivé lorsque son template annonce ce contrôle. Une capacité inconnue ne devient pas une liste de niveaux inventés.
+- Le changement de GGUF utilise une confirmation dans l’application, avec relecture du profil avant le lancement et récupération des réponses perdues sans double chargement. Les serveurs externes restent explicitement hors contrôle.
+- Cette version poursuit les acquis beta.8 ; les vérifications réelles des trois modèles et des deux workflows sont consignées séparément avec leur révision.
+
 ## 2.6.0-beta.8 — Canaé — candidate locale
 
 - **Paramètres → Aide et capacités** retrouve le guide FR/EN et ses raccourcis. Les capacités séparent support, permissions et disponibilité ; les données inconnues restent explicites.

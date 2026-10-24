@@ -2,7 +2,7 @@
 
 # Canaé — local companion
 
-**Local candidate Canaé 2.6.0-beta.8** restores help and reported capabilities in Settings, copying individual code blocks, exporting the current draft, attachment previews and multiple file imports. A shared application client validates response tracking and recovers lost connections without resubmitting generation. Chat images, whole-message copying and per-response statistics from beta.7 remain available. See [parity and limits](docs/beta8-parity.md) and [the candidate overview](docs/llama-ui-prototype.md). Select one conversation engine in the webapp and share GGUF files with Bionic without copying them. Internet and available images are enabled by default; explicit opt-outs remain respected. This candidate has not been published.
+**Local candidate Canaé 2.6.0-beta.9** adds engine, model and reported reasoning choices in chat, with an in-app GGUF confirmation; see [beta.9 changes](docs/beta9-models.md). It preserves beta.8 help, individual code copying, drafts, attachments and multiple file imports.
 
 **Stable reference 2.5.0** · Chat with the models on your PC and access your projects from your phone’s browser over your local network.
 
