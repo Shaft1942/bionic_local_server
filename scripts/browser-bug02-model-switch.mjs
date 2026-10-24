@@ -1,0 +1,168 @@
+// Real browser, authenticated HTTP and adapters. Only synthetic GGUF headers and a fake process backend.
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { createPrototype, PROTOTYPE_CODE } from '../lib/llama-ui-prototype.mjs';
+import { createCompanion } from '../server.mjs';
+import { createLlamaServerLibrary } from '../lib/llama-server-library.mjs';
+import { createLlamaServerSettings, createLlamaServerManager } from '../lib/llama-server-settings.mjs';
+
+const sourceRoot = fileURLToPath(new URL('../', import.meta.url));
+const { chromium } = process.env.PLAYWRIGHT_MODULE_PATH ? await import(pathToFileURL(path.join(process.env.PLAYWRIGHT_MODULE_PATH, 'index.mjs')).href) : await import('playwright');
+const browser = await chromium.launch({ headless: true, channel: process.env.BIONIC_BROWSER_CHANNEL || 'chrome' });
+const captures = process.env.BIONIC_BROWSER_CAPTURES || process.env.BIONIC_SMOKE_SCREENSHOTS;
+if (captures) await fs.mkdir(captures, { recursive: true });
+const u64 = value => { const bytes = Buffer.alloc(8); bytes.writeBigUInt64LE(BigInt(value)); return bytes; };
+const u32 = value => { const bytes = Buffer.alloc(4); bytes.writeUInt32LE(value); return bytes; };
+const string = value => Buffer.concat([u64(Buffer.byteLength(value)), Buffer.from(value)]);
+const gguf = (name, architecture) => Buffer.concat([Buffer.from('GGUF'), u32(3), u64(0), u64(2), string('general.architecture'), u32(8), string(architecture), string('general.name'), u32(8), string(name)]);
+
+async function fixture() {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'canae-composer-models-'));
+  const bootstrap = await createPrototype({ root, listen: false, modelDelayMs: 1 });
+  const settings = { ...bootstrap.app.settings, port: 0, comfyEnabled: false, inferenceProvider: 'llamacpp', llamaUrl: 'http://127.0.0.1:1238' };
+  await bootstrap.app.close();
+  const directory = path.join(root, 'shared-models'), binaryPath = path.join(root, process.platform === 'win32' ? 'llama-server.exe' : 'llama-server');
+  await fs.mkdir(directory); await fs.writeFile(binaryPath, 'Synthetic binary. Never executed.');
+  await fs.writeFile(path.join(directory, 'Gemma-E4B-fixture-Q4.gguf'), gguf('Synthetic E4B', 'gemma4'));
+  await fs.writeFile(path.join(directory, 'Qwen-9B-fixture-Q4.gguf'), gguf('Synthetic Qwen', 'qwen35'));
+  await fs.writeFile(path.join(directory, 'mmproj-fixture.gguf'), gguf('Projector', 'clip'));
+  const library = createLlamaServerLibrary({ defaultDirectory: directory });
+  const profile = await createLlamaServerSettings({ filename: path.join(root, 'data', 'llama-server-settings.json'), library, initial: { binaryPath } });
+  const stats = { starts: 0, stops: 0, modelCalls: 0 }; let current = null, rejectBusy = false, external = false, foreignProfile = false, delayed = false, unconfirmed = false, release = null;
+  const backend = {
+    async occupied() { return foreignProfile || !!current?.alive; },
+    async launch(value) { stats.starts++; current = { alive: true, value, unconfirmed, ready: delayed ? new Promise(resolve => { release = resolve; }) : Promise.resolve() }; return current; },
+    async inspect(value) { await value.ready; return value.alive ? { state: value.unconfirmed ? 'starting' : 'running', owned: true, pid: 900002 } : { state: 'stopped', owned: false, exitConfirmed: true }; },
+    async stop(value) { stats.stops++; value.alive = false; return { state: 'stopped', exitConfirmed: true }; }, close() {}
+  };
+  const manager = createLlamaServerManager({ settings: profile, processBackend: backend, startTimeoutMs: 40, pollMs: 5,
+    assertIdle: async () => { if (rejectBusy) throw Object.assign(Error('Une tâche synthétique est active.'), { status: 409, code: 'fixture-busy' }); },
+    assertConnectorAvailable: async () => { if (external) throw Object.assign(Error('Arrête le serveur externe avant de charger ce GGUF.'), { status: 409, code: 'fixture-external-active' }); }
+  });
+  const fetchImpl = async (value, options = {}) => {
+    const url = new URL(value);
+    assert(['http://127.0.0.1:1238', 'http://127.0.0.1:19998'].includes(url.origin), 'No external engine or network in fixture');
+    if (url.pathname === '/v1/models') return Response.json({ data: current?.alive ? [{ id: current.value.alias, meta: { n_ctx_train: 8192 } }] : [] });
+    if (url.pathname === '/props') return Response.json({ total_slots: 1, default_generation_settings: { n_ctx: 8192 }, build_info: 'fixture' });
+    if (url.pathname === '/api/v1/models') return Response.json({ models: ['one', 'two'].map(key => ({ key: 'bionic-' + key, display_name: 'Bionic fixture ' + key, type: 'llm', loaded_instances: [] })) });
+    if (url.pathname === '/v1/chat/completions') {
+      assert.equal(options.method, 'POST'); stats.modelCalls++;
+      return new Response('data: ' + JSON.stringify({ choices: [{ delta: { content: 'Réponse synthétique du GGUF choisi.' }, finish_reason: 'stop' }] }) + '\n\ndata: [DONE]\n\n');
+    }
+    throw Error('Unexpected synthetic route: ' + url.pathname);
+  };
+  const app = await createCompanion({ root, publicDirectory: path.join(sourceRoot, 'public'), settings, llamaServerManager: manager, inferenceEnvironment: {}, fetchImpl,
+    nativeStore: { listProjects: async () => [], listSessions: async () => [], getConversation: async () => { throw Object.assign(Error('No native fixture history'), { status: 404 }); } },
+    localServiceSupervisor: { assertAdmission() {}, activeCount: () => 0, protectedPaths: () => [], snapshot: async () => ({ services: [], disabled: true }), close: async () => {} }, enableUpdateScheduling: false
+  });
+  await new Promise((resolve, reject) => { app.server.once('error', reject); app.server.listen(0, '127.0.0.1', resolve); });
+  return { app, root, stats, manager, setBusy(value) { rejectBusy = value; }, setExternal(value) { external = value; }, setForeignProfile(value) { foreignProfile = value; }, changeProfile() { return profile.save({ expectedRevision: profile.snapshot().revision, contextSize: 4096 }); }, delay() { delayed = true; }, release() { delayed = false; release?.(); }, unknown() { unconfirmed = true; }, confirm() { unconfirmed = false; current.unconfirmed = false; }, url: 'http://127.0.0.1:' + app.server.address().port };
+}
+async function shot(page, name) { if (captures) await page.screenshot({ path: path.join(captures, name), fullPage: false }); }
+async function dropReply(page, pathname) {
+  let done, failed; const promise = new Promise((resolve, reject) => { done = resolve; failed = reject; });
+  await page.route('**' + pathname, async route => { try { const response = await route.fetch(); assert.equal(response.status(), 200, await response.text()); await route.abort('failed'); done(); } catch (error) { failed(error); } });
+  return async () => { await promise; await page.unroute('**' + pathname); };
+}
+async function active(page, filename) {
+  await page.waitForFunction(name => { const select = document.querySelector('.composer [aria-label="Modèle"]'); return select && !select.disabled && select.value.startsWith('llamacpp:') && select.selectedOptions[0]?.textContent === name; }, filename);
+}
+async function oneField(page) {
+  assert.equal(await page.locator('.composer').getByRole('combobox', { name: 'Modèle', exact: true }).count(), 1);
+  const box = await page.locator('.composer').getByRole('combobox', { name: 'Modèle', exact: true }).boundingBox(); assert(box && box.width >= 80 && box.height >= 20, 'The existing model field must remain visible');
+  assert.equal(await page.getByRole('combobox', { name: 'Fichier GGUF', exact: true }).count(), 0);
+  assert.equal(await page.locator('.composer').getByRole('button', { name: /Charger le GGUF|Actualiser les modèles du champ de message|Configurer le moteur d’inférence/ }).count(), 0);
+  assert.equal(await page.locator('.composer .gguf-row, .composer .active-row').count(), 0);
+}
+const results = [];
+try {
+  for (const width of [1280, 320]) {
+    const f = await fixture(), context = await browser.newContext({ locale: 'fr-FR', viewport: { width, height: 900 }, colorScheme: width === 390 ? 'dark' : 'light' }), page = await context.newPage(), errors = [], csp = [], posts = [], confirmations = [];
+    page.setDefaultTimeout(15000); page.on('pageerror', error => errors.push(error.message));
+    page.on('console', entry => { if (/content.security.policy|violates the following|refused to (?:apply|load|execute)/i.test(entry.text())) csp.push(entry.text()); });
+    page.on('request', request => { if (request.method() === 'POST') posts.push(new URL(request.url()).pathname); });
+    const actionCount = () => posts.filter(pathname => pathname === '/api/inference/select-model').length;
+    let nativeDialogs=0;
+    page.on('dialog',dialog=>{nativeDialogs++;void dialog.dismiss();});
+    if(process.env.BIONIC_BUG02_BASELINE==='1')await page.route('**/*',async route=>{
+      const url=new URL(route.request().url());
+      if(url.origin!==f.url||url.pathname!=='/'&&!url.pathname.startsWith('/llama-ui/'))return route.continue();
+      const filename=url.pathname==='/'?'public/llama-ui/index.html':'public'+url.pathname;
+      const body=execFileSync('git',['show','e9b75578ab40c973b3bb61bf85293629801efb67:'+filename],{cwd:sourceRoot,windowsHide:true});
+      await route.fulfill({body,contentType:filename.endsWith('.js')?'text/javascript':filename.endsWith('.css')?'text/css':'text/html'});
+    });
+    try {
+      await page.goto(f.url); await page.locator('#access-code').fill(PROTOTYPE_CODE); await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
+      const picker = page.getByRole('combobox', { name: 'Modèle', exact: true }), prompt = page.getByRole('textbox', { name: 'Message', exact: true });
+      const dialog=page.getByRole('dialog',{name:'Charger le modèle GGUF',exact:true});
+      const choose=async(value,{cancel=false,escape=false,stale=false}={})=>{
+        const before=actionCount();await picker.selectOption(value);assert.equal(nativeDialogs,0,'GGUF confirmation must use an accessible HTML dialog, never a blocking native confirm');await dialog.waitFor();
+        confirmations.push(await dialog.textContent());assert.equal(actionCount(),before,'No POST before explicit HTML confirmation');
+        if(confirmations.length===1)await shot(page,width+'-gguf-confirmation.png');
+        if(stale)await f.changeProfile();
+        if(escape)await page.keyboard.press('Escape');else await dialog.getByRole('button',{name:cancel?'Annuler':'Charger et utiliser',exact:true}).click();
+      };
+      await picker.waitFor(); await page.waitForFunction(() => document.querySelector('[aria-label="Modèle"] optgroup[label="Fichiers GGUF"]')?.children.length === 2);
+      const files = await f.manager.inventory(), e4b = files.models.find(item => item.name.startsWith('Gemma')), qwen = files.models.find(item => item.name.startsWith('Qwen'));
+      assert.equal(files.models.length, 2); assert.equal(files.excludedProjectors, 1);
+      const gemmaName = 'Gemma-E4B-fixture-Q4.gguf', qwenName = 'Qwen-9B-fixture-Q4.gguf';
+      assert.equal(await picker.locator('option[value="gguf:' + e4b.id + '"]').textContent(), gemmaName); assert.equal(await picker.locator('option[value="gguf:' + qwen.id + '"]').textContent(), qwenName); await oneField(page);
+      await prompt.fill('Brouillon conservé pendant le choix de modèle.');
+      await choose('gguf:' + e4b.id,{escape:true});
+      await page.waitForFunction(() => document.querySelector('.composer [aria-label="Modèle"]')?.value === '');
+      assert.equal(f.stats.starts, 0); assert.equal(actionCount(), 0); assert.equal(await picker.inputValue(), ''); assert.equal(await prompt.inputValue(), 'Brouillon conservé pendant le choix de modèle.');
+      assert.equal(await picker.evaluate(element=>document.activeElement===element),true,'Escape restores picker focus');
+      f.setForeignProfile(true);await page.reload();await picker.waitFor();await page.getByRole('alert').filter({hasText:'serveur externe'}).waitFor();
+      await page.waitForFunction(()=>document.querySelector('optgroup[label="Fichiers GGUF"] option')?.disabled===true);
+      assert.equal(f.stats.starts,0);assert.equal(actionCount(),0);f.setForeignProfile(false);await page.reload();
+      await page.waitForFunction(()=>document.querySelector('optgroup[label="Fichiers GGUF"] option')?.disabled===false);
+      await choose('gguf:' + e4b.id,{stale:true});await page.getByRole('alert').filter({hasText:'a changé'}).waitFor();assert.equal(actionCount(),0);assert.equal(f.stats.starts,0);
+      await choose('gguf:' + e4b.id); await active(page, gemmaName);
+      assert.equal(f.stats.starts, 1); assert.equal(actionCount(), 1); assert.equal((await f.manager.snapshot()).process.model.id, e4b.id);
+      assert.equal(await prompt.inputValue(), 'Brouillon conservé pendant le choix de modèle.');
+      const beforeCancel = await picker.inputValue();
+      await choose('gguf:' + qwen.id,{cancel:true}); await active(page, gemmaName); assert.equal(await picker.inputValue(), beforeCancel); assert.equal(actionCount(), 1); assert.equal(f.stats.starts, 1);
+      await page.reload(); await active(page, gemmaName); assert.equal(await picker.inputValue(), beforeCancel); assert.equal(f.stats.starts, 1); assert.equal(actionCount(), 1);
+      const tokenState = await (await context.request.get(f.url + '/api/inference/settings')).json();
+      const tokenSetup = await context.request.post(f.url + '/api/inference/settings', { data: { provider: 'llamacpp', llamaToken: 'synthetic-fixture-token', expectedRevision: tokenState.revision }, headers: { Origin: f.url } }); assert.equal(tokenSetup.status(), 200, await tokenSetup.text());
+      await page.reload(); await active(page, gemmaName);
+      const dropped = await dropReply(page, '/api/inference/select-model');
+      await choose('gguf:' + qwen.id); await dropped(); await active(page, qwenName);
+      assert.equal(f.stats.starts, 2); assert.equal(f.stats.stops, 1); assert.equal(actionCount(), 2); assert.equal((await f.manager.snapshot()).process.model.id, qwen.id);
+      assert(confirmations.at(-1).includes('jeton du llama-server externe sera effacé')); assert.equal((await (await context.request.get(f.url + '/api/inference/settings')).json()).hasLlamaToken, false);
+      assert.equal(await page.getByRole('button', { name: 'Envoyer', exact: true }).isEnabled(), true);
+      assert.equal(await prompt.inputValue(), 'Brouillon conservé pendant le choix de modèle.');
+      await page.reload(); await active(page, qwenName); assert.equal(actionCount(), 2); assert.equal(f.stats.starts, 2);
+      f.setBusy(true); await choose('gguf:' + e4b.id); await page.getByRole('alert').filter({ hasText: 'tâche synthétique' }).waitFor(); await active(page, qwenName); assert.equal(f.stats.starts, 2); assert.equal(f.stats.stops, 1); f.setBusy(false);
+      f.setExternal(true); await choose('gguf:' + e4b.id); await page.getByRole('alert').filter({ hasText: 'serveur externe' }).waitFor(); await active(page, qwenName); assert.equal(f.stats.starts, 2); assert.equal(f.stats.stops, 1); f.setExternal(false);
+      f.delay(); await choose('gguf:' + e4b.id);
+      await page.waitForFunction(() => document.querySelector('.composer [aria-label="Modèle"]')?.selectedOptions[0]?.textContent?.startsWith('Chargement…')); assert.equal(await page.getByRole('button', { name: 'Envoyer', exact: true }).isDisabled(), true);
+      await prompt.press('Enter'); assert.equal(posts.filter(pathname => pathname === '/api/chat').length, 0); assert.equal(f.stats.modelCalls, 0);
+      f.release(); await active(page, gemmaName); assert.equal(f.stats.starts, 3); assert.equal(f.stats.stops, 2);
+      f.unknown(); await choose('gguf:' + qwen.id);
+      await page.waitForFunction(() => document.querySelector('.composer [aria-label="Modèle"]')?.selectedOptions[0]?.textContent?.startsWith('À vérifier')); assert.equal(await page.getByRole('button', { name: 'Envoyer', exact: true }).isDisabled(), true); assert.equal(f.stats.starts, 4);
+      const beforeRecovery = actionCount(); f.confirm(); await active(page, qwenName);
+      assert.equal(actionCount(), beforeRecovery); assert.equal(f.stats.starts, 4); assert.equal(f.stats.stops, 3); assert.equal(await page.getByRole('button', { name: 'Envoyer', exact: true }).isEnabled(), true);
+      const ping=await (await context.request.get(f.url+'/api/ping')).json();
+      await page.evaluate(id=>localStorage.setItem('bionic:llama-preferences:'+id,JSON.stringify({language:'en',theme:'light',draftHours:24})),ping.instanceId);await page.reload();
+      const englishPicker=page.getByRole('combobox',{name:'Model',exact:true});await englishPicker.selectOption('gguf:'+e4b.id);
+      const englishDialog=page.getByRole('dialog',{name:'Load GGUF model',exact:true});await englishDialog.getByRole('button',{name:'Load and use',exact:true}).waitFor();await englishDialog.getByRole('button',{name:'Cancel',exact:true}).click();
+      assert.equal(actionCount(),beforeRecovery);assert.equal(nativeDialogs,0);
+      await page.evaluate(id=>localStorage.setItem('bionic:llama-preferences:'+id,JSON.stringify({language:'fr',theme:'light',draftHours:24})),ping.instanceId);await page.reload();await active(page,qwenName);
+      await oneField(page);
+      await shot(page, width + '-composer-gguf.png');
+      const inference = await (await context.request.get(f.url + '/api/inference/settings')).json();
+      const switched = await context.request.post(f.url + '/api/inference/settings', { data: { provider: 'bionic', expectedRevision: inference.revision }, headers: { Origin: f.url } }); assert.equal(switched.status(), 200, await switched.text());
+      await page.reload(); const legacy = page.getByRole('combobox', { name: 'Modèle', exact: true }); await legacy.waitFor(); await legacy.selectOption('bionic-two'); assert.equal(await legacy.inputValue(), 'bionic-two'); assert.equal(await picker.locator('optgroup').count(), 0); assert.equal(f.stats.starts, 4);
+      await page.reload(); await legacy.waitFor(); assert.equal(await legacy.inputValue(), 'bionic-two'); assert.equal(await prompt.inputValue(), 'Brouillon conservé pendant le choix de modèle.');
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true); assert.deepEqual(errors, []); assert.deepEqual(csp, []);
+      results.push({ width, nativeDialogs, htmlConfirmation:true, languages:['fr','en'], escapeRestoresFocus:true, staleProfileZeroPosts:true, unownedProfileDisabled:true, singleExistingModelField: true, fullGgufFilenamesInOptions: true, noAdditionalComposerButtonOrModelRow: true, cancelledSelectionRevertsWithoutEffect: true, explicitStartOnSelection: true, activeFromServerAfterReload: true, lostReplyAndReloadWithoutRepost: true, busyAndExternalRefusedBeforeEffectAndFieldReverted: true, sendAndEnterBlockedDuringTransition: true, unknownThenGetRecoveryWithoutRepostAndSendEnabled: true, tokenClearingDisclosedInConfirmation: true, promptPreserved: true, bionicSelectPreserved: true, starts: f.stats.starts, stops: f.stats.stops, modelCalls: f.stats.modelCalls, selectionPosts: actionCount(), pageErrors: errors.length, cspErrors: csp.length });
+    } catch (error) { await shot(page, width + '-composer-models-failure.png').catch(() => {}); console.error(JSON.stringify({ width, errors, csp, stats: f.stats, posts })); throw error; }
+    finally { f.release(); await context.close(); await f.app.close(); const resolved = path.resolve(f.root); assert(path.dirname(resolved) === path.resolve(os.tmpdir()) && path.basename(resolved).startsWith('canae-composer-models-')); await fs.rm(resolved, { recursive: true, force: true }); }
+  }
+  console.log(JSON.stringify({ mode: 'real-browser-authenticated-http-fake-processes-real-adapters', results, limitations: ['No actual llama-server process, model weights or GPU launched.', 'No active installation or personal configuration accessed.', 'Browser viewports do not qualify physical phones.'] }, null, 2));
+} finally { await browser.close(); }
