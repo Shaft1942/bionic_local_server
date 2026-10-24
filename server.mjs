@@ -13,6 +13,7 @@ import { createLlamaServerSettings, createLlamaServerManager, createLlamaServerP
 import { createNDJSONWriter } from './lib/ndjson-writer.mjs';
 import { promisify } from 'node:util';
 import { createGpuScheduler } from './lib/gpu-scheduler.mjs';
+import { imageMemoryPolicyCapabilities, resolveImageMemoryPolicy } from './lib/image-memory-policy.mjs';
 import { receiveBody } from './lib/request-body.mjs';
 import { runDiagnostics } from './lib/diagnostics.mjs';
 import path from 'node:path';
@@ -390,7 +391,7 @@ async function readChat(projectId, id) {
 function apiHeaders() { const token = inferenceSettings.current().bionicToken; return token ? { Authorization: `Bearer ${token}` } : {}; }
 function inferenceHeaders() { const current = inferenceSettings.current(), token = inferenceProvider === 'llamacpp' ? current.llamaToken : current.bionicToken; return token ? { Authorization: `Bearer ${token}` } : {}; }
 let modelTransport = (!options.inferenceFactory && options.modelTransport) || inferenceRuntime.modelTransport;
-function inferenceSettingsDTO() { return { ...inferenceSettings.snapshot(), editable: inferenceEditable, reconciliationRequired: inferenceOperations.size > 0, busy: localServiceBarrier || updatePreparing || updateMaintenance || lifecycle.status().stopping || Object.values(activeWork()).some(Boolean) || inFlightMutations > 0 }; }
+function inferenceSettingsDTO() { return { ...inferenceSettings.snapshot(), imageMemoryPolicy:imageMemoryPolicyCapabilities({provider:inferenceSettings.current().provider,modelService,defaultPolicy:comfyImages.getSettings?.()?.modelPolicy??'keep'}), editable: inferenceEditable, reconciliationRequired: inferenceOperations.size > 0, busy: localServiceBarrier || updatePreparing || updateMaintenance || lifecycle.status().stopping || Object.values(activeWork()).some(Boolean) || inFlightMutations > 0 }; }
 function publishInferenceRuntime(proposed, runtime) {
   inferenceRuntime = runtime; modelTransport = runtime.modelTransport;
   inferenceProvider = proposed.provider; API = inferenceProvider === 'llamacpp' ? proposed.llamaUrl : proposed.apiUrl;
@@ -665,6 +666,9 @@ async function sendDirectImage(data) {
       return { id: chat.id, requestId, messageId: reply?.id, generation: reply?.imageGenerations?.[0], generations: reply?.imageGenerations || [], status: prior.status };
     }
     if (chatRequests.has(requestId)) throw fail(409, 'Cet identifiant appartient déjà à une autre demande.');
+    const resolvedSelection=comfyImages.resolveSelection?.(data.workflowId);
+    const memoryPolicy=resolveImageMemoryPolicy({provider:inferenceSettings.current().provider,modelService,defaultPolicy:resolvedSelection?.modelPolicy??comfyImages.getSettings?.()?.modelPolicy??'keep'});
+    const selection=resolvedSelection?{...structuredClone(resolvedSelection),modelPolicy:memoryPolicy.effectivePolicy}:{modelPolicy:memoryPolicy.effectivePolicy};
     const controller = new AbortController();
     const request = { projectId: data.projectId, status: 'starting', id: null, phase: 'image', controller };
     chatRequests.set(requestId, request);
@@ -673,7 +677,6 @@ async function sendDirectImage(data) {
       const project = (await listProjects()).find(entry => entry.id === data.projectId);
       if (!project) throw fail(404, 'Projet introuvable. Actualise la liste.');
       if (comfyImages.getSettings?.().enabled === false) throw fail(409, 'ComfyUI est désactivé. Active-le dans les paramètres du compagnon.');
-      const selection = comfyImages.resolveSelection?.(data.workflowId);
       let chat, reply;
       await withAcceptanceLock(data.projectId + ':' + (data.sessionId || requestId), async () => {
         assertServiceAdmission();
@@ -721,6 +724,7 @@ async function sendChat(req, res, data) {
   if (!validRequestId(requestId)) throw fail(400, 'Identifiant de demande invalide.');
   if (await findChatRequest(data.projectId, requestId)) throw fail(409, 'Ce message a déjà été reçu. Rouvre sa conversation pour retrouver la réponse.');
   if (chatRequests.has(requestId)) throw fail(409, 'Ce message a déjà été reçu.');
+  const memoryPolicy=data.imageAccess===true?resolveImageMemoryPolicy({provider:inferenceSettings.current().provider,modelService,requestedPolicy:data.imageModelPolicy??null,defaultPolicy:comfyImages.getSettings?.()?.modelPolicy??'keep'}):null;
   const request = { projectId: data.projectId, status: 'starting', id: null };
   chatRequests.set(requestId, request);
   data = { ...data, requestId };
@@ -742,7 +746,7 @@ async function sendChat(req, res, data) {
     const imageModelPolicy=data.imageModelPolicy??null;
     if(imageModelPolicy!==null&&!['keep','unload','alternate'].includes(imageModelPolicy))throw fail(400,'Gestion du modèle texte invalide.');
     const resolvedImageSelection=imageAccess&&comfyImages.resolveSelection?comfyImages.resolveSelection(data.imageWorkflowId):undefined;
-    const imageSelection=resolvedImageSelection?{...structuredClone(resolvedImageSelection),modelPolicy:imageModelPolicy??comfyImages.getSettings?.()?.modelPolicy??resolvedImageSelection.modelPolicy??'keep'}:undefined;
+    const imageSelection=resolvedImageSelection?{...structuredClone(resolvedImageSelection),modelPolicy:memoryPolicy?.effectivePolicy??'keep'}:memoryPolicy?{modelPolicy:memoryPolicy.effectivePolicy}:undefined;
     if(imageAccess&&comfyImages.getSettings?.().enabled===false)throw fail(409,'ComfyUI est désactivé. Active-le dans les paramètres du compagnon.');
     if ((fileAccess || webAccess || scriptAccess || imageAccess) && selectedModel.tools === false) throw fail(400, 'Ce modèle ne propose pas les appels d’outils. Choisis un autre modèle ou désactive les outils.');
     if (project.isUnassigned && data.attachments?.length) throw fail(400, 'Choisis un projet pour joindre ses fichiers.');
@@ -1501,7 +1505,7 @@ async function handleRequest(req, res) {
       }
       if(req.method==='POST'&&url.pathname==='/api/comfy/discover'){json(res,200,await comfyImages.discoverServers(await body(req,4096)));return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/loras'){json(res,200,await comfyImages.listLoras(await body(req,4096)));return;}
-      if(req.method==='GET'&&url.pathname==='/api/comfy/settings'){json(res,200,{...await comfyImages.getSettings(),available:await comfyImages.available?.()===true});return;}
+      if(req.method==='GET'&&url.pathname==='/api/comfy/settings'){const imageSettings=await comfyImages.getSettings();json(res,200,{...imageSettings,imageMemoryPolicy:imageMemoryPolicyCapabilities({provider:inferenceSettings.current().provider,modelService,defaultPolicy:imageSettings.modelPolicy??'keep'}),available:await comfyImages.available?.()===true});return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/queue/resume'){assertServiceAdmission();await body(req,1024);assertServiceAdmission();json(res,200,await comfyImages.resumeQueue());return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/settings'){assertServiceAdmission();const input=await body(req,4096);assertServiceAdmission();const saved=await comfyImages.updateSettings(input);json(res,200,{...saved,available:await comfyImages.available?.()===true});return;}
       if(req.method==='POST'&&url.pathname==='/api/comfy/check'){json(res,200,await comfyImages.checkConnection(await body(req,4096)));return;}
