@@ -84,6 +84,17 @@ try{for(const width of [1280,320])for(const language of ['fr','en']){
   await page.waitForFunction(()=>document.querySelectorAll('.attachment-chips span').length===4);if(await page.locator('dialog[open]').count())await page.getByRole('button',{name:tr('Fermer la fenêtre','Close window'),exact:true}).click();assert.equal(await page.getByRole('textbox',{name:'Message',exact:true}).inputValue(),'Brouillon chat conservé');
   await filesTab();await waitDone();assert.match(await row('attached-4.txt').innerText(),language==='fr'?/limite de quatre/:/four-file limit/);assert(state.files.has('Imports telephone/attached-4.txt'));
   await panel().getByRole('button',{name:tr('Relire les fichiers importés','Refresh imported files'),exact:true}).click();await panel().getByRole('button',{name:tr('Ouvrir le fichier one.txt','Open file one.txt'),exact:true}).waitFor();
+  // Two unsaved chats share an empty chat id but must never share a late attachment.
+  await page.getByRole('button',{name:tr('Fermer la fenêtre','Close window'),exact:true}).click();
+  const nextDraft=async()=>{const open=page.getByRole('button',{name:tr('Ouvrir la navigation','Open navigation'),exact:true});if(await open.isVisible())await open.click();await page.getByRole('button',{name:tr('Nouveau chat','New chat'),exact:true}).click();};
+  await nextDraft();await filesTab();
+  const draftSwitch=state.hold('switch-draft.txt'),beforeDraftSwitch=state.posts.length;
+  await upload([bytes('switch-draft.txt'),bytes('not-sent-new-draft.txt')],true);await draftSwitch;
+  await page.getByRole('button',{name:tr('Fermer la fenêtre','Close window'),exact:true}).click();await nextDraft();
+  await page.getByRole('textbox',{name:'Message',exact:true}).fill('Brouillon B intact');state.release();await filesTab();await waitDone();
+  assert.equal(await page.locator('.attachment-chips span').count(),0,'Late reply from unsaved chat A never attaches to unsaved chat B');
+  assert.equal(state.posts.length,beforeDraftSwitch+1);assert(state.files.has('Imports telephone/switch-draft.txt'));assert(!state.files.has('Imports telephone/not-sent-new-draft.txt'));
+  assert.match(await row('switch-draft.txt').innerText(),language==='fr'?/conversation a changé/:/conversation changed/);
   // A component unmounted by project navigation must not attach its late reply elsewhere.
   const changing=state.hold('switch-project.txt'),beforeSwitch=state.posts.length;await upload([bytes('switch-project.txt'),bytes('not-sent-other-project.txt')],true);await changing;
   await page.getByRole('button',{name:tr('Fermer la fenêtre','Close window'),exact:true}).click();const opener=page.getByRole('button',{name:tr('Ouvrir la navigation','Open navigation'),exact:true});if(await opener.isVisible())await opener.click();await page.locator('.project-list').getByRole('button',{name:'Autre projet',exact:true}).click();await closeNav();state.release();await page.waitForTimeout(60);await filesTab();
@@ -92,6 +103,6 @@ try{for(const width of [1280,320])for(const language of ['fr','en']){
   if(await opener.isVisible())await opener.click();await page.locator('.project-list').getByRole('button',{name:'Projet synthétique',exact:true}).click();await closeNav();await filesTab();await row('switch-project.txt').waitFor();assert.match(await row('switch-project.txt').innerText(),language==='fr'?/conversation a changé/:/conversation changed/);
   assert.equal(state.posts.filter(post=>post.name!=='/api/file/upload').length,0,'No chat, engine or unrelated mutation');assert.deepEqual(errors,[]);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   if(captures)await page.screenshot({path:path.join(captures,width+'-'+language+'-imports.png')});
-  results.push({width,language,multiple:true,importOnly:true,perFileRefusal:true,lostReplyReadOnlyRecovery:true,reload:true,storageRefusedBeforeEffect:true,cancelKeepsImported:true,explicitAttachLimit:4,chatAndEditorDraftsPreserved:true,projectSwitchStopsBatchAndAttachment:true,readOnlyDisabled:true,uploadPosts:state.posts.length,errors:0});
+  results.push({width,language,multiple:true,importOnly:true,perFileRefusal:true,lostReplyReadOnlyRecovery:true,reload:true,storageRefusedBeforeEffect:true,cancelKeepsImported:true,explicitAttachLimit:4,chatAndEditorDraftsPreserved:true,unsavedChatSwitchStopsAttachment:true,projectSwitchStopsBatchAndAttachment:true,readOnlyDisabled:true,uploadPosts:state.posts.length,errors:0});
  }catch(error){if(captures)await page.screenshot({path:path.join(captures,width+'-'+language+'-failure.png')});throw error;}finally{state.release();await context.close();}
 }console.log(JSON.stringify({ok:true,syntheticOnly:true,results,limitations:['Legacy void onAttach reports requested, not confirmed; integrator should pass attachmentCount and boolean onAttach.','No upload idempotence receipt exists: uncertain status remains until user inspects server files.','Viewports are not a physical phone.']},null,2));}finally{await browser.close();}

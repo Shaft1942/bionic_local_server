@@ -82,7 +82,14 @@ try {
     const prompt = () => page.getByRole('textbox', { name: 'Message', exact: true });
     const restoredDraft = async text => { await page.waitForFunction(expected => document.querySelector('#prompt')?.value === expected, text); };
     const send = async text => { await prompt().fill(text); await button('Envoyer', 'Send').click(); };
-    const verify = async () => { await button('Vérifier', 'Check').click(); };
+    const verify = async () => {
+      try { await button('Vérifier', 'Check').click({ timeout: 2000 }); }
+      catch (failure) {
+        // Automatic GET recovery may finish before this manual click reaches the DOM.
+        const settled = await page.evaluate(key => JSON.parse(localStorage.getItem(key) || '{}').jobs?.length === 0, 'bionic:llama-prototype:' + instanceId);
+        if (!settled) throw failure;
+      }
+    };
     const newChat = async () => {
       const opener = button('Ouvrir la navigation', 'Open navigation'); if (await opener.isVisible()) await opener.click();
       await button('Nouveau chat', 'New chat').click();

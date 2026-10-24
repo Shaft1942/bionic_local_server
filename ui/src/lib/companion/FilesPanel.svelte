@@ -7,9 +7,9 @@
 	type Root = { id: string; name: string; writable: boolean };
 	type Entry = { name: string; path: string; directory: boolean };
 	type ProjectFile = { rootId: string; path: string; name: string; size: number; kind?: string; text?: string; hash?: string; editable?: boolean; attachable?: boolean; truncated?: boolean; notice?: string; saved?: boolean };
-	type AttachTarget = { projectId: string; chatId: string; keepOpen: boolean };
+	type AttachTarget = { projectId: string; chatId: string; draftNonce: string; keepOpen: boolean };
 	type ImportRow = { id: string; name: string; status: 'waiting'|'uploading'|'imported'|'refused'|'uncertain'|'not-sent'; detail?: string; file?: ProjectFile; attachment?: 'added'|'requested'|'unavailable'|'limit'|'changed' };
-	let { projectId, chatId = '', request, onAttach, attachmentCount = 0, onDirtyChange, instanceId = 'prototype' }: { projectId: string; request: Api; chatId?: string; instanceId?: string; attachmentCount?: number; onAttach?: (attachment: any, target?: AttachTarget) => boolean|void; onDirtyChange?: (dirty:boolean)=>void } = $props();
+	let { projectId, chatId = '', draftNonce = '', request, onAttach, attachmentCount = 0, onDirtyChange, instanceId = 'prototype' }: { projectId: string; request: Api; chatId?: string; draftNonce?: string; instanceId?: string; attachmentCount?: number; onAttach?: (attachment: any, target?: AttachTarget) => boolean|void; onDirtyChange?: (dirty:boolean)=>void } = $props();
 	let roots = $state<Root[]>([]), rootId = $state(''), location = $state(''), entries = $state<Entry[]>([]);
 	let file = $state<ProjectFile | null>(null), text = $state(''), original = $state(''), baseHash = $state('');
 	let busy = $state(false), notice = $state(''), failure = $state(''), conflict = $state(false), serverVersion = $state<ProjectFile | null>(null);
@@ -113,7 +113,7 @@
 	}
 	function attachCurrent() {
 		if (!file || !onAttach) return;
-		const accepted = onAttach({ rootId: file.rootId, path: file.path, hash: file.hash, name: file.name }, { projectId, chatId, keepOpen: false });
+		const accepted = onAttach({ rootId: file.rootId, path: file.path, hash: file.hash, name: file.name }, { projectId, chatId, draftNonce, keepOpen: false });
 		notice = accepted === true ? tr('Fichier joint au prochain message du chat.', 'File attached to the next chat message.')
 			: accepted === false ? tr('Fichier non joint. Vérifie la conversation et la limite de quatre pièces ; le fichier reste dans le projet.', 'File not attached. Check the conversation and the four-attachment limit; the file remains in the project.')
 			: tr('Jointure demandée. Vérifie les pièces jointes du chat.', 'Attachment requested. Check the chat attachments.');
@@ -123,7 +123,7 @@
 		await run(async () => { await browse('Imports telephone', 'project'); notice = tr('Fichiers du serveur relus. Aucun import renvoyé. Un nom seul ne confirme pas un résultat incertain.','Server files refreshed. No import was resent. A name alone does not confirm an uncertain result.'); });
 	}
 	async function upload(event: Event) {
-		const input = event.target as HTMLInputElement, selected = [...(input.files || [])], pid = projectId, identity = instanceId, cid = chatId, attach = attachImports;
+		const input = event.target as HTMLInputElement, selected = [...(input.files || [])], pid = projectId, identity = instanceId, cid = chatId, targetDraft = draftNonce, attach = attachImports;
 		input.value = ''; if (!selected.length || importing || busy) return;
 		rememberDraft(); importing = true; busy = true; stopImport = false; failure = ''; notice = '';
 		const batch = selected.map((item, index): ImportRow => ({ id: Date.now()+'-'+index+'-'+Math.random().toString(36).slice(2), name: item.name, status: 'waiting' }));
@@ -137,17 +137,17 @@
 			saveRows();
 			for (let index = 0; index < selected.length; index++) {
 				const item = selected[index], row = records.find(record => record.id === batch[index].id)!;
-				if (stopImport || !active()) { row.status = 'not-sent'; continue; }
+				if (stopImport || !active() || attach && (cid !== chatId || targetDraft !== draftNonce)) { row.status = 'not-sent'; continue; }
 				if (item.size > 20_000_000) { row.status = 'refused'; row.detail = tr('Ce fichier dépasse 20 Mo.','This file exceeds 20 MB.'); saveRows(); refreshRows(); continue; }
 				row.status = 'uploading'; refreshRows(); saveRows();
 				try {
 					const result: ProjectFile = await request('/api/file/upload?' + new URLSearchParams({ projectId: pid, name: item.name }), { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: item });
 					row.status = 'imported'; row.file = result;
 					if (attach) {
-						if (!active() || cid !== chatId) row.attachment = 'changed';
+						if (!active() || cid !== chatId || targetDraft !== draftNonce) row.attachment = 'changed';
 						else if (!result.attachable || result.truncated || !result.hash || !onAttach) row.attachment = 'unavailable';
 						else if (remaining <= 0) row.attachment = 'limit';
-						else { try { const accepted = onAttach({ rootId: result.rootId, path: result.path, hash: result.hash, name: result.name }, { projectId: pid, chatId: cid, keepOpen: true }); row.attachment = accepted === true ? 'added' : accepted === false ? 'limit' : 'requested'; if (accepted !== false) remaining--; } catch { row.attachment = 'unavailable'; row.detail = tr('Le fichier reste sur le PC. La jointure au chat n’a pas été confirmée.','The file remains on the PC. Attachment to the chat was not confirmed.'); } }
+						else { try { const accepted = onAttach({ rootId: result.rootId, path: result.path, hash: result.hash, name: result.name }, { projectId: pid, chatId: cid, draftNonce: targetDraft, keepOpen: true }); row.attachment = accepted === true ? 'added' : accepted === false ? 'limit' : 'requested'; if (accepted !== false) remaining--; } catch { row.attachment = 'unavailable'; row.detail = tr('Le fichier reste sur le PC. La jointure au chat n’a pas été confirmée.','The file remains on the PC. Attachment to the chat was not confirmed.'); } }
 					}
 				} catch (error: any) {
 					row.status = error?.status >= 400 && error.status < 500 ? 'refused' : 'uncertain'; row.detail = error?.message || tr('Connexion interrompue.','Connection interrupted.');

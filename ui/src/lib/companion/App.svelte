@@ -185,8 +185,8 @@
   }
   async function login(event:SubmitEvent){event.preventDefault();if(loginBusy)return;loginBusy=true;error='';try{await post('/api/login',{code});code='';await start();}catch(failure){report(failure);}finally{ready=true;loginBusy=false;}}
   async function logout(){try{saveDraft();await post('/api/logout',{});client.disconnect();authenticated=false;chat=null;projects=[];sessions=[];}catch(failure){report(failure);}}
-  function attach(file:any,target?:{projectId:string;chatId:string;keepOpen:boolean}):boolean{
-    if(target&&(target.projectId!==projectId||target.chatId!==(chat?.id||''))){error=tr('La conversation a changé. Le fichier reste dans son projet.','The conversation changed. The file remains in its project.');return false;}
+  function attach(file:any,target?:{projectId:string;chatId:string;draftNonce:string;keepOpen:boolean}):boolean{
+    if(target&&(target.projectId!==projectId||target.chatId!==(chat?.id||'')||target.draftNonce!==draftNonce)){error=tr('La conversation a changé. Le fichier reste dans son projet.','The conversation changed. The file remains in its project.');return false;}
     if(attachments.length>=4){error=tr('Tu peux joindre jusqu’à quatre fichiers.','You can attach up to four files.');return false;}
     if(attachments.some(item=>item.rootId===file.rootId&&item.path===file.path)){error=tr('Ce fichier est déjà joint.','This file is already attached.');return false;}
     attachments=[...attachments,file];
@@ -309,7 +309,7 @@
         {#if settingsVisited}<div class="settings-host" hidden={tab!=='settings'}>
           <SettingsPanel active={tab==='settings'} onDirtyChange={(value:boolean)=>settingsDirty=value} {request} {projectId} chatId={chat?.id} modelId={model} onInferenceChange={changedInference} onPreferencesChange={changedPreferences} {beforeMaintenance} onClose={()=>changeTab('chat')} />
         </div>{/if}
-        {#if filesVisited}<div class="popup-panel" hidden={tab!=='files'}>{#key projectId}<ProjectAccess project={currentProject} {request} onChanged={reloadProjects} /><FilesPanel {projectId} {request} {instanceId} chatId={chat?.id} attachmentCount={attachments.length} onAttach={attach} onDirtyChange={(value:boolean)=>filesDirty=value} />{/key}</div>{/if}
+        {#if filesVisited}<div class="popup-panel" hidden={tab!=='files'}>{#key projectId}<ProjectAccess project={currentProject} {request} onChanged={reloadProjects} /><FilesPanel {projectId} {request} {instanceId} chatId={chat?.id} {draftNonce} attachmentCount={attachments.length} onAttach={attach} onDirtyChange={(value:boolean)=>filesDirty=value} />{/key}</div>{/if}
         {#if imagesVisited}<div class="popup-panel" hidden={tab!=='images'}>{#key projectId}<ImagesPanel {projectId} {request} {instanceId} syntheticComfyUI={prototypeInfo?.syntheticComfyUI===true} chatId={chat?.id} />{/key}</div>{/if}
         {#if activityVisited}<div class="popup-panel" hidden={tab!=='activity'}>{#key projectId}<WorkspacePanel {request} {projectId} {chat} {instanceId} language={preferences.language} onConversationChange={changedConversation} onNavigate={navigate} onImages={()=>changeTab('images')} />{/key}</div>{/if}
       </WorkspaceDialog>
