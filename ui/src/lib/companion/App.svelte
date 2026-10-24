@@ -41,7 +41,7 @@
   let projects=$state<any[]>([]), models=$state<any[]>([]), sessionGroups=$state<Record<string,SessionGroup>>({});
   let projectId=$state(''), chat=$state<any>(null), model=$state(''), inference=$state<any>(null), comfy=$state<any>(null);
   let reasoningChoices=$state<Record<string,ReasoningChoice>>({});
-  let prompt=$state(''), attachments=$state<any[]>([]), fileProfile=$state('read'), webAccess=$state(true), webApproval=$state(false), scriptAccess=$state(false), imageAccess=$state(false);
+  let prompt=$state(''), attachments=$state<any[]>([]), fileProfile=$state('read'), webAccess=$state(true), webApproval=$state(false), scriptAccess=$state(false), imageAccess=$state(false), draftFailure=$state('');
   let imageWorkflowId=$state(''), imageCount=$state(1), imageModelPolicy=$state('');
   let jobs=$state<Job[]>([]), streamingIds=$state<string[]>([]);
   let tab=$state<'chat'|'files'|'images'|'activity'|'settings'>('chat'), sidebarOpen=$state(true), search=$state(''), expandedProjects=$state<string[]>([]);
@@ -405,9 +405,10 @@
               {#if imageAccess}<label>{tr('Workflow','Workflow')}<select aria-label={tr('Workflow du chat','Chat workflow')} bind:value={imageWorkflowId}>{#each comfy?.workflows||[] as workflow}<option value={workflow.id}>{workflow.name||workflow.label||workflow.id}</option>{/each}</select></label>{#key projectId+':'+(chat?.id||'new')}<ImageCountField id="chat-image-count" bind:value={imageCount} disabled={!comfy?.enabled||!comfy?.available} onValueChange={()=>queueMicrotask(saveDraft)}/>{/key}<label>{tr('Modèle texte pendant les images','Text model during images')}<select aria-label={tr('Politique mémoire des images','Image memory policy')} bind:value={imageModelPolicy}><option value="">{tr('Réglage de l’application','Application setting')}</option><option value="keep">{tr('Garder chargé','Keep loaded')}</option><option value="unload">{tr('Décharger','Unload')}</option><option value="alternate">{tr('Alterner','Alternate')}</option></select></label>{/if}
                 </div><p class="quiet">{tr('Les droits sont fixés à l’envoi. Les mêmes outils sont disponibles quel que soit le moteur d’inférence.','Permissions are fixed when sent. The same tools are available with every inference engine.')}</p></div>
               </ComposerPopover>
-              <DraftDownload text={prompt} compact />
+              <DraftDownload text={prompt} compact onFailure={message=>draftFailure=message} />
               <div class="send-controls">{#if currentJob}{#if streamingIds.includes(currentJob.requestId)}<Button variant="ghost" size="icon" aria-label={tr('Déconnecter le flux sans arrêter la demande','Disconnect stream without stopping request')} title={tr('Déconnecter le flux sans arrêter la demande','Disconnect stream without stopping request')} onclick={detach}><Unplug /></Button>{/if}<Button variant="outline" size="icon" aria-label={tr('Arrêter la demande','Stop request')} title={tr('Arrêter la demande','Stop request')} disabled={!currentJob.id} onclick={()=>stop()}><Square /></Button>{/if}<Button type="submit" size="icon" class="send-button" aria-label={tr('Envoyer','Send')} title={tr('Envoyer','Send')} disabled={!prompt.trim()||!model||!projectId||starting||modelSelectionBusy||engineSelectionBusy||engineReadPending||engineCatalogueUnconfirmed}><ArrowUp /></Button></div>
             </div>
+            {#if draftFailure}<p class="draft-download-error" role="alert"><span>{draftFailure}</span><Button type="button" variant="ghost" size="icon" aria-label={tr('Masquer l’erreur de téléchargement','Dismiss download error')} onclick={()=>draftFailure=''}><X /></Button></p>{/if}
           </form><p class="composer-hint">{currentJobs.length?tr('Les nouveaux messages rejoignent la file. Tu peux quitter la page.','New messages join the queue. You can leave this page.'):tr('Entrée pour envoyer · Maj + Entrée pour une nouvelle ligne','Enter to send · Shift + Enter for a new line')}</p></div>
         </div>
     </main>
@@ -424,5 +425,6 @@
   .model-field :global(select){width:100%;max-width:100%;min-width:0;min-height:44px;background:transparent;color:var(--muted-foreground);border:0;border-radius:6px;padding:7px 20px 7px 6px;font-size:12px;text-overflow:ellipsis;}
   .model-field :global(select:focus-visible){outline:2px solid var(--ring);outline-offset:2px;}
   .composer-toolbar{position:relative;align-items:center;gap:2px;margin-top:0;}.composer-toolbar .send-controls{margin-left:auto;gap:2px;}.composer-toolbar .send-controls :global(button){width:44px;height:44px;min-width:44px;flex:0 0 44px;padding:0;}.file-permissions-label{display:block;margin:12px 0 6px;}.composer-toolbar :global(.composer-attach){min-height:44px;width:100%;justify-content:flex-start;padding-left:0;}.composer-tool-options .tool-grid{grid-template-columns:minmax(0,1fr);margin-top:0;max-height:none;overflow:visible;gap:8px;}.composer-tool-options .tool-grid label{min-height:44px;}.composer-tool-options .tool-grid label:has(select){display:grid;gap:5px;}.composer-tool-options .quiet{margin:12px 0 0;}
+  .draft-download-error{display:flex;align-items:center;gap:8px;margin:4px 0 0;font-size:12px;line-height:1.5;overflow-wrap:anywhere;}.draft-download-error>span{flex:1;min-width:0;}.draft-download-error :global(button){width:44px;height:44px;min-width:44px;padding:0;flex:0 0 44px;}
   @media(max-width:650px){.inference-controls{grid-template-columns:94px minmax(0,1fr) 72px;}}
 </style>
