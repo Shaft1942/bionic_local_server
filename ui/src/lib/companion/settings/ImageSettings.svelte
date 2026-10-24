@@ -59,7 +59,8 @@
 {#if memoryReading}<p role="status">{tr('Lecture du suivi…','Reading request status…')}</p>{/if}
 {#if memoryState?.reason&&!memoryState.canUnload}<p class="settings-feedback">{memoryState.reason}</p>{/if}
 {#if memoryState?.operation?.url}<p class="settings-description">{tr('Demande adressée à : ','Request sent to: ')}<span class="memory-endpoint">{memoryState.operation.url}</span>{#if memoryState.operation.url!==memoryState.url}<br />{tr('Cette demande concerne une connexion précédente.','This request concerns a previous connection.')}{/if}</p>{/if}
-{#if memoryState?.operation?.state==='accepted'}<p class="settings-feedback" role="status">{tr('Demande acceptée par ComfyUI. La fin du déchargement et la mémoire libérée ne sont pas vérifiables par ce protocole.','Request accepted by ComfyUI. Completion of unloading and released memory cannot be verified with this protocol.')}</p>
+{#if memoryState?.operation?.state==='requesting'}<p class="settings-feedback" role="status">{tr('Demande de déchargement en cours…','Unload request in progress…')}</p>
+{:else if memoryState?.operation?.state==='accepted'}<p class="settings-feedback" role="status">{tr('Demande acceptée par ComfyUI. La fin du déchargement et la mémoire libérée ne sont pas vérifiables par ce protocole.','Request accepted by ComfyUI. Completion of unloading and released memory cannot be verified with this protocol.')}</p>
 {:else if memoryState?.operation}<p class="settings-feedback" role="status">{tr('Résultat du déchargement non confirmé. Relis le suivi ; aucune demande ne sera renvoyée automatiquement.','Unload result unconfirmed. Refresh status; no request will be automatically resubmitted.')}</p>{/if}
 {#if memoryFailure}<p class="settings-error" role="alert">{memoryFailure}</p>{/if}
 </section>

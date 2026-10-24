@@ -31,7 +31,7 @@ try {
     await page.route('**/api/sessions?**', async route => { const url = new URL(route.request().url()); if (url.searchParams.get('projectId') === native) await route.fulfill({ json: { sessions: [{ ...nativeChat, messages: undefined }], total: 1, hasMore: false, nextCursor: null } }); else await route.continue(); });
     await page.route('**/api/conversation?**', async route => { const url = new URL(route.request().url()); if (url.searchParams.get('projectId') === native) await route.fulfill({ json: nativeChat }); else await route.continue(); });
     const navigation = page.getByRole('complementary', { name: 'Navigation', exact: true });
-    const showNavigation = async () => { const open = page.getByRole('button', { name: text('Ouvrir la navigation', 'Open navigation'), exact: true }); if (await open.isVisible()) await open.click(); };
+    const showNavigation = async () => { await page.locator('.companion-shell').waitFor(); const open = page.getByRole('button', { name: text('Ouvrir la navigation', 'Open navigation'), exact: true }); if (await open.isVisible()) await open.click(); };
     const hideNavigation = async () => { if (width < 760) { const close = page.getByRole('button', { name: text('Fermer la navigation', 'Close navigation'), exact: true }); if (await close.isVisible()) await close.click({ timeout: 1000 }).catch(async failure => { if (await close.isVisible()) throw failure; }); } };
     const group = id => navigation.locator('.project-group').filter({ has: page.locator('.project-row .project-select') }).filter({ has: page.locator(`.project-row [aria-controls="project-conversations-${id}"]`) });
     const row = (pid, id) => navigation.locator(`.session-row[data-project-id="${pid}"][data-session-id="${id}"]`);

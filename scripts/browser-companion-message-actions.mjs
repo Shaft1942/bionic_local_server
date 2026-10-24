@@ -40,6 +40,7 @@ try {
         localStorage.setItem('bionic:llama-preferences:' + instanceId, JSON.stringify({ language }));
       }, { instanceId: ping.instanceId, language });
       await page.reload();
+      await page.locator('.companion-shell').waitFor();
       const open = page.getByRole('button', { name: text('Ouvrir la navigation', 'Open navigation'), exact: true });
       if (await open.isVisible()) await open.click();
       await page.locator('.chat-list').getByRole('button', { name: 'Code synthétique', exact: true }).click();
