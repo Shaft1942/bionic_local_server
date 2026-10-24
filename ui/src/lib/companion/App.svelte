@@ -340,7 +340,11 @@
             {:else}<div class="message-column">
               {#if chat.pagination}<div class="history-controls">{#if chat.pagination.hasMore}<Button variant="outline" size="sm" disabled={historyBusy} onclick={olderMessages}>{tr('Charger les messages précédents','Load earlier messages')}</Button>{/if}<span class="quiet">{chat.messages.length} / {chat.pagination.total} {tr('messages','messages')}{chat.historyWindowReset?' · '+tr('Fenêtre actualisée','Window refreshed'):''}</span></div>{/if}
               {#each chat.messages as message,index (message.id||index)}<article id={'message-'+message.id} class="chat-message" class:user={message.role==='user'} aria-label={message.role==='user'?tr('Votre message','Your message'):tr('Réponse du modèle','Model reply')}>
-                {#if message.role==='user'}<UserBubble content={message.text||''} />{:else}<div class="assistant-name"><Logo class="message-logo" /><span>{message.model||chat.model||'Assistant'}{message.provider?.provider?' · '+message.provider.provider:''}</span></div><Markdown content={message.text||''} />{/if}
+                {#snippet messageActions()}
+                  {#if message.role==='user'||message.role==='assistant'}<CopyMessage text={message.text||''} role={message.role} compact />{/if}
+                  <ConversationActions {request} {projectId} {chat} {instanceId} messageId={message.id} language={preferences.language} compact onConversationChange={changedConversation} onNavigate={navigate} />
+                {/snippet}
+                {#if message.role==='user'}<UserBubble content={message.text||''} actions={messageActions} />{:else}<div class="message-header"><div class="assistant-name"><Logo class="message-logo" /><span>{message.model||chat.model||'Assistant'}{message.provider?.provider?' · '+message.provider.provider:''}</span></div>{@render messageActions()}</div><Markdown content={message.text||''} />{/if}
                 {#if Array.isArray(message.attachments)&&message.attachments.length}<MessageAttachments attachments={message.attachments} />{/if}
                 <Approvals {request} {projectId} {chat} {message} language={preferences.language} onConversationChange={changedConversation} onNavigate={navigate} />
                 {#each message.actions||[] as action}<details class="action-receipt"><summary>{(message.historicalActions||message.fromFork)?tr('Action historique','Historical action'):action.ok===false?tr('Action refusée','Action refused'):tr('Action effectuée','Action performed')} · {action.tool||action.name||action.path||tr('Outil','Tool')}</summary><pre>{JSON.stringify(action,null,2)}</pre></details>{/each}
@@ -348,8 +352,6 @@
                 <MessageImages {request} {projectId} chatId={chat.id} {message} active={tab==='chat'} onOpenGallery={()=>changeTab('images')} />
                 {#if message.role==='assistant'}<MessageStats {message} language={preferences.language} running={jobs.some(item=>item.requestId===message.requestId&&!terminal(item.status))&&!message.finishedAt} />{/if}
                 {#if message.interrupted||message.truncated}<p class="quiet">{message.error||(message.truncated?tr('Réponse limitée par le budget de sortie.','Reply reached its output budget.'):tr('Réponse interrompue.','Reply interrupted.'))}</p>{/if}
-                {#if message.role==='user'||message.role==='assistant'}<CopyMessage text={message.text||''} role={message.role} />{/if}
-                <ConversationActions {request} {projectId} {chat} {instanceId} messageId={message.id} language={preferences.language} onConversationChange={changedConversation} onNavigate={navigate} />
               </article>{/each}
             </div>{/if}
           </div>
@@ -376,6 +378,9 @@
 {/if}
 
 <style>
+  .message-header{display:grid;grid-template-columns:minmax(0,1fr) 44px 44px;column-gap:2px;row-gap:4px;align-items:center;min-width:0;margin-bottom:6px;}
+  .message-header .assistant-name{min-width:0;margin-bottom:0;}
+  .message-header .assistant-name span{min-width:0;}
   .inference-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);align-items:start;gap:12px;margin:8px 0 12px;}
   .model-field{display:flex;flex-direction:column;gap:4px;min-width:0;}
   .model-field>span{font-size:11px;line-height:1.5;color:var(--muted-foreground);}

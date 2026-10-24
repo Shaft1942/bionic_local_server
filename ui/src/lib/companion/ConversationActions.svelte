@@ -5,8 +5,8 @@
 	import { tr } from './preferences.svelte';
 	type Target = { projectId: string; id: string; messageId?: string };
 	type Mutation = { operation: 'rename'|'move'|'delete'|'fork'; projectId: string; id: string; name?: string; targetProjectId?: string; messageId?: string; knownIds?: string[]; startedAt: number };
-	let { request, projectId, chat, projects = [], messageId, locked = false, instanceId = 'companion', onConversationChange, onNavigate }: {
-		request: (route:string, options?:RequestInit)=>Promise<any>; projectId:string; chat:any; projects?:any[]; messageId?:string; locked?:boolean; instanceId?:string; language?:'fr'|'en';
+	let { request, projectId, chat, projects = [], messageId, locked = false, compact = false, instanceId = 'companion', onConversationChange, onNavigate }: {
+		request: (route:string, options?:RequestInit)=>Promise<any>; projectId:string; chat:any; projects?:any[]; messageId?:string; locked?:boolean; compact?:boolean; instanceId?:string; language?:'fr'|'en';
 		onConversationChange?:(next:any|null)=>void|Promise<void>; onNavigate?:(target:Target)=>void|Promise<void>;
 	} = $props();
 	let form = $state<'rename'|'move'|'delete'|null>(null), name = $state(''), targetProjectId = $state(''), busy = $state(false), failure = $state(''), notice = $state(''), pending = $state<Mutation|null>(null);
@@ -82,8 +82,8 @@
 </script>
 
 {#if chat?.id}
-	<div class="conversation-actions" class:message-actions={!!messageId}>
-		{#if messageId}<Button variant="ghost" size="sm" disabled={busy||locked||!!pending} onclick={()=>void perform('fork')} aria-label={tr('Créer une branche depuis ce message','Create a branch from this message')}><GitBranch size={14}/>{tr('Créer une branche','Branch')}</Button>
+	<div class="conversation-actions" class:message-actions={!!messageId} class:compact={compact&&!!messageId}>
+		{#if messageId}<Button variant="ghost" size="sm" class="message-branch-button" disabled={busy||locked||!!pending} onclick={()=>void perform('fork')} aria-label={tr('Créer une branche depuis ce message','Create a branch from this message')} title={tr('Créer une branche depuis ce message','Create a branch from this message')} aria-busy={busy}><GitBranch size={16} aria-hidden="true"/>{#if !compact}{tr('Créer une branche','Branch')}{/if}</Button>
 		{:else}<details bind:this={menu}>
 			<summary aria-label={tr('Actions de la conversation','Conversation actions')}><MoreHorizontal size={18}/><span>{tr('Conversation','Conversation')}</span></summary>
 			<div class="actions-menu">
@@ -104,5 +104,9 @@
 {/if}
 
 <style>
+	.conversation-actions.compact { display: contents; }
+	.compact :global(.message-branch-button) { grid-column: 3; grid-row: 1; width: 44px; height: 44px; padding: 0; color: var(--muted-foreground); }
+	.compact :global(.message-branch-button:hover), .compact :global(.message-branch-button:focus-visible) { color: var(--foreground); }
+	.compact > .mutation-status, .compact > .failure, .compact > .feedback { grid-column: 1 / -1; }
 	.conversation-actions{position:relative;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;min-width:0}.message-actions{margin-top:8px}details{position:relative}summary{display:flex;align-items:center;gap:7px;cursor:pointer;list-style:none;padding:8px;border-radius:6px}summary::-webkit-details-marker{display:none}summary:hover{background:var(--muted)}summary:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ring);outline-offset:2px}.actions-menu{position:absolute;right:0;top:100%;width:min(330px,calc(100vw - 38px));padding:10px;background:var(--popover);color:var(--popover-foreground);border:1px solid var(--border);border-radius:9px;box-shadow:0 8px 28px #0002;z-index:40;display:flex;flex-direction:column;gap:4px}.actions-menu :global(button){justify-content:flex-start;white-space:normal;text-align:left}label{display:block;margin:4px 0 7px;font-weight:500}input,select{width:100%;padding:9px;border:1px solid var(--border);border-radius:6px;background:var(--background);color:var(--foreground)}p{margin:8px 0;line-height:1.6;overflow-wrap:anywhere}.scope-note,.feedback{color:var(--muted-foreground)}.form-actions,.mutation-status{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px}.failure{color:var(--destructive)}.mutation-status{padding:8px;border:1px solid var(--border);border-radius:6px}.conversation-actions :global(button:disabled){opacity:.5}@media(max-width:720px){summary,.conversation-actions :global(button){min-height:44px}.actions-menu{position:fixed;top:auto;bottom:20px;right:16px;max-height:75vh;overflow:auto}}
 </style>

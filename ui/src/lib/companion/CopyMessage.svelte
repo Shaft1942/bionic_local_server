@@ -5,7 +5,7 @@
   import { tr } from './preferences.svelte';
   import { copyMessageText } from './message-clipboard';
 
-  let { text, role = 'assistant', disabled = false }: { text: string; role?: 'user'|'assistant'|'code'; disabled?: boolean } = $props();
+  let { text, role = 'assistant', disabled = false, compact = false }: { text: string; role?: 'user'|'assistant'|'code'; disabled?: boolean; compact?: boolean } = $props();
   let busy = $state(false), copyState = $state<'idle'|'copied'|'refused'>('idle'), manual = $state(false), manualText = $state('');
   let manualField = $state<HTMLDivElement>(), button = $state<HTMLButtonElement|null>(null);
   let manualCode = $state<HTMLTextAreaElement>();
@@ -36,12 +36,12 @@
   function closeManual() { manual = false; copyState = 'idle'; button?.focus({ preventScroll: true }); }
 </script>
 
-<div class="message-copy" data-copy-state={copyState}>
+<div class="message-copy" class:compact data-copy-state={copyState}>
   <Button variant="ghost" size="sm" class="message-copy-button" bind:ref={button} disabled={disabled || busy || !text.length} onclick={()=>void copy()} aria-label={label} title={label} aria-busy={busy}>
     {#if copyState === 'copied'}<Check size={16} aria-hidden="true" />{:else}<Copy size={16} aria-hidden="true" />{/if}
-    <span>{copyState === 'copied' ? tr('Copié', 'Copied') : tr('Copier', 'Copy')}</span>
+    {#if !compact}<span>{copyState === 'copied' ? tr('Copié', 'Copied') : tr('Copier', 'Copy')}</span>{/if}
   </Button>
-  <span class="message-copy-status" role="status" aria-live="polite" aria-atomic="true">{notice}</span>
+  <span class="message-copy-status" class:copy-refusal={copyState === 'refused'} role="status" aria-live="polite" aria-atomic="true">{notice}</span>
   {#if manual}
     <div class="message-copy-manual">
       <div class="message-copy-manual-tools"><Button variant="ghost" size="sm" onclick={()=>void selectText()}>{tr('Sélectionner le texte', 'Select text')}</Button><Button variant="ghost" size="sm" onclick={closeManual} aria-label={tr('Fermer la sélection du message', 'Close message selection')}><X size={16} aria-hidden="true" /></Button></div>
@@ -61,4 +61,11 @@
   .message-copy-source { max-height: 16rem; overflow: auto; margin: .25rem 0; padding: .75rem; border: 1px solid var(--border); border-radius: .5rem; font-family: inherit; font-size: .875rem; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
   .message-copy-source:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
   .code-source { display: block; width: 100%; min-height: 8rem; resize: vertical; background: var(--background); color: var(--foreground); }
+  .message-copy.compact { display: contents; }
+  .compact :global(.message-copy-button) { grid-column: 2; grid-row: 1; width: 44px; height: 44px; padding: 0; color: var(--muted-foreground); }
+  .compact :global(.message-copy-button:hover), .compact :global(.message-copy-button:focus-visible) { color: var(--foreground); }
+  .compact .message-copy-status, .compact .message-copy-manual { grid-column: 1 / -1; }
+  .compact .message-copy-manual-tools { flex-wrap: wrap; }
+  .compact .message-copy-manual-tools :global(button) { min-height: 44px; max-width: 100%; white-space: normal; }
+  .compact .message-copy-status:not(.copy-refusal) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
