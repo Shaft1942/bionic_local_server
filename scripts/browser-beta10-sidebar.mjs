@@ -40,7 +40,7 @@ try {
       await page.getByRole('textbox', { name: 'Message', exact: true }).waitFor();
       const ping = await (await context.request.get(fixture.baseUrl + '/api/ping')).json();
       await page.evaluate(({ instanceId, language }) => localStorage.setItem('bionic:llama-preferences:' + instanceId, JSON.stringify({ language })), { instanceId: ping.instanceId, language }); await page.reload();
-      await showNavigation(); await row(a, sharedId).waitFor(); await row(native, sharedId).waitFor(); await row(loose, webLoose.id).waitFor();
+      await page.getByRole('textbox',{name:'Message',exact:true}).waitFor();await showNavigation();await navigation.getByRole('button',{name:text('Nouveau chat dans Atelier de démonstration','New chat in Atelier de démonstration'),exact:true}).click();await showNavigation(); await row(a, sharedId).waitFor(); await row(native, sharedId).waitFor(); await row(loose, webLoose.id).waitFor();
       assert.equal(await navigation.locator('.project-group').count(), 2);
       assert.equal(await navigation.locator('.unassigned-conversations .session-row').count(), 2);
       assert.equal(await navigation.locator('.unassigned-conversations [data-project-id="' + a + '"]').count(), 0);
@@ -53,7 +53,7 @@ try {
       const expanded = group(b).getByRole('button', { name: text('Replier le projet Second projet', 'Collapse project Second projet'), exact: true });
       await expanded.focus(); await expanded.press('ArrowRight'); assert.equal(await row(b, secondId).evaluate(node => node === document.activeElement), true);
       await row(b, secondId).click(); await hideNavigation(); await page.getByRole('article', { name: text('Réponse du modèle', 'Model reply'), exact: true }).waitFor();
-      await composer.fill('Brouillon B existant — conservé'); await showNavigation(); await group(a).locator('.project-select').click(); await hideNavigation(); assert.equal(await composer.inputValue(), 'Brouillon A nouveau — conservé');
+      await composer.fill('Brouillon B existant — conservé'); await showNavigation();await navigation.getByRole('button',{name:text('Nouveau chat dans Atelier de démonstration','New chat in Atelier de démonstration'),exact:true}).click(); await hideNavigation(); assert.equal(await composer.inputValue(), 'Brouillon A nouveau — conservé');
       await showNavigation(); await row(b, secondId).click(); await hideNavigation(); await page.waitForFunction(value => document.querySelector('#prompt')?.value === value, 'Brouillon B existant — conservé'); assert.equal(await composer.inputValue(), 'Brouillon B existant — conservé');
       await showNavigation(); await row(a, sharedId).click(); await hideNavigation();
       await page.locator('[id="message-assistant-' + sharedId + '"]').waitFor();
@@ -68,7 +68,7 @@ try {
       const actions = page.getByLabel(text('Actions de la conversation', 'Conversation actions'), { exact: true });
       await actions.click(); await page.getByRole('button', { name: text('Renommer', 'Rename'), exact: true }).click(); await page.getByLabel(text('Nom de la conversation', 'Conversation name'), { exact: true }).fill('Projet A renommé'); await page.getByRole('button', { name: text('Enregistrer', 'Save'), exact: true }).click();
       await showNavigation(); await row(a, sharedId).filter({ hasText: 'Projet A renommé' }).waitFor(); await hideNavigation();
-      await actions.click(); await page.getByRole('button', { name: text('Déplacer vers un projet', 'Move to a project'), exact: true }).click(); await page.getByLabel(text('Projet de destination', 'Destination project'), { exact: true }).selectOption(b);
+      await actions.click(); await page.getByRole('button', { name: text('Déplacer vers un projet', 'Move to a project'), exact: true }).click(); await page.getByRole('combobox',{name:text('Projet de destination', 'Destination project'),exact:true}).selectOption(b);
       await Promise.all([page.waitForResponse(response => { const url = new URL(response.url()); return url.pathname === '/api/conversation' && url.searchParams.get('projectId') === b && url.searchParams.get('id') === sharedId; }), page.getByRole('button', { name: text('Enregistrer', 'Save'), exact: true }).click()]);
       await showNavigation(); await row(b, sharedId).waitFor(); assert.equal(await row(a, sharedId).count(), 0); assert.equal(await navigation.locator('.unassigned-conversations .session-row').count(), 2); await hideNavigation();
       await actions.click(); await page.getByRole('button', { name: text('Supprimer la conversation', 'Delete conversation'), exact: true }).click(); await page.getByRole('button', { name: text('Confirmer la suppression', 'Confirm deletion'), exact: true }).click();

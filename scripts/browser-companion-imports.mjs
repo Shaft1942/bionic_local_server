@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
+const publicRoot=path.resolve(process.env.BIONIC_BROWSER_PUBLIC_DIR||path.join(root,'public'));
 const {chromium}=process.env.PLAYWRIGHT_MODULE_PATH?await import(pathToFileURL(path.join(process.env.PLAYWRIGHT_MODULE_PATH,'index.mjs')).href):await import('playwright');
 const browser=await chromium.launch({headless:true,channel:process.env.BIONIC_BROWSER_CHANNEL||'chrome'});
 const origin='http://companion-imports.test',captures=process.env.BIONIC_BROWSER_CAPTURES;
@@ -21,7 +22,7 @@ function fixture(){
   if(req.method()==='GET')gets.push({name,projectId:url.searchParams.get('projectId')});else posts.push({name,filename:url.searchParams.get('name')});
   let value;
   if(name==='/api/ping')value={version:'2.6.0-beta.7',instanceId:'imports-fixture'};
-  else if(name==='/api/projects')value={projects:[{id:'p1',name:'Projet synthétique',locallyOwned:true},{id:'p2',name:'Autre projet',locallyOwned:true}]};
+  else if(name==='/api/projects')value={projects:[{id:'p1',name:'Projet synthétique',locallyOwned:true},{id:'p2',name:'Autre projet',locallyOwned:true},{id:'companion-unassigned',name:'Sans projet',isUnassigned:true}]};
   else if(name==='/api/sessions')value={sessions:[],total:0};
   else if(name==='/api/models')value={provider:'bionic',inferenceRevision:'fixture',models:[{id:'fixture',name:'Fixture',type:'llm',loaded:true,contextLength:4096}]};
   else if(name==='/api/inference/settings')value={provider:'bionic',revision:'fixture',editable:true};
@@ -52,19 +53,20 @@ try{for(const width of [1280,320])for(const language of ['fr','en']){
  page.setDefaultTimeout(12000);page.on('pageerror',error=>errors.push(error.message));
  await context.route('**/*',async route=>{
   const url=new URL(route.request().url());assert.equal(url.origin,origin,'All requests stay intercepted');if(await state.api(route))return;
-  const filename=path.resolve(root,'public',url.pathname==='/prototype/'?'llama-ui/index.html':url.pathname.slice(1));assert(filename.startsWith(path.resolve(root,'public')+path.sep));
+  const filename=path.resolve(publicRoot,url.pathname==='/prototype/'?'llama-ui/index.html':url.pathname.slice(1));assert(filename.startsWith(publicRoot+path.sep));
   await route.fulfill({contentType:({'.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png'})[path.extname(filename)]||'text/html',body:await fs.readFile(filename)});
  });
  await page.addInitScript(language=>{localStorage.setItem('bionic:llama-preferences:imports-fixture',JSON.stringify({language,theme:'light',draftHours:24}));localStorage.setItem('bionic:llama-prototype:imports-fixture',JSON.stringify({projectId:'p1'}));},language);
  const tr=(fr,en)=>language==='fr'?fr:en,nav=()=>page.getByRole('navigation',{name:tr('Espace du projet','Project workspace'),exact:true});
  const closeNav=async()=>{const button=page.getByRole('button',{name:tr('Fermer la navigation','Close navigation'),exact:true});if(width<760&&await button.isVisible())await button.click();};
+ const selectProject=async name=>{const open=page.getByRole('button',{name:tr('Ouvrir la navigation','Open navigation'),exact:true});if(await open.isVisible())await open.click();await page.getByRole('button',{name:tr('Nouveau chat dans '+name,'New chat in '+name),exact:true}).click();};
  const filesTab=async()=>{await nav().getByRole('button',{name:tr('Fichiers','Files'),exact:true}).click();await page.getByRole('button',{name:tr('Importer des fichiers','Import files'),exact:true}).waitFor();};
  const panel=()=>page.locator('.files-panel'),input=()=>panel().locator('input[type=file]');
  const upload=async(selected,attach=false)=>{const chooser=page.waitForEvent('filechooser');await panel().getByRole('button',{name:attach?tr('Importer puis joindre','Import and attach'):tr('Importer des fichiers','Import files'),exact:true}).click();await(await chooser).setFiles(selected);};
  const waitDone=()=>panel().getByRole('button',{name:tr('Relire les fichiers importés','Refresh imported files'),exact:true}).waitFor();
  const row=name=>panel().locator('.import-results li').filter({has:page.getByText(name,{exact:true})});
  try{
-  await page.goto(origin+'/prototype/');await nav().waitFor();await closeNav();await page.getByRole('textbox',{name:tr('Message','Message'),exact:true}).fill('Brouillon chat conservé');await filesTab();
+  await page.goto(origin+'/prototype/');await nav().waitFor();await selectProject('Projet synthétique');await closeNav();await page.getByRole('textbox',{name:tr('Message','Message'),exact:true}).fill('Brouillon chat conservé');await filesTab();
   await panel().getByRole('button',{name:tr('Ouvrir le fichier notes.md','Open file notes.md'),exact:true}).click();await panel().locator('#project-file-editor').fill('Brouillon fichier conservé');
   assert.equal(await input().getAttribute('multiple'),'');
   await upload([bytes('one.txt'),bytes('two.txt'),bytes('binary.bin')]);await waitDone();assert.equal(await panel().locator('[data-import-status=imported]').count(),3);assert.equal(await panel().locator('#project-file-editor').inputValue(),'Brouillon fichier conservé');
@@ -72,7 +74,7 @@ try{for(const width of [1280,320])for(const language of ['fr','en']){
   await upload([bytes('refused.txt'),bytes('good-after-refusal.txt')]);await waitDone();assert.equal(await row('refused.txt').getAttribute('data-import-status'),'refused');assert.equal(state.files.has('Imports telephone/refused.txt'),false);assert.equal(state.files.has('Imports telephone/good-after-refusal.txt'),true);
   const beforeLost=state.posts.length;await upload([bytes('lost.txt'),bytes('never-sent.txt')]);await waitDone();assert.equal(state.posts.length,beforeLost+1);assert.equal(await row('lost.txt').getAttribute('data-import-status'),'uncertain');assert.equal(await row('never-sent.txt').getAttribute('data-import-status'),'not-sent');assert(state.files.has('Imports telephone/lost.txt'));
   await panel().getByRole('button',{name:tr('Relire les fichiers importés','Refresh imported files'),exact:true}).click();assert.equal(state.posts.length,beforeLost+1);await panel().getByRole('button',{name:tr('Ouvrir le fichier lost.txt','Open file lost.txt'),exact:true}).waitFor();
-  await page.reload();await nav().waitFor();await closeNav();await filesTab();await row('lost.txt').waitFor();assert.equal(await row('lost.txt').getAttribute('data-import-status'),'uncertain');assert.equal(state.posts.length,beforeLost+1,'Reload never uploads');
+  await page.reload();await nav().waitFor();await selectProject('Projet synthétique');await closeNav();await filesTab();await row('lost.txt').waitFor();assert.equal(await row('lost.txt').getAttribute('data-import-status'),'uncertain');assert.equal(state.posts.length,beforeLost+1,'Reload never uploads');
   await panel().getByRole('button',{name:tr('Ouvrir le fichier notes.md','Open file notes.md'),exact:true}).click();assert.equal(await panel().locator('#project-file-editor').inputValue(),'Brouillon fichier conservé','File editor draft survives reloading and import recovery');
   // Refusing session storage occurs before any POST, with a visible exit from the form.
   await page.evaluate(()=>{window.__storageSet=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(key.startsWith('companion-imports:'))throw new DOMException('Synthetic storage refused','QuotaExceededError');return window.__storageSet.call(this,key,value);};});
@@ -86,7 +88,7 @@ try{for(const width of [1280,320])for(const language of ['fr','en']){
   await panel().getByRole('button',{name:tr('Relire les fichiers importés','Refresh imported files'),exact:true}).click();await panel().getByRole('button',{name:tr('Ouvrir le fichier one.txt','Open file one.txt'),exact:true}).waitFor();
   // Two unsaved chats share an empty chat id but must never share a late attachment.
   await page.getByRole('button',{name:tr('Fermer la fenêtre','Close window'),exact:true}).click();
-  const nextDraft=async()=>{const open=page.getByRole('button',{name:tr('Ouvrir la navigation','Open navigation'),exact:true});if(await open.isVisible())await open.click();await page.getByRole('button',{name:tr('Nouveau chat','New chat'),exact:true}).click();};
+  const nextDraft=()=>selectProject('Projet synthétique');
   await nextDraft();while(await page.locator('.attachment-chips button').count())await page.locator('.attachment-chips button').first().click();await filesTab();
   const draftSwitch=state.hold('switch-draft.txt'),beforeDraftSwitch=state.posts.length;
   await upload([bytes('switch-draft.txt'),bytes('not-sent-new-draft.txt')],true);await draftSwitch;
@@ -97,10 +99,10 @@ try{for(const width of [1280,320])for(const language of ['fr','en']){
   assert.match(await row('switch-draft.txt').innerText(),language==='fr'?/conversation a changé/:/conversation changed/);
   // A component unmounted by project navigation must not attach its late reply elsewhere.
   const changing=state.hold('switch-project.txt'),beforeSwitch=state.posts.length;await upload([bytes('switch-project.txt'),bytes('not-sent-other-project.txt')],true);await changing;
-  await page.getByRole('button',{name:tr('Fermer la fenêtre','Close window'),exact:true}).click();const opener=page.getByRole('button',{name:tr('Ouvrir la navigation','Open navigation'),exact:true});if(await opener.isVisible())await opener.click();await page.locator('.project-list').getByRole('button',{name:'Autre projet',exact:true}).click();await closeNav();state.release();await page.waitForTimeout(60);await filesTab();
+  await page.getByRole('button',{name:tr('Fermer la fenêtre','Close window'),exact:true}).click();const opener=page.getByRole('button',{name:tr('Ouvrir la navigation','Open navigation'),exact:true});await selectProject('Autre projet');await closeNav();state.release();await page.waitForTimeout(60);await filesTab();
   assert.equal(await panel().getByRole('button',{name:tr('Importer des fichiers','Import files'),exact:true}).isDisabled(),true,'Read-only root disables importing');assert.equal(state.posts.length,beforeSwitch+1);assert.equal(state.files.has('Imports telephone/not-sent-other-project.txt'),false);assert.equal(await panel().locator('.import-results li').count(),0,'Previous project import receipts remain scoped');
   await page.getByRole('button',{name:tr('Fermer la fenêtre','Close window'),exact:true}).click();assert.equal(await page.locator('.attachment-chips span').count(),0,'No late attachment leaks into a different project');
-  if(await opener.isVisible())await opener.click();await page.locator('.project-list').getByRole('button',{name:'Projet synthétique',exact:true}).click();await closeNav();await filesTab();await row('switch-project.txt').waitFor();assert.match(await row('switch-project.txt').innerText(),language==='fr'?/conversation a changé/:/conversation changed/);
+  await selectProject('Projet synthétique');await closeNav();await filesTab();await row('switch-project.txt').waitFor();assert.match(await row('switch-project.txt').innerText(),language==='fr'?/conversation a changé/:/conversation changed/);
   assert.equal(state.posts.filter(post=>post.name!=='/api/file/upload').length,0,'No chat, engine or unrelated mutation');assert.deepEqual(errors,[]);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   if(captures)await page.screenshot({path:path.join(captures,width+'-'+language+'-imports.png')});
   results.push({width,language,multiple:true,importOnly:true,perFileRefusal:true,lostReplyReadOnlyRecovery:true,reload:true,storageRefusedBeforeEffect:true,cancelKeepsImported:true,explicitAttachLimit:4,chatAndEditorDraftsPreserved:true,unsavedChatSwitchStopsAttachment:true,projectSwitchStopsBatchAndAttachment:true,readOnlyDisabled:true,uploadPosts:state.posts.length,errors:0});

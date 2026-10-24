@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-const root=fileURLToPath(new URL('../',import.meta.url)),oldPublic=path.join(root,'public'),nextPublic=process.env.BIONIC_BROWSER_PUBLIC_DIR||oldPublic;
+const root=fileURLToPath(new URL('../',import.meta.url)),oldPublic=process.env.BIONIC_BROWSER_LEGACY_PUBLIC_DIR||path.join(root,'public'),nextPublic=process.env.BIONIC_BROWSER_PUBLIC_DIR||oldPublic;
 const {chromium}=process.env.PLAYWRIGHT_MODULE_PATH?await import(pathToFileURL(path.join(process.env.PLAYWRIGHT_MODULE_PATH,'index.mjs')).href):await import('playwright');
 const browser=await chromium.launch({headless:true,channel:process.env.BIONIC_BROWSER_CHANNEL||'chrome'}),results=[];
 const origin='http://panel-storage.test',instanceId='route-fixture',pid='project-a',cid='web-11111111-1111-4111-8111-111111111111',imageChat='web-22222222-2222-4222-8222-222222222222';

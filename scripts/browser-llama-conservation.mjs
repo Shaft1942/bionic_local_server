@@ -26,7 +26,7 @@ try{
   const projectChats=page.locator('.project-group[data-project-id="'+PROTOTYPE_PROJECT+'"] .project-conversations');
   try{
    await page.goto(fixture.baseUrl);await page.getByLabel('Code d’accès du prototype').fill(PROTOTYPE_CODE);await page.getByRole('button',{name:'Se connecter',exact:true}).click();await navigation().waitFor();await closeSidebar();
-   await openSidebar();await projectChats.getByRole('button',{name:'Historique long synthétique',exact:true}).click();
+   await openSidebar();const firstToggle=page.locator('.project-group[data-project-id="'+PROTOTYPE_PROJECT+'"] .project-collapse');if(await firstToggle.getAttribute('aria-expanded')!=='true')await firstToggle.click();await projectChats.getByRole('button',{name:'Historique long synthétique',exact:true}).click();
    await page.getByRole('button',{name:'Charger les messages précédents',exact:true}).waitFor();assert.equal(await page.locator('.chat-message').count(),100);
    await page.getByRole('button',{name:'Charger les messages précédents',exact:true}).click();await until(async()=>await page.locator('.chat-message').count()===200,'older history');
    await page.getByRole('button',{name:'Charger les messages précédents',exact:true}).click();await until(async()=>await page.locator('.chat-message').count()===205,'oldest history');
@@ -42,7 +42,7 @@ try{
    await page.getByRole('textbox',{name:'Message',exact:true}).fill('Brouillon conservé '+width);await openMenu('tools');await tools.getByLabel('Scripts avec approbation',{exact:true}).check();
    await openSidebar();await page.getByRole('button',{name:'Nouveau chat dans Second projet',exact:true}).click();await closeSidebar();
    await page.getByRole('textbox',{name:'Message',exact:true}).fill('Brouillon second projet');
-   await openSidebar();await page.locator('.project-list').getByRole('button',{name:'Atelier de démonstration',exact:true}).click();await projectChats.waitFor();
+   await openSidebar();const reopen=page.locator('.project-group[data-project-id="'+PROTOTYPE_PROJECT+'"] .project-collapse');if(await reopen.getAttribute('aria-expanded')!=='true')await reopen.click();await projectChats.waitFor();
    await projectChats.getByRole('button',{name:'Premier message de la file '+width,exact:true}).click();
    await until(async()=>await page.getByRole('textbox',{name:'Message',exact:true}).inputValue()==='Brouillon conservé '+width,'draft restored after conversation load');
    await openMenu('tools');assert.equal(await tools.getByLabel('Recherche web',{exact:true}).isChecked(),false);assert.equal(await tools.getByLabel('Scripts avec approbation',{exact:true}).isChecked(),true);

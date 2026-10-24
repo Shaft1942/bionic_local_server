@@ -61,7 +61,7 @@ try {
       await page.getByRole('textbox', { name: 'Nom du projet', exact: true }).fill(projectName);
       await page.getByRole('button', { name: 'Créer', exact: true }).click();
       await page.locator('.project-list').getByRole('button', { name: projectName, exact: true }).waitFor();
-      await page.locator('.project-list').getByRole('button', { name: 'Atelier de démonstration', exact: true }).click();
+      await page.getByRole('button', { name: 'Nouveau chat dans Atelier de démonstration', exact: true }).click();
       await closeMobileSidebar(page, width);
       await tab(page, 'Fichiers');
       await page.getByRole('button', { name: 'Ouvrir le fichier notes.md', exact: true }).click();

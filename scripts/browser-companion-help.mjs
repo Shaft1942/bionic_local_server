@@ -17,7 +17,7 @@ try {
   for (const width of [1280, 320]) {
     const root = await fs.mkdtemp(path.join(process.env.BIONIC_HELP_FIXTURE_ROOT || os.tmpdir(), 'companion-help-'));
     // Port 0 is allocated atomically by the OS; no pre-existing listener is reused.
-    const fixture = await createPrototype({ root, port: 0 });
+    const fixture = await createPrototype({ root, port: 0, publicDirectory:process.env.BIONIC_BROWSER_PUBLIC_DIR });
     const registry = path.join(root, 'help-process.json');
     await fs.writeFile(registry, JSON.stringify({ pid: process.pid, url: fixture.baseUrl, status: 'running', owned: true }));
     const context = await browser.newContext({ viewport: { width, height: 900 }, locale: 'fr-FR', hasTouch: width === 320, reducedMotion: 'reduce' });

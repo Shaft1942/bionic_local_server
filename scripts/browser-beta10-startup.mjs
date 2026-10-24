@@ -10,7 +10,7 @@ const browser=await chromium.launch({headless:true,channel:process.env.BIONIC_BR
 try{
  for(const width of [1280,390]){
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'beta10-startup-'));
-  const fixture=await createPrototype({root,port:0});
+  const fixture=await createPrototype({root,port:0,publicDirectory:process.env.BIONIC_BROWSER_PUBLIC_DIR});
   const context=await browser.newContext({viewport:{width,height:950}}),page=await context.newPage();
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
   let release;const gate=new Promise(resolve=>release=resolve);

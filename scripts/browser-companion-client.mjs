@@ -4,6 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url)), origin = 'http://companion-client.test';
+const publicRoot=path.resolve(process.env.BIONIC_BROWSER_PUBLIC_DIR||path.join(root,'public'));
 const { chromium } = process.env.PLAYWRIGHT_MODULE_PATH ? await import(pathToFileURL(path.join(process.env.PLAYWRIGHT_MODULE_PATH, 'index.mjs')).href) : await import('playwright');
 const browser = await chromium.launch({ headless: true, channel: process.env.BIONIC_BROWSER_CHANNEL || 'chrome' });
 const captures = process.env.BIONIC_BROWSER_CAPTURES, results = [];
@@ -27,12 +28,12 @@ function fixture() {
     const body = req.method() === 'POST' ? req.postDataJSON() : undefined;
     let value;
     if (name === '/api/ping') value = { instanceId, version: '2.6.0-beta.7' };
-    else if (name === '/api/projects') value = { projects: [{ id: pid, name: 'Projet synthétique', locallyOwned: true }] };
+    else if (name === '/api/projects') value = { projects: [{ id: pid, name: 'Projet synthétique', locallyOwned: true },{id:'companion-unassigned',name:'Sans projet',isUnassigned:true}] };
     else if (name === '/api/models') value = { provider:'bionic', inferenceRevision:'synthetic', models: [{ id: 'fixture', name: 'Modèle synthétique', type: 'llm', loaded: true, loadedInstances: [], contextLength: 4096 }] };
     else if (name === '/api/inference/settings') value = { provider: 'bionic', revision: 'synthetic', editable: true, apiUrl: 'http://127.0.0.1:19997' };
     else if (name === '/api/comfy/settings') value = { enabled: false, available: false, workflows: [] };
     else if (name === '/api/inference/model-selection') value = { busy: false, reconciliationRequired: false };
-    else if (name === '/api/sessions') value = { sessions: [...chats.values()].map(({ messages, ...chat }) => chat), total: chats.size };
+    else if (name === '/api/sessions') {const sessions=[...chats.values()].filter(chat=>chat.projectId===url.searchParams.get('projectId')).map(({messages,...chat})=>chat);value={sessions,total:sessions.length};}
     else if (name === '/api/conversation') value = chats.get(url.searchParams.get('id'));
     else if (name === '/api/chat-request') {
       const requestId = url.searchParams.get('requestId'); reads.push(requestId); value = receipts.get(requestId);
@@ -73,7 +74,7 @@ try {
     await context.route('**/*', async route => {
       const url = new URL(route.request().url()); assert.equal(url.origin, origin, 'All traffic stays in synthetic origin');
       if (await state.api(route)) return;
-      const file = path.resolve(root, 'public', url.pathname === '/prototype/' ? 'llama-ui/index.html' : url.pathname.slice(1)); assert(file.startsWith(path.join(root, 'public') + path.sep));
+      const file = path.resolve(publicRoot, url.pathname === '/prototype/' ? 'llama-ui/index.html' : url.pathname.slice(1)); assert(file.startsWith(publicRoot + path.sep));
       const contentType = ({ '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' })[path.extname(file)] || 'text/html';
       await route.fulfill({ contentType, body: await fs.readFile(file), headers: contentType === 'text/html' ? { 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'" } : {} });
     });
@@ -92,7 +93,7 @@ try {
     };
     const newChat = async () => {
       const opener = button('Ouvrir la navigation', 'Open navigation'); if (await opener.isVisible()) await opener.click();
-      await button('Nouveau chat', 'New chat').click();
+      await button('Nouveau chat dans Projet synthétique', 'New chat in Projet synthétique').click();
     };
     const openNative = async () => {
       const opener = button('Ouvrir la navigation', 'Open navigation'); if (await opener.isVisible()) await opener.click();
@@ -101,7 +102,7 @@ try {
     };
     const assertSettled = async () => { await page.waitForFunction(instanceId => JSON.parse(localStorage.getItem('bionic:llama-prototype:' + instanceId)).jobs.length === 0, instanceId); };
     try {
-      await page.goto(origin + '/prototype/'); await prompt().waitFor();
+      await page.goto(origin + '/prototype/'); await prompt().waitFor();await newChat();
       await send('Succès synthétique'); await assertSettled(); assert.equal(state.posts.length, 1);
       await page.locator('.chat-message:not(.user) .companion-markdown').getByText('Réponse canonique ' + state.posts.at(-1).requestId).waitFor();
       await newChat(); state.mode('refusal'); await send('Conserver après refus');
@@ -141,7 +142,7 @@ try {
       await prompt().fill('Intention suivante'); assert.equal(await button('Envoyer', 'Send').isDisabled(), true, 'Unknown first send remains tracked');
       await newChat(); await prompt().fill('Sortie utilisateur du verrou'); assert.equal(await button('Envoyer', 'Send').isEnabled(), true, 'New chat exits the lock without resending');
       assert.equal(state.posts.length, 8); await verify(); assert.equal(state.posts.length, 8);
-      await page.reload(); await restoredDraft('Sortie utilisateur du verrou'); assert.equal(await button('Envoyer', 'Send').isEnabled(), true);
+      await page.reload();await prompt().waitFor();await newChat(); await restoredDraft('Sortie utilisateur du verrou'); assert.equal(await button('Envoyer', 'Send').isEnabled(), true);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'No overflow at ' + width);
       assert.equal(await page.evaluate(() => document.documentElement.lang), lang);
       if (captures) await page.screenshot({ path: path.join(captures, `client-${lang}-${width}.png`), fullPage: false });

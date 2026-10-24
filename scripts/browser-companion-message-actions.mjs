@@ -16,7 +16,7 @@ const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
 try {
   for (const width of [1280, 390, 320]) for (const language of ['fr', 'en']) {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'canae-message-actions-'));
-    const fixture = await createPrototype({ root, port: 0 });
+    const fixture = await createPrototype({ root, port: 0, publicDirectory:process.env.BIONIC_BROWSER_PUBLIC_DIR });
     const id = 'web-' + randomUUID(), errors = [], posts = [];
     await fixture.app.persistChat({ id, projectId: PROTOTYPE_PROJECT, source: 'web', name: 'Code synthétique', model: PROTOTYPE_MODEL, messages: [{ id: 'user-code-fixture', role: 'user', text: 'Code fourni :\n\n```js\nlet fourni = 2;\n```', attachments: [{ name: 'notes-extrait.txt', kind: 'text', text: '<script>Texte passif 🌿</script>', excerpt: true }, { name: 'image-test.png', kind: 'image', hash: 'a'.repeat(64), mime: 'image/png' }, { name: 'image-invalide.svg', kind: 'image', hash: 'https://example.test/foreign', mime: 'image/svg+xml' }] }, { id: 'code-fixture', role: 'assistant', text: 'Un bloc de code :\n\n```js\n' + code + '```\n\nUn lien [guide](https://example.test/).', complete: true }] });
     const context = await browser.newContext({ viewport: { width, height: 950 }, hasTouch: width < 760, reducedMotion: 'reduce' });
@@ -43,6 +43,7 @@ try {
       await page.locator('.companion-shell').waitFor();
       const open = page.getByRole('button', { name: text('Ouvrir la navigation', 'Open navigation'), exact: true });
       if (await open.isVisible()) await open.click();
+      await page.getByRole('button',{name:text('Nouveau chat dans Atelier de démonstration','New chat in Atelier de démonstration'),exact:true}).click();if(await open.isVisible())await open.click();
       await page.locator('.chat-list').getByRole('button', { name: 'Code synthétique', exact: true }).click();
       const close = page.getByRole('button', { name: text('Fermer la navigation', 'Close navigation'), exact: true });
       if (width < 760 && await close.isVisible()) await close.click();
