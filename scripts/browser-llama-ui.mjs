@@ -7,7 +7,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createPrototype, PROTOTYPE_CODE, PROTOTYPE_PROJECT } from '../lib/llama-ui-prototype.mjs';
 
 const applicationRoot = fileURLToPath(new URL('../', import.meta.url));
-await fs.access(path.join(applicationRoot, 'public', 'llama-ui', 'index.html')).catch(() => { throw new Error('Build the reviewed frontend first: npm run build:llama-ui.'); });
+const publicRoot = process.env.BIONIC_BROWSER_PUBLIC_DIR || path.join(applicationRoot, 'public');
+await fs.access(path.join(publicRoot, 'llama-ui', 'index.html')).catch(() => { throw new Error('Build the reviewed frontend first: npm run build:llama-ui.'); });
 const { chromium } = process.env.PLAYWRIGHT_MODULE_PATH ? await import(pathToFileURL(path.join(process.env.PLAYWRIGHT_MODULE_PATH, 'index.mjs')).href) : await import('playwright');
 const captures = process.env.BIONIC_BROWSER_CAPTURES || process.env.BIONIC_SMOKE_SCREENSHOTS;
 if (captures) await fs.mkdir(captures, { recursive: true });
@@ -35,7 +36,7 @@ async function screenshot(page, name) { if (captures) await page.screenshot({ pa
 try {
   for (const width of [1280, 390]) {
     const fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'llama-browser-fixture-'));
-    const fixture = await createPrototype({ root: fixtureRoot, port: 0, modelDelayMs: 4200, imageDelayMs: 4200 });
+    const fixture = await createPrototype({ root: fixtureRoot, port: 0, publicDirectory: publicRoot, modelDelayMs: 4200, imageDelayMs: 4200 });
     const context = await browser.newContext({ locale: 'fr-FR', viewport: { width, height: 900 } });
     const page = await context.newPage(), errors = [], csp = [], chatPosts = [], imagePosts = [];
     page.setDefaultTimeout(15000);
@@ -78,6 +79,7 @@ try {
       await screenshot(page, width + '-llama-files.png');
       await page.getByRole('button', { name: 'Joindre au chat', exact: true }).click();
       await page.locator('.attachment-chips').getByText('notes.md', { exact: true }).waitFor();
+      await page.locator('[data-composer-menu="files"]').click();
       await page.getByRole('combobox', { name: 'Droits sur les fichiers', exact: true }).selectOption('none');
       const prompt = 'Reprise du chat navigateur ' + width;
       await page.getByRole('textbox', { name: 'Message', exact: true }).fill(prompt);
@@ -102,7 +104,9 @@ try {
       const other = await otherContext.newPage(); other.setDefaultTimeout(15000); observe(other);
       await login(other, fixture.baseUrl, width);
       await navigateSidebar(other);
-      await other.getByRole('navigation', { name: 'Conversations', exact: true }).getByRole('button', { name: prompt, exact: true }).click();
+      const projectGroup = other.locator('.project-group[data-project-id="' + PROTOTYPE_PROJECT + '"]');
+      const expandProject = projectGroup.locator('.project-collapse'); if (await expandProject.getAttribute('aria-expanded') !== 'true') await expandProject.click();
+      await projectGroup.locator('.project-conversations').getByRole('button', { name: prompt, exact: true }).click();
       await other.getByRole('article', { name: 'Réponse du modèle', exact: true }).getByText(/Retrouvez ce message en rouvrant/).waitFor();
       assert.equal(await other.locator('.chat-message').count(), 2);
       assert.equal(fixture.stats.modelCalls, 1);

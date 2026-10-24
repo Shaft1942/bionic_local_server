@@ -13,7 +13,7 @@ const until=async(predicate,label)=>{const deadline=Date.now()+30000;while(Date.
 try{
  for(const width of [1280,390]){
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'llama-conservation-'));
-  const fixture=await createPrototype({root,port:0,modelDelayMs:2500,imageDelayMs:600});
+  const fixture=await createPrototype({root,port:0,publicDirectory:process.env.BIONIC_BROWSER_PUBLIC_DIR,modelDelayMs:2500,imageDelayMs:600});
   const historyId='web-'+randomUUID();
   await fixture.app.persistChat({id:historyId,projectId:PROTOTYPE_PROJECT,name:'Historique long synthétique',source:'web',model:PROTOTYPE_MODEL,updatedAt:1,queue:[],messages:Array.from({length:205},(_,index)=>({id:'history-'+index,role:index%2?'assistant':'user',text:'Message historique synthétique '+index,createdAt:index+1}))});
   const context=await browser.newContext({locale:'fr-FR',viewport:{width,height:900}}),page=await context.newPage(),errors=[],posts=[];
@@ -21,7 +21,8 @@ try{
   const navigation=()=>page.getByRole('navigation',{name:'Espace du projet',exact:true});
   const openSidebar=async()=>{if(await page.locator('dialog[open]').count())await page.getByRole('button',{name:'Fermer la fenêtre',exact:true}).click();const button=page.getByRole('button',{name:'Ouvrir la navigation',exact:true});if(await button.isVisible())await button.click();};
   const closeSidebar=async()=>{if(width<760){const button=page.getByRole('button',{name:'Fermer la navigation',exact:true});if(await button.isVisible())try{await button.click({timeout:1000});}catch(error){if(await button.isVisible())throw error;}}};
-  const tools=page.locator('.tool-options');
+  const tools=page.locator('#chat-tools-options');
+  const openMenu=async name=>{const panel=page.locator(name==='files'?'#chat-file-options':'#chat-tools-options');if(!await panel.evaluate(element=>element.matches(':popover-open')))await page.locator('[data-composer-menu="'+name+'"]').click();await panel.waitFor({state:'visible'});};
   const projectChats=page.locator('.project-group[data-project-id="'+PROTOTYPE_PROJECT+'"] .project-conversations');
   try{
    await page.goto(fixture.baseUrl);await page.getByLabel('Code d’accès du prototype').fill(PROTOTYPE_CODE);await page.getByRole('button',{name:'Se connecter',exact:true}).click();await navigation().waitFor();await closeSidebar();
@@ -33,23 +34,23 @@ try{
    await openSidebar();await page.getByRole('button',{name:'Replier le projet Atelier de démonstration',exact:true}).click();assert.equal(await projectChats.isVisible(),false);
    assert.equal(await page.getByRole('navigation',{name:'Conversations sans projet',exact:true}).isVisible(),true,'Collapsing a project does not hide unassigned conversations');
    await page.getByRole('button',{name:'Nouveau chat dans Atelier de démonstration',exact:true}).click();await closeSidebar();
-   await tools.locator('summary').click();assert.equal(await tools.getByLabel('Recherche web',{exact:true}).isChecked(),true);assert.equal(await tools.getByLabel('Génération d’images',{exact:true}).isChecked(),true);
-   await page.getByRole('combobox',{name:'Droits sur les fichiers',exact:true}).selectOption('none');await tools.getByLabel('Génération d’images',{exact:true}).uncheck();
+   await openMenu('tools');assert.equal(await tools.getByLabel('Recherche web',{exact:true}).isChecked(),true);assert.equal(await tools.getByLabel('Génération d’images',{exact:true}).isChecked(),true);
+   await openMenu('files');await page.getByRole('combobox',{name:'Droits sur les fichiers',exact:true}).selectOption('none');await openMenu('tools');await tools.getByLabel('Génération d’images',{exact:true}).uncheck();
    await page.getByRole('textbox',{name:'Message',exact:true}).fill('Premier message de la file '+width);await page.getByRole('button',{name:'Envoyer',exact:true}).click();await page.getByRole('article',{name:'Votre message',exact:true}).waitFor();
-   await page.getByRole('textbox',{name:'Message',exact:true}).fill('Second message de la file '+width);await tools.getByLabel('Recherche web',{exact:true}).uncheck();await page.getByRole('button',{name:'Envoyer',exact:true}).click();
+   await page.getByRole('textbox',{name:'Message',exact:true}).fill('Second message de la file '+width);await openMenu('tools');await tools.getByLabel('Recherche web',{exact:true}).uncheck();await page.getByRole('button',{name:'Envoyer',exact:true}).click();
    await until(()=>posts.length===2,'two accepted submissions');assert.equal(posts[0].webAccess,true);assert.equal(posts[1].webAccess,false);assert.equal(posts[1].sessionId,posts[0].sessionId||((await fixture.app.webChats(PROTOTYPE_PROJECT)).find(chat=>chat.name.startsWith('Premier message'))?.id));
-   await page.getByRole('textbox',{name:'Message',exact:true}).fill('Brouillon conservé '+width);await tools.getByLabel('Scripts avec approbation',{exact:true}).check();
+   await page.getByRole('textbox',{name:'Message',exact:true}).fill('Brouillon conservé '+width);await openMenu('tools');await tools.getByLabel('Scripts avec approbation',{exact:true}).check();
    await openSidebar();await page.getByRole('button',{name:'Nouveau chat dans Second projet',exact:true}).click();await closeSidebar();
    await page.getByRole('textbox',{name:'Message',exact:true}).fill('Brouillon second projet');
    await openSidebar();await page.locator('.project-list').getByRole('button',{name:'Atelier de démonstration',exact:true}).click();await projectChats.waitFor();
    await projectChats.getByRole('button',{name:'Premier message de la file '+width,exact:true}).click();
    await until(async()=>await page.getByRole('textbox',{name:'Message',exact:true}).inputValue()==='Brouillon conservé '+width,'draft restored after conversation load');
-   if(!await tools.locator('summary').evaluate(element=>element.parentElement.open))await tools.locator('summary').click();assert.equal(await tools.getByLabel('Recherche web',{exact:true}).isChecked(),false);assert.equal(await tools.getByLabel('Scripts avec approbation',{exact:true}).isChecked(),true);
+   await openMenu('tools');assert.equal(await tools.getByLabel('Recherche web',{exact:true}).isChecked(),false);assert.equal(await tools.getByLabel('Scripts avec approbation',{exact:true}).isChecked(),true);
    await page.reload();await navigation().waitFor();await closeSidebar();await until(async()=>await page.getByRole('textbox',{name:'Message',exact:true}).inputValue()==='Brouillon conservé '+width,'draft restored after reload');
    await until(async()=>{const chats=await fixture.app.webChats(PROTOTYPE_PROJECT),chat=chats.find(item=>item.name.startsWith('Premier message'));return chat&&(await fixture.app.readWeb(chat.id)).messages.length===4&&!fixture.app.chatStates.get(chat.id)?.running;},'FIFO completed');
    assert.equal(posts.length,2,'navigation/reload never resubmits');assert.equal(fixture.stats.modelCalls,2);
    await openSidebar();await page.getByRole('button',{name:'Nouveau chat dans Atelier de démonstration',exact:true}).click();await closeSidebar();
-   await tools.locator('summary').click();await tools.getByLabel('Génération d’images',{exact:true}).check();await tools.getByRole('spinbutton',{name:'Nombre d’images',exact:true}).fill('5');await tools.getByRole('combobox',{name:'Politique mémoire des images',exact:true}).selectOption('keep');
+   await openMenu('tools');await tools.getByLabel('Génération d’images',{exact:true}).check();await tools.getByRole('spinbutton',{name:'Nombre d’images',exact:true}).fill('5');await tools.getByRole('combobox',{name:'Politique mémoire des images',exact:true}).selectOption('keep');
    await page.getByRole('textbox',{name:'Message',exact:true}).fill('IMAGE_FIXTURE série de cinq images '+width);await page.getByRole('button',{name:'Envoyer',exact:true}).click();
    await until(()=>fixture.stats.promptPosts===5,'five image jobs');assert.equal(posts.length,3);assert.equal(posts[2].imageCount,5);assert.equal(posts[2].imageAccess,true);
    await page.reload();await navigation().waitFor();await closeSidebar();await navigation().getByRole('button',{name:'Images',exact:true}).click();

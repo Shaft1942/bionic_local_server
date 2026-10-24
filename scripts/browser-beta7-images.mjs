@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { deflateSync } from 'node:zlib';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+const publicRoot = path.resolve(process.env.BIONIC_BROWSER_PUBLIC_DIR || path.join(root, 'public'));
 const { chromium } = process.env.PLAYWRIGHT_MODULE_PATH ? await import(pathToFileURL(path.join(process.env.PLAYWRIGHT_MODULE_PATH, 'index.mjs')).href) : await import('playwright');
 const origin = 'http://beta7-images.test', captures = process.env.BIONIC_SMOKE_SCREENSHOTS;
 if (captures) await fs.mkdir(captures, { recursive: true });
@@ -84,7 +85,7 @@ try {
     page.setDefaultTimeout(15000); page.on('pageerror', error => errors.push(error.message)); page.on('console', item => { if (/content.security.policy|violates the following/i.test(item.text())) csp.push(item.text()); });
     await context.route('**/*', async route => {
       const url = new URL(route.request().url()); assert.equal(url.origin, origin, 'No external network request'); if (await state.api(route)) return;
-      const file = path.resolve(root, 'public', url.pathname === '/prototype/' ? 'llama-ui/index.html' : url.pathname.replace(/^\//, '')); assert.ok(file.startsWith(path.resolve(root, 'public') + path.sep));
+      const file = path.resolve(publicRoot, url.pathname === '/prototype/' ? 'llama-ui/index.html' : url.pathname.replace(/^\//, '')); assert.ok(file.startsWith(publicRoot + path.sep));
       const contentType = ({ '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml' })[path.extname(file)] || 'text/html';
       await route.fulfill({ contentType, body: await fs.readFile(file), headers: contentType === 'text/html' ? { 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'" } : {} });
     });
@@ -101,13 +102,13 @@ try {
       const binary = await page.evaluate(async href => { const response = await fetch(href); return { ok: response.ok, mime: response.headers.get('content-type'), bytes: (await response.arrayBuffer()).byteLength }; }, downloadHref); assert.equal(binary.ok, true); assert.equal(binary.mime, 'image/png'); assert.equal(binary.bytes, png.length);
       await page.getByRole('button', { name: 'Ouvrir la galerie', exact: true }).click(); await page.getByRole('heading', { name: 'Atelier images', exact: true }).waitFor(); await tab('Chat');
       await sidebar(() => page.getByRole('button', { name: 'Nouveau chat', exact: true }).click());
-      const tools = page.locator('.tool-options'); if (!await tools.evaluate(element => element.open)) await tools.locator('summary').click();
+      const tools = page.locator('#chat-tools-options'); if (!await tools.evaluate(element => element.matches(':popover-open'))) await page.locator('[data-composer-menu="tools"]').click(); await tools.waitFor({ state: 'visible' });
       await page.locator('#chat-image-count').fill('5'); await page.getByLabel('Message', { exact: true }).fill('Crée cinq images synthétiques.'); await page.getByRole('button', { name: 'Envoyer', exact: true }).click();
       await page.waitForFunction(() => document.querySelectorAll('#message-series-reply .message-images img').length === 5); await decoded('#message-series-reply .message-images img');
       assert.equal(await page.locator('#message-series-reply [data-image-job]').count(), 5); assert.match(await page.locator('#message-series-reply').textContent(), /Image 5 sur 5/);
       assert.equal(state.writes.filter(write => write.name === '/api/chat').length, 1, 'Polling never resubmits the generation');
       if (captures) {
-        if (await tools.evaluate(element => element.open)) await tools.locator('summary').click();
+        if (await tools.evaluate(element => element.matches(':popover-open'))) await page.keyboard.press('Escape');
         await page.locator('#message-series-reply .message-images').evaluate(element => element.scrollIntoView({ block: 'start' }));
         await page.screenshot({ path: path.join(captures, `${width}-series-in-message.png`) });
       }

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+const publicRoot = path.resolve(process.env.BIONIC_BROWSER_PUBLIC_DIR || path.join(root, 'public'));
 const { chromium } = process.env.PLAYWRIGHT_MODULE_PATH ? await import(pathToFileURL(path.join(process.env.PLAYWRIGHT_MODULE_PATH, 'index.mjs')).href) : await import('playwright');
 const origin = 'http://image-count-beta6.test', captures = process.env.BIONIC_SMOKE_SCREENSHOTS;
 if (captures) await fs.mkdir(captures, { recursive: true });
@@ -27,7 +28,7 @@ function fixture(provider) {
     let data;
     if (name === '/api/ping') data = { app: 'bionic-mobile-local', version: '2.6.0-beta.6', instanceId };
     else if (name === '/api/projects') data = { projects: [{ id: 'project-a', name: 'Projet A synthétique', locallyOwned: true }, { id: 'project-b', name: 'Projet B synthétique', locallyOwned: true }] };
-    else if (name === '/api/models') data = { models: [model] };
+    else if (name === '/api/models') data = { models: [model], provider: inference.provider, inferenceRevision: inference.revision };
     else if (name === '/api/inference/settings') data = inference;
     else if (name === '/api/inference/model-selection') data = { busy: false, reconciliationRequired: false, editable: true };
     else if (name === '/api/llama-server') data = { profile: { directory: 'C:/synthetic/gguf', endpoint: inference.llamaUrl }, canControl: true, process: { owned: false }, external: [] };
@@ -85,14 +86,14 @@ try {
     await context.route('**/*', async route => {
       const url = new URL(route.request().url()); assert.equal(url.origin, origin, 'All requests remain intercepted on the synthetic origin');
       if (await state.api(route)) return;
-      const file = path.resolve(root, 'public', url.pathname === '/prototype/' ? 'llama-ui/index.html' : url.pathname.replace(/^\//, ''));
-      assert.ok(file.startsWith(path.resolve(root, 'public') + path.sep));
+      const file = path.resolve(publicRoot, url.pathname === '/prototype/' ? 'llama-ui/index.html' : url.pathname.replace(/^\//, ''));
+      assert.ok(file.startsWith(publicRoot + path.sep));
       const contentType = ({ '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp' })[path.extname(file)] || 'text/html';
       await route.fulfill({ contentType, body: await fs.readFile(file), headers: contentType === 'text/html' ? { 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'" } : {} });
     });
     const tab = name => page.getByRole('navigation', { name: 'Espace du projet', exact: true }).getByRole('button', { name, exact: true }).click();
     const chatSlider = () => page.locator('#chat-image-count-range'), imageSlider = () => page.locator('#atelier-image-count-range');
-    const tools = async () => { const options = page.locator('.tool-options'); if (!await options.getAttribute('open') && !await options.evaluate(element => element.open)) await options.locator('summary').click(); await chatSlider().waitFor(); };
+    const tools = async () => { const options = page.locator('#chat-tools-options'); if (!await options.evaluate(element => element.matches(':popover-open'))) await page.locator('[data-composer-menu="tools"]').click(); await chatSlider().waitFor(); };
     const closeSidebar = async () => { if (width < 760 && await page.getByRole('button', { name: 'Fermer la navigation', exact: true }).isVisible()) await page.getByRole('button', { name: 'Fermer la navigation', exact: true }).click(); };
     const sidebarAction = async action => { if (width < 760 && await page.getByRole('button', { name: 'Ouvrir la navigation', exact: true }).isVisible()) await page.getByRole('button', { name: 'Ouvrir la navigation', exact: true }).click(); await action(); await closeSidebar(); };
     try {
@@ -102,11 +103,11 @@ try {
       assert.equal(await page.getByLabel('Modèle', { exact: true }).count(), 1, 'The existing single model field is preserved');
       if (provider === 'llamacpp') await page.getByLabel('Modèle', { exact: true }).getByRole('option', { name: 'fixture.gguf', exact: true }).waitFor({ state: 'attached' });
       for (let count = 1; count <= 5; count++) {
-        await countWithKeyboard(chatSlider(), count); await page.getByLabel('Message', { exact: true }).fill('Génère une série synthétique ' + count); await page.getByRole('button', { name: 'Envoyer', exact: true }).click();
+        await tools(); await countWithKeyboard(chatSlider(), count); await page.getByLabel('Message', { exact: true }).fill('Génère une série synthétique ' + count); await page.getByRole('button', { name: 'Envoyer', exact: true }).click();
         await page.waitForFunction(() => document.querySelector('#prompt')?.value === '' && !document.querySelector('.send-controls button[aria-label="Arrêter la demande"]'));
         assert.equal(state.writes.filter(write => write.name === '/api/chat').at(-1).body.imageCount, count);
       }
-      await page.locator('#chat-image-count').fill('3'); assert.equal(await chatSlider().inputValue(), '3');
+      await tools(); await page.locator('#chat-image-count').fill('3'); assert.equal(await chatSlider().inputValue(), '3');
       await page.reload(); await page.getByLabel('Modèle', { exact: true }).waitFor(); await closeSidebar(); await tools(); assert.equal(await chatSlider().inputValue(), '3', 'Chat image count survives reload');
       await page.getByLabel('Message', { exact: true }).fill('Valeur hors limites synthétique'); await page.locator('#chat-image-count').fill('6');
       const beforeInvalid = state.writes.filter(write => write.name === '/api/chat').length;

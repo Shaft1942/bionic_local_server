@@ -8,10 +8,11 @@ import { createPrototype, PROTOTYPE_CODE, PROTOTYPE_PROJECT } from '../lib/llama
 
 const { chromium } = process.env.PLAYWRIGHT_MODULE_PATH ? await import(pathToFileURL(path.join(process.env.PLAYWRIGHT_MODULE_PATH, 'index.mjs')).href) : await import('playwright');
 const applicationRoot = fileURLToPath(new URL('../', import.meta.url));
-const assetHtml = await fs.readFile(path.join(applicationRoot, 'public', 'llama-ui', 'index.html'), 'utf8');
+const publicRoot = process.env.BIONIC_BROWSER_PUBLIC_DIR || path.join(applicationRoot, 'public');
+const assetHtml = await fs.readFile(path.join(publicRoot, 'llama-ui', 'index.html'), 'utf8');
 const asset = /src="([^"]+\.js)"/.exec(assetHtml)?.[1] || 'unknown';
 const fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'llama-stream-browser-'));
-const fixture = await createPrototype({ root: fixtureRoot, port: 0, modelDelayMs: 12000 });
+const fixture = await createPrototype({ root: fixtureRoot, port: 0, publicDirectory: publicRoot, modelDelayMs: 12000 });
 const browser = await chromium.launch({ headless: true, channel: process.env.BIONIC_BROWSER_CHANNEL || 'chrome' });
 const context = await browser.newContext({ locale: 'fr-FR', viewport: { width: 1280, height: 900 } });
 const page = await context.newPage(); page.setDefaultTimeout(30000);
@@ -88,8 +89,9 @@ try {
   await page.getByLabel('Code d’accès du prototype').fill(PROTOTYPE_CODE);
   await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
   await page.getByRole('textbox', { name: 'Message', exact: true }).waitFor();
+  await page.locator('[data-composer-menu="files"]').click();
   await page.getByRole('combobox', { name: 'Droits sur les fichiers', exact: true }).selectOption('none');
-  await page.locator('.tool-options > summary').click();
+  await page.locator('[data-composer-menu="tools"]').click();
   for (const label of ['Recherche web', 'Génération d’images']) {
     const checkbox = page.getByRole('checkbox', { name: label, exact: true });
     if (await checkbox.isChecked()) await checkbox.uncheck();

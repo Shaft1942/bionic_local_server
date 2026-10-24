@@ -14,11 +14,11 @@ const computed=checkbox=>checkbox.evaluate(element=>{const css=getComputedStyle(
 async function imageSettings(page){await page.getByRole('navigation',{name:'Catégories des paramètres',exact:true}).getByRole('button',{name:'Serveurs du PC',exact:true}).click();await page.getByRole('navigation',{name:'Types de serveurs',exact:true}).getByRole('button',{name:'Génération d’images',exact:true}).click();}
 async function openImages(page){await page.getByRole('navigation',{name:'Espace du projet',exact:true}).getByRole('button',{name:'Paramètres',exact:true}).click();await imageSettings(page);}
 async function readyChat(page){await page.waitForFunction(()=>document.querySelector('.workspace-title')?.textContent?.includes('Atelier de démonstration'));}
-async function openTools(page){const tools=page.locator('details.tool-options');if(await tools.getAttribute('open')===null)await tools.locator('summary').click();return tools;}
+async function openTools(page){const tools=page.locator('#chat-tools-options');if(!await tools.evaluate(element=>element.matches(':popover-open')))await page.locator('[data-composer-menu="tools"]').click();await tools.waitFor({state:'visible'});return tools;}
 function watchErrors(page,errors,csp){page.on('pageerror',error=>errors.push(error.message));page.on('console',entry=>{if(/content.security.policy|violates the following|refused to (?:apply|load|execute)/i.test(entry.text()))csp.push(entry.text());});}
 try{for(const width of [1280,390]){
   const fixtureRoot=await fs.mkdtemp(path.join(os.tmpdir(),'canae-controls-fixture-'));
-  const fixture=await createPrototype({root:fixtureRoot,port:0});
+  const fixture=await createPrototype({root:fixtureRoot,port:0,publicDirectory:process.env.BIONIC_BROWSER_PUBLIC_DIR});
   const colorScheme=width===390?'dark':'light';
   const context=await browser.newContext({viewport:{width,height:900},locale:'fr-FR',reducedMotion:'reduce',colorScheme}),page=await context.newPage(),errors=[],csp=[],writes=[];
   watchErrors(page,errors,csp);
@@ -36,7 +36,7 @@ try{for(const width of [1280,390]){
       assert.equal(await web.isChecked(),true,'Fresh chat enables web search');assert.equal(await images.isChecked(),true,'Fresh chat enables available image tools');assert.equal(await images.isEnabled(),true);
       assert.notEqual((await computed(web)).appearance,'none');assert.notEqual((await computed(images)).appearance,'none');
       if(captures)await page.screenshot({path:path.join(captures,`${width}-chat-default-tools.png`)});
-      await page.getByRole('textbox',{name:'Message',exact:true}).fill('Brouillon synthétique conservé sans envoi');await web.uncheck();await images.uncheck();
+      await page.getByRole('textbox',{name:'Message',exact:true}).fill('Brouillon synthétique conservé sans envoi');await openTools(page);await web.uncheck();await images.uncheck();
       await page.reload();await readyChat(page);await openTools(page);
       assert.equal(await web.isChecked(),false,'Explicit false web draft survives reload');assert.equal(await images.isChecked(),false,'Explicit false image draft survives reload');assert.equal(await page.getByRole('textbox',{name:'Message',exact:true}).inputValue(),'Brouillon synthétique conservé sans envoi');
       defaultsProof={freshWebEnabled:true,freshAvailableImagesEnabled:true,explicitFalseWebReload:true,explicitFalseImagesReload:true};

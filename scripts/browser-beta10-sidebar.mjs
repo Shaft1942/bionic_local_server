@@ -77,7 +77,8 @@ try {
       await showNavigation(); await page.waitForFunction(id => document.querySelector(`.project-group[data-project-id="${id}"]`)?.querySelectorAll('.session-row').length === 2, b);
       assert.equal(await navigation.locator('.unassigned-conversations .session-row').count(), 2);
       await navigation.getByRole('button', { name: text('Nouveau chat sans projet', 'New chat without a project'), exact: true }).click(); await hideNavigation();
-      assert.equal(await composer.inputValue(), ''); assert.equal(await page.getByLabel(text('Droits sur les fichiers', 'File permissions'), { exact: true }).inputValue(), 'none');
+      assert.equal(await composer.inputValue(), ''); await page.locator('[data-composer-menu="files"]').click();
+      const fileProfile = page.getByLabel(text('Droits sur les fichiers', 'File permissions'), { exact: true }); await fileProfile.waitFor({ state: 'visible' }); assert.equal(await fileProfile.inputValue(), 'none'); assert.equal(await fileProfile.isDisabled(), true); await page.keyboard.press('Escape');
       assert.equal(fixture.stats.modelCalls, 0); assert.equal(fixture.stats.externalCalls, 0); assert.equal(posts.includes('/api/chat'), false); assert.deepEqual(errors, []);
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       results.push({ width, language, projectChildren: true, unassignedSources: 2, independentPagination: true, lazyExpansionPreservesDraft: true, keyboardExpansion: true, projectScopedSelection: true, renameMoveDeleteFork: true, draftRestoration: true, noGeneration: true });
