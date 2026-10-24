@@ -133,7 +133,8 @@
 </WorkspaceDialog>
 
 <style>
-  :global(.workspace-dialog:has(.model-confirm)){width:min(560px,calc(100vw - 32px));height:auto;max-height:90dvh;}
+  :global(.workspace-dialog[open]:has(.model-confirm)){width:min(560px,calc(100vw - 32px));height:fit-content;max-height:90dvh;}
+  :global(.workspace-dialog[open]:has(.model-confirm) .workspace-dialog-content){flex:0 1 auto;}
   .model-confirm-title{font-size:16px;font-weight:600;}
   .model-confirm{padding:20px;overflow:auto;font-size:14px;line-height:1.6;}
   .model-confirm p{margin:0 0 16px;}

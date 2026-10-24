@@ -62,7 +62,7 @@ async function fixture() {
   await new Promise((resolve, reject) => { app.server.once('error', reject); app.server.listen(0, '127.0.0.1', resolve); });
   return { app, root, stats, manager, setBusy(value) { rejectBusy = value; }, setExternal(value) { external = value; }, setForeignProfile(value) { foreignProfile = value; }, changeProfile() { return profile.save({ expectedRevision: profile.snapshot().revision, contextSize: 4096 }); }, delay() { delayed = true; }, release() { delayed = false; release?.(); }, unknown() { unconfirmed = true; }, confirm() { unconfirmed = false; current.unconfirmed = false; }, url: 'http://127.0.0.1:' + app.server.address().port };
 }
-async function shot(page, name) { if (captures) await page.screenshot({ path: path.join(captures, name), fullPage: false }); }
+async function shot(page, name) { if (captures) await page.screenshot({ path: path.join(captures, name), fullPage: false, animations:'disabled' }); }
 async function dropReply(page, pathname) {
   let done, failed; const promise = new Promise((resolve, reject) => { done = resolve; failed = reject; });
   await page.route('**' + pathname, async route => { try { const response = await route.fetch(); assert.equal(response.status(), 200, await response.text()); await route.abort('failed'); done(); } catch (error) { failed(error); } });
@@ -102,7 +102,7 @@ try {
       const choose=async(value,{cancel=false,escape=false,stale=false}={})=>{
         const before=actionCount();await picker.selectOption(value);assert.equal(nativeDialogs,0,'GGUF confirmation must use an accessible HTML dialog, never a blocking native confirm');await dialog.waitFor();
         confirmations.push(await dialog.textContent());assert.equal(actionCount(),before,'No POST before explicit HTML confirmation');
-        if(confirmations.length===1)await shot(page,width+'-gguf-confirmation.png');
+        if(confirmations.length===1){await shot(page,width+'-gguf-confirmation.png');const box=await dialog.boundingBox();assert(box.height<600,'Confirmation sizes to its content');}
         if(stale)await f.changeProfile();
         if(escape)await page.keyboard.press('Escape');else await dialog.getByRole('button',{name:cancel?'Annuler':'Charger et utiliser',exact:true}).click();
       };
