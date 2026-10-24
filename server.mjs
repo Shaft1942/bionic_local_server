@@ -666,6 +666,7 @@ async function sendDirectImage(data) {
       return { id: chat.id, requestId, messageId: reply?.id, generation: reply?.imageGenerations?.[0], generations: reply?.imageGenerations || [], status: prior.status };
     }
     if (chatRequests.has(requestId)) throw fail(409, 'Cet identifiant appartient déjà à une autre demande.');
+    if(modelManagementBusy)throw fail(409,'Une opération sur les modèles est en cours. Attends sa fin avant une génération.');
     const resolvedSelection=comfyImages.resolveSelection?.(data.workflowId);
     const memoryPolicy=resolveImageMemoryPolicy({provider:inferenceSettings.current().provider,modelService,defaultPolicy:resolvedSelection?.modelPolicy??comfyImages.getSettings?.()?.modelPolicy??'keep'});
     const selection=resolvedSelection?{...structuredClone(resolvedSelection),modelPolicy:memoryPolicy.effectivePolicy}:{modelPolicy:memoryPolicy.effectivePolicy};
@@ -680,6 +681,7 @@ async function sendDirectImage(data) {
       let chat, reply;
       await withAcceptanceLock(data.projectId + ':' + (data.sessionId || requestId), async () => {
         assertServiceAdmission();
+        if(modelManagementBusy)throw fail(409,'Une opération sur les modèles est en cours. Attends sa fin avant une génération.');
         chat = data.sessionId ? await readWeb(data.sessionId) : { id: 'web-' + randomUUID(), projectId: data.projectId, name: data.prompt.trim().slice(0,65), source: 'web', readOnly: false, messages: [], updatedAt: Date.now() };
         if (chat.projectId !== data.projectId) throw fail(404, 'Conversation introuvable dans ce projet.');
         if (busy.has(chat.id) || active.has(chat.id) || chat.queue?.some(item => item.status === 'queued')) throw fail(409, 'Attends la fin de la réponse avant de générer une image dans cette conversation.');
@@ -1339,18 +1341,18 @@ async function handleRequest(req, res) {
         const input=await body(req,4096);
         if(input?.consent!==true || typeof input.modelId!=='string' || !input.modelId.trim() || input.modelId.length>512)throw fail(400,'Confirme le modèle Bionic à charger.');
         if(typeof input.expectedInferenceRevision!=='string'||! /^[\w-]{1,100}$/.test(input.expectedInferenceRevision))throw Object.assign(fail(400,'Révision de connexion invalide.'),{code:'inference-invalid-revision'});
-        const assertScope=()=>{
+        const assertScope=(beforeEffect=true)=>{
           assertServiceAdmission();const current=inferenceSettings.snapshot();
           if(current.revision!==input.expectedInferenceRevision)throw Object.assign(fail(409,'La connexion du moteur a changé. Actualise le pilotage des modèles.'),{code:'inference-stale-revision'});
           if(current.provider!=='bionic'||typeof modelService.forInference!=='function')throw fail(409,'Le chargement manuel de ce moteur passe par son profil GGUF.');
-          if(busy.size||comfyImages.getSettings?.()?.activeJobs||comfyImages.lifecycleStatus?.().uncertain)throw fail(409,'Des générations sont actives ou attendent confirmation. Attends leur fin avant de charger un modèle.');
+          if(beforeEffect&&(busy.size||comfyImages.getSettings?.()?.activeJobs||comfyImages.lifecycleStatus?.().uncertain||acceptanceLocks.size||[...chatRequests.values()].some(request=>['starting','queued','running'].includes(request.status))||inFlightMutations>1))throw fail(409,'Des générations sont actives ou attendent confirmation. Attends leur fin avant de charger un modèle.');
           return current;
         };
         assertScope();if(modelManagementBusy)throw fail(409,'Une opération sur les modèles est déjà en cours.');
         modelManagementBusy=true;let releaseModel=()=>{};
         try{
           releaseModel=await gpuScheduler.acquireModel();assertScope();
-          const selected=await modelService.forInference(input.modelId),current=assertScope();
+          const selected=await modelService.forInference(input.modelId),current=assertScope(false);
           json(res,200,{loaded:true,model:selected,models:await modelService.list(),provider:current.provider,inferenceRevision:current.revision});
         }finally{releaseModel();modelManagementBusy=false;}
         return;
