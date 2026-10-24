@@ -89,6 +89,8 @@ try {
   await page.getByLabel('Code d’accès du prototype').fill(PROTOTYPE_CODE);
   await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
   await page.getByRole('textbox', { name: 'Message', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Nouveau chat dans Atelier de démonstration', exact: true }).click();
+  await page.getByLabel('Projet de la conversation: Atelier de démonstration', { exact: true }).waitFor();
   await page.locator('[data-composer-menu="files"]').click();
   await page.getByRole('combobox', { name: 'Droits sur les fichiers', exact: true }).selectOption('none');
   await page.locator('[data-composer-menu="tools"]').click();
@@ -118,7 +120,8 @@ try {
   const finalAudit = await page.evaluate(() => window.__llamaStreamAudit); assert.deepEqual(finalAudit.violations, []);
   // Hold the final delta together with done while the real server has already completed.
   phase = 'terminal';
-  await page.getByRole('button', { name: 'Nouveau chat', exact: true }).click();
+  await page.getByRole('button', { name: 'Nouveau chat dans Atelier de démonstration', exact: true }).click();
+  await page.getByLabel('Projet de la conversation: Atelier de démonstration', { exact: true }).waitFor();
   await page.evaluate(() => { window.__llamaStreamAudit.holdTerminal = true; });
   await page.getByRole('textbox', { name: 'Message', exact: true }).fill('Réponse terminale retardée après sa confirmation serveur.');
   await page.getByRole('button', { name: 'Envoyer', exact: true }).click();

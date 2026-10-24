@@ -96,8 +96,10 @@ try {
     const tools = async () => { const options = page.locator('#chat-tools-options'); if (!await options.evaluate(element => element.matches(':popover-open'))) await page.locator('[data-composer-menu="tools"]').click(); await chatSlider().waitFor(); };
     const closeSidebar = async () => { if (width < 760 && await page.getByRole('button', { name: 'Fermer la navigation', exact: true }).isVisible()) await page.getByRole('button', { name: 'Fermer la navigation', exact: true }).click(); };
     const sidebarAction = async action => { if (width < 760 && await page.getByRole('button', { name: 'Ouvrir la navigation', exact: true }).isVisible()) await page.getByRole('button', { name: 'Ouvrir la navigation', exact: true }).click(); await action(); await closeSidebar(); };
+    const projectDraft = async name => sidebarAction(async () => { await page.getByRole('button', { name: 'Nouveau chat dans ' + name, exact: true }).click(); await page.getByLabel('Projet de la conversation: ' + name, { exact: true }).waitFor(); });
+    const projectChat = async () => sidebarAction(async () => { const group = page.locator('[data-project-id="project-a"]'), toggle = group.locator('.project-collapse'); if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click(); const loaded = page.waitForResponse(response => { const url = new URL(response.url()); return url.pathname === '/api/conversation' && url.searchParams.get('projectId') === 'project-a'; }); await group.getByRole('button', { name: 'Chat synthétique', exact: true }).click(); await loaded; await page.getByLabel('Projet de la conversation: Projet A synthétique', { exact: true }).waitFor(); });
     try {
-      await page.goto(origin + '/prototype/'); await page.getByLabel('Modèle', { exact: true }).waitFor(); await closeSidebar(); await tools();
+      await page.goto(origin + '/prototype/'); await page.locator('.companion-shell').waitFor(); await projectDraft('Projet A synthétique'); await tools();
       assert.equal(await chatSlider().inputValue(), '1');
       assert.equal(await page.getByLabel('Workflow du chat', { exact: true }).getByRole('option', { name: 'Workflow A synthétique', exact: true }).count(), 1, 'Workflow label is readable');
       assert.equal(await page.getByLabel('Modèle', { exact: true }).count(), 1, 'The existing single model field is preserved');
@@ -112,12 +114,11 @@ try {
       await page.getByLabel('Message', { exact: true }).fill('Valeur hors limites synthétique'); await page.locator('#chat-image-count').fill('6');
       const beforeInvalid = state.writes.filter(write => write.name === '/api/chat').length;
       await page.getByLabel('Message', { exact: true }).press('Enter'); assert.equal(state.writes.filter(write => write.name === '/api/chat').length, beforeInvalid, 'Enter cannot bypass numeric validation'); await page.locator('#chat-image-count').fill('3');
-      await sidebarAction(() => page.getByRole('button', { name: 'Projet B synthétique', exact: true }).click()); await tools();
+      await projectDraft('Projet B synthétique'); await tools();
       assert.equal(await chatSlider().inputValue(), '1'); assert.equal(await page.locator('#chat-image-count').inputValue(), '1', 'Slider and numeric entry reset together for another project');
-      await page.locator('#chat-image-count').fill('2'); await sidebarAction(() => page.getByRole('button', { name: 'Projet A synthétique', exact: true }).click());
-      await sidebarAction(() => page.getByRole('button', { name: 'Chat synthétique', exact: true }).click()); await tools(); assert.equal(await chatSlider().inputValue(), '3', 'Original conversation count is restored');
-      await sidebarAction(() => page.getByRole('button', { name: 'Projet B synthétique', exact: true }).click()); await tools(); assert.equal(await chatSlider().inputValue(), '2', 'Another project retains its separate count');
-      await sidebarAction(() => page.getByRole('button', { name: 'Projet A synthétique', exact: true }).click()); await sidebarAction(() => page.getByRole('button', { name: 'Chat synthétique', exact: true }).click()); await tools();
+      await page.locator('#chat-image-count').fill('2'); await projectChat(); await tools(); assert.equal(await chatSlider().inputValue(), '3', 'Original conversation count is restored');
+      await projectDraft('Projet B synthétique'); await tools(); assert.equal(await chatSlider().inputValue(), '2', 'Another project retains its separate count');
+      await projectChat(); await tools();
       if (captures) await page.screenshot({ path: path.join(captures, `${width}-${provider}-chat-count.png`) });
       await tab('Images'); await imageSlider().waitFor(); assert.equal(await imageSlider().inputValue(), '1', 'Direct workspace starts with its own count');
       const imagePosts = () => state.writes.filter(write => write.name === '/api/comfy/generate');
@@ -130,8 +131,8 @@ try {
       await page.locator('#atelier-image-count').fill('4'); await page.reload(); await page.getByLabel('Modèle', { exact: true }).waitFor(); await closeSidebar(); await tab('Images'); await imageSlider().waitFor();
       assert.equal(await imageSlider().inputValue(), '4', 'Direct image count survives reload');
       assert.equal(await page.locator('.images-panel .job').count(), 15, 'Batch tracking survives reload');
-      await tab('Chat'); await sidebarAction(() => page.getByRole('button', { name: 'Projet B synthétique', exact: true }).click()); await tab('Images'); await imageSlider().waitFor(); assert.equal(await imageSlider().inputValue(), '1', 'Another project starts its own direct count');
-      await page.locator('#atelier-image-count').fill('2'); await tab('Chat'); await sidebarAction(() => page.getByRole('button', { name: 'Projet A synthétique', exact: true }).click()); await tab('Images'); await imageSlider().waitFor(); assert.equal(await imageSlider().inputValue(), '4', 'Direct count is restored for its project');
+      await tab('Chat'); await projectDraft('Projet B synthétique'); await tab('Images'); await imageSlider().waitFor(); assert.equal(await imageSlider().inputValue(), '1', 'Another project starts its own direct count');
+      await page.locator('#atelier-image-count').fill('2'); await tab('Chat'); await projectChat(); await tab('Images'); await imageSlider().waitFor(); assert.equal(await imageSlider().inputValue(), '4', 'Direct count is restored for its project');
       await countWithKeyboard(imageSlider(), 2); state.setMode('refuse'); const refusedBefore = imagePosts().length;
       await page.getByRole('button', { name: 'Générer 2 images', exact: true }).click(); await page.getByText('Demande refusée. Aucun travail image reçu.', { exact: true }).waitFor();
       assert.equal(imagePosts().length, refusedBefore + 1); assert.equal(await page.getByRole('button', { name: 'Générer 2 images', exact: true }).isEnabled(), true, 'A deterministic refusal releases the form');
