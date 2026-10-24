@@ -22,14 +22,16 @@ try{
   const openSidebar=async()=>{if(await page.locator('dialog[open]').count())await page.getByRole('button',{name:'Fermer la fenêtre',exact:true}).click();const button=page.getByRole('button',{name:'Ouvrir la navigation',exact:true});if(await button.isVisible())await button.click();};
   const closeSidebar=async()=>{if(width<760){const button=page.getByRole('button',{name:'Fermer la navigation',exact:true});if(await button.isVisible())try{await button.click({timeout:1000});}catch(error){if(await button.isVisible())throw error;}}};
   const tools=page.locator('.tool-options');
+  const projectChats=page.locator('.project-group[data-project-id="'+PROTOTYPE_PROJECT+'"] .project-conversations');
   try{
    await page.goto(fixture.baseUrl);await page.getByLabel('Code d’accès du prototype').fill(PROTOTYPE_CODE);await page.getByRole('button',{name:'Se connecter',exact:true}).click();await navigation().waitFor();await closeSidebar();
-   await openSidebar();await page.getByRole('navigation',{name:'Conversations',exact:true}).getByRole('button',{name:'Historique long synthétique',exact:true}).click();
+   await openSidebar();await projectChats.getByRole('button',{name:'Historique long synthétique',exact:true}).click();
    await page.getByRole('button',{name:'Charger les messages précédents',exact:true}).waitFor();assert.equal(await page.locator('.chat-message').count(),100);
    await page.getByRole('button',{name:'Charger les messages précédents',exact:true}).click();await until(async()=>await page.locator('.chat-message').count()===200,'older history');
    await page.getByRole('button',{name:'Charger les messages précédents',exact:true}).click();await until(async()=>await page.locator('.chat-message').count()===205,'oldest history');
    assert.equal(await page.locator('#message-history-0').count(),1);
-   await openSidebar();await page.getByRole('button',{name:'Replier le projet Atelier de démonstration',exact:true}).click();assert.equal(await page.getByRole('navigation',{name:'Conversations',exact:true}).isVisible(),false);
+   await openSidebar();await page.getByRole('button',{name:'Replier le projet Atelier de démonstration',exact:true}).click();assert.equal(await projectChats.isVisible(),false);
+   assert.equal(await page.getByRole('navigation',{name:'Conversations sans projet',exact:true}).isVisible(),true,'Collapsing a project does not hide unassigned conversations');
    await page.getByRole('button',{name:'Nouveau chat dans Atelier de démonstration',exact:true}).click();await closeSidebar();
    await tools.locator('summary').click();assert.equal(await tools.getByLabel('Recherche web',{exact:true}).isChecked(),true);assert.equal(await tools.getByLabel('Génération d’images',{exact:true}).isChecked(),true);
    await page.getByRole('combobox',{name:'Droits sur les fichiers',exact:true}).selectOption('none');await tools.getByLabel('Génération d’images',{exact:true}).uncheck();
@@ -39,8 +41,8 @@ try{
    await page.getByRole('textbox',{name:'Message',exact:true}).fill('Brouillon conservé '+width);await tools.getByLabel('Scripts avec approbation',{exact:true}).check();
    await openSidebar();await page.getByRole('button',{name:'Nouveau chat dans Second projet',exact:true}).click();await closeSidebar();
    await page.getByRole('textbox',{name:'Message',exact:true}).fill('Brouillon second projet');
-   await openSidebar();await page.locator('.project-list').getByRole('button',{name:'Atelier de démonstration',exact:true}).click();await page.getByRole('button',{name:'Déplier le projet Atelier de démonstration',exact:true}).click();
-   await page.getByRole('navigation',{name:'Conversations',exact:true}).getByRole('button',{name:'Premier message de la file '+width,exact:true}).click();
+   await openSidebar();await page.locator('.project-list').getByRole('button',{name:'Atelier de démonstration',exact:true}).click();await projectChats.waitFor();
+   await projectChats.getByRole('button',{name:'Premier message de la file '+width,exact:true}).click();
    await until(async()=>await page.getByRole('textbox',{name:'Message',exact:true}).inputValue()==='Brouillon conservé '+width,'draft restored after conversation load');
    if(!await tools.locator('summary').evaluate(element=>element.parentElement.open))await tools.locator('summary').click();assert.equal(await tools.getByLabel('Recherche web',{exact:true}).isChecked(),false);assert.equal(await tools.getByLabel('Scripts avec approbation',{exact:true}).isChecked(),true);
    await page.reload();await navigation().waitFor();await closeSidebar();await until(async()=>await page.getByRole('textbox',{name:'Message',exact:true}).inputValue()==='Brouillon conservé '+width,'draft restored after reload');

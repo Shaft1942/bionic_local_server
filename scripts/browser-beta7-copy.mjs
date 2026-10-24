@@ -81,7 +81,7 @@ try { for (const width of [1280, 390]) for (const mode of ['http-lan', 'secure-l
     await assistantCopy.click();
     if (width < 760 && await page.getByRole('button', { name: 'Ouvrir la navigation', exact: true }).isVisible()) await page.getByRole('button', { name: 'Ouvrir la navigation', exact: true }).click();
     chat.messages[1].text = assistantText + '\nVersion actualisée pendant la copie.';
-    await page.getByRole('navigation', { name: 'Conversations', exact: true }).getByRole('button', { name: chat.name, exact: true }).click();
+    await page.locator('.project-group[data-project-id="p1"] .project-conversations').getByRole('button', { name: chat.name, exact: true }).click();
     if (width < 760 && await page.getByRole('button', { name: 'Fermer la navigation', exact: true }).isVisible()) await page.getByRole('button', { name: 'Fermer la navigation', exact: true }).click();
     await page.getByText('Version actualisée pendant la copie.', { exact: false }).waitFor();
     await page.evaluate(() => window.__rejectCopy()); await page.waitForTimeout(40);

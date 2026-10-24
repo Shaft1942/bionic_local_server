@@ -35,7 +35,7 @@
   import type { ChatEvent, Job } from './client/contracts';
 
   type Draft = { text:string; updatedAt:number; attachments:any[]; model:string; reasoning:string; reasoningChoices?:Record<string,ReasoningChoice>; fileProfile:string; webAccess:boolean; webApproval:boolean; scriptAccess:boolean; imageAccess:boolean; imageWorkflowId:string; imageCount:number; imageModelPolicy:string; nonce:string };
-  let authenticated=$state(false), ready=$state(false), error=$state(''), notice=$state('');
+  let authenticated=$state(false), ready=$state(false), restoring=$state(false), error=$state(''), notice=$state('');
   let code=$state(''), loginBusy=$state(false);
   let projects=$state<any[]>([]), models=$state<any[]>([]), sessionGroups=$state<Record<string,SessionGroup>>({});
   let projectId=$state(''), chat=$state<any>(null), model=$state(''), inference=$state<any>(null), comfy=$state<any>(null);
@@ -201,6 +201,8 @@
     }finally{if(sequence===engineReadSequence)engineReadPending=false;}
   }
   async function start(){
+    restoring=true;
+    try{
     const ping=await request('/api/ping');instanceId=ping.instanceId;prototypeInfo=ping.prototypeInfo||null;activatePreferences(instanceId);
     storageKey='bionic:llama-prototype:'+instanceId;let saved:any={};
     try{
@@ -216,6 +218,7 @@
     if(projectId&&!projects.find(item=>item.id===projectId)?.isUnassigned)expandProject(projectId,true);
     if(projectId){await refreshSessions();if(saved.chatId){chat={id:saved.chatId,messages:[]};try{await loadConversation(projectId,saved.chatId);}catch(failure){chat=null;report(failure);}}switchDraft();await recover();}
     ready=true;
+    }finally{restoring=false;}
   }
   async function login(event:SubmitEvent){event.preventDefault();if(loginBusy)return;loginBusy=true;error='';try{await post('/api/login',{code});code='';await start();}catch(failure){report(failure);}finally{ready=true;loginBusy=false;}}
   async function logout(){try{saveDraft();await post('/api/logout',{});client.disconnect();authenticated=false;chat=null;projects=[];expandedProjects=[];sessionCatalogue.reset();}catch(failure){report(failure);}}
@@ -326,9 +329,9 @@
   });
 </script>
 
-{#if !authenticated}
+{#if !authenticated||restoring}
   <main class="login-page"><div class="login-card"><Logo class="welcome-logo" /><h1>Canaé</h1><p>{tr('Tes projets, tes fichiers, tes conversations.','Your projects, files and conversations.')}</p>
-    {#if ready}<form onsubmit={login}><label for="access-code">{tr('Code d’accès du prototype','Prototype access code')}</label><input id="access-code" type="password" bind:value={code} required autocomplete="current-password" /><Button type="submit" disabled={loginBusy}>{loginBusy?tr('Connexion…','Connecting…'):tr('Se connecter','Sign in')}</Button></form>{:else}<p role="status">{tr('Connexion au compagnon…','Connecting to the companion…')}</p>{/if}
+    {#if ready&&!restoring}<form onsubmit={login}><label for="access-code">{tr('Code d’accès du prototype','Prototype access code')}</label><input id="access-code" type="password" bind:value={code} required autocomplete="current-password" /><Button type="submit" disabled={loginBusy}>{loginBusy?tr('Connexion…','Connecting…'):tr('Se connecter','Sign in')}</Button></form>{:else}<p role="status">{tr('Connexion au compagnon…','Connecting to the companion…')}</p>{/if}
     {#if error}<p class="error" role="alert">{error}</p>{/if}<small>2.6.0-beta.10</small></div></main>
 {:else}
   <div class="companion-shell" class:sidebar-hidden={!sidebarOpen}>

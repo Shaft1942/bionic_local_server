@@ -8,6 +8,8 @@ Chaque projet déplié affiche ses propres conversations. La section **Conversat
 
 Les listes se chargent par pages. La recherche porte sur les conversations déjà chargées ; charger les pages suivantes permet d'élargir ce périmètre.
 
+Le chat devient utilisable une fois son brouillon restauré. Une connexion lente ne peut plus proposer un champ de saisie qui serait ensuite remplacé par la restauration en cours.
+
 ## Actions dans le message
 
 Les icônes de copie et de branche sont intégrées à l'en-tête du message concerné. Elles restent accessibles au clavier et au tactile. La copie conserve le texte original et propose une sélection manuelle si le navigateur refuse l'accès au presse-papiers. La création de branche conserve sa portée et sa récupération après une réponse perdue.

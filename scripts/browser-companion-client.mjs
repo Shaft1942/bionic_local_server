@@ -96,7 +96,7 @@ try {
     };
     const openNative = async () => {
       const opener = button('Ouvrir la navigation', 'Open navigation'); if (await opener.isVisible()) await opener.click();
-      await page.getByRole('navigation', { name: 'Conversations', exact: true }).getByRole('button', { name: 'Historique natif synthétique', exact: true }).click();
+      await page.locator('.project-group[data-project-id="client-project"] .project-conversations').getByRole('button', { name: 'Historique natif synthétique', exact: true }).click();
       await page.locator('.chat-message:not(.user) .companion-markdown').getByText('Historique synthétique en lecture seule.').waitFor();
     };
     const assertSettled = async () => { await page.waitForFunction(instanceId => JSON.parse(localStorage.getItem('bionic:llama-prototype:' + instanceId)).jobs.length === 0, instanceId); };
