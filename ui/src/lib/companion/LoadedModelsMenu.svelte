@@ -4,14 +4,17 @@
   import Button from '$lib/components/ui/button/button.svelte';
   import { tr } from './preferences.svelte';
   import { post, message, uuid, type Request } from './settings/types';
+  import ModelManagementPanel from './ModelManagementPanel.svelte';
 
-  let { request, models, inference, onModelsChange, onManage, disabled=false }: {
-    request:Request;models:any[];inference:any;onModelsChange?:()=>void|Promise<void>;onManage?:(target:'chat'|'inference'|'gguf'|'images',returnFocus:HTMLButtonElement)=>void|Promise<void>;disabled?:boolean;
+  let { request, models, inference, onModelsChange, onModelSelected, onOpenImages, onManage, disabled=false }: {
+    request:Request;models:any[];inference:any;onModelsChange?:()=>void|Promise<void>;onModelSelected?:(target:{provider:'bionic'|'llamacpp';modelId:string;inferenceRevision:string})=>void|Promise<void>;onOpenImages?:()=>void|Promise<void>;onManage?:(target:'chat'|'inference'|'gguf'|'images',returnFocus:HTMLButtonElement)=>void|Promise<void>;disabled?:boolean;
   }=$props();
   let panel:HTMLDivElement,trigger:HTMLButtonElement;
   let open=$state(false),loading=$state(false),busy=$state(''),failure=$state(''),notice=$state('');
   let catalogue=$state<any>(null),connection=$state<any>(null),profile=$state<any>(null),uncertain=$state<any>(null),profileReadValid=$state(false);
   let sequence=0,mounted=false;
+  let managementVisited=$state(false);
+  let managementRevision=$state(0),managementBusy=$state(false);
   const instances=$derived((catalogue?.provider==='bionic'?catalogue.models||[]:[]).flatMap((model:any)=>(model.loadedInstances||[]).map((instance:any)=>({...instance,model}))));
   const owned=$derived(profile?.process?.owned===true);
   const connected=$derived(connection?.provider==='llamacpp'&&connection.llamaUrl===profile?.profile?.endpoint);
@@ -19,7 +22,7 @@
   const count=$derived(catalogue?instances.length+Number(owned)+external.length:models.reduce((total:number,model:any)=>total+(model.loadedInstances?.length||0),0));
   const scopeCurrent=$derived(!!catalogue&&catalogue.inferenceRevision===connection?.revision&&catalogue.provider===connection?.provider);
   const unknownStop=$derived(profile?.operation?.action==='stop'&&profile.operation.state==='unknown');
-  const locked=$derived(disabled||loading||!!busy||!!uncertain||unknownStop||catalogue?.generationActive||catalogue?.unloading||catalogue?.reconciliationRequired);
+  const locked=$derived(disabled||loading||managementBusy||!!busy||!!uncertain||unknownStop||catalogue?.generationActive||catalogue?.unloading||catalogue?.reconciliationRequired);
   const modelType=(type:string)=>type==='embedding'?tr('Embeddings','Embedding'):type==='decision'?tr('Décision','Decision'):tr('Conversation','Conversation');
 
   function position(){
@@ -97,19 +100,23 @@
       if(!notice)notice=tr('État relu. Aucun arrêt renvoyé automatiquement.','Status refreshed. No stop was automatically resubmitted.');
     }finally{busy='';await changed();await tick();position();}
   }
-  async function changed(){try{await onModelsChange?.();}catch(error){if(!failure)failure=message(error);}}
+  async function changed(){managementRevision++;try{await onModelsChange?.();}catch(error){if(!failure)failure=message(error);}}
+  async function managedChanged(){await refresh();await changed();}
+  async function selectManaged(target:{provider:'bionic'|'llamacpp';modelId:string;inferenceRevision:string}){await onModelSelected?.(target);panel.hidePopover();}
+  async function openImages(){panel.hidePopover();await onOpenImages?.();}
   function manage(target:'chat'|'inference'|'gguf'|'images'){panel.hidePopover();void onManage?.(target,trigger);}
-  function toggled(event:ToggleEvent){open=event.newState==='open';if(open){void tick().then(position);void refresh();}}
-  onMount(()=>{mounted=true;addEventListener('resize',position);return()=>{mounted=false;sequence++;removeEventListener('resize',position);};});
+  function toggled(event:ToggleEvent){open=event.newState==='open';if(open){managementVisited=true;void tick().then(position);void refresh();}}
+  onMount(()=>{mounted=true;addEventListener('resize',position);const observer=new ResizeObserver(position);if(panel)observer.observe(panel);return()=>{mounted=false;sequence++;observer.disconnect();removeEventListener('resize',position);};});
 </script>
 
 <button class="loaded-trigger" bind:this={trigger} type="button" popovertarget="loaded-models-popover" aria-label={tr('Modèles chargés','Loaded models')} title={tr('Modèles chargés','Loaded models')} aria-expanded={open}>
   <Cpu aria-hidden="true" />{#if count}<span class="loaded-count" aria-hidden="true">{count}</span>{/if}
 </button>
 <div bind:this={panel} id="loaded-models-popover" class="loaded-popover" popover="auto" ontoggle={toggled} role="region" aria-labelledby="loaded-models-title">
-  <header><h2 id="loaded-models-title">{tr('Modèles chargés','Loaded models')}</h2><div class="menu-actions"><Button type="button" variant="ghost" size="icon" aria-label={tr('Actualiser les modèles chargés','Refresh loaded models')} onclick={()=>refresh()} disabled={loading||!!busy}><RefreshCw /></Button><Button type="button" variant="ghost" size="icon" aria-label={tr('Fermer les modèles chargés','Close loaded models')} onclick={()=>panel.hidePopover()}><X /></Button></div></header>
+  <header><h2 id="loaded-models-title">{tr('Modèles chargés','Loaded models')}</h2><div class="menu-actions"><Button type="button" variant="ghost" size="icon" aria-label={tr('Actualiser les modèles chargés','Refresh loaded models')} onclick={()=>{managementRevision++;void refresh();}} disabled={loading||!!busy}><RefreshCw /></Button><Button type="button" variant="ghost" size="icon" aria-label={tr('Fermer les modèles chargés','Close loaded models')} onclick={()=>panel.hidePopover()}><X /></Button></div></header>
   <div class="loaded-content" aria-busy={loading||!!busy}>
     <p class="menu-description">{tr('Modèles du moteur actif et processus llama-server possédé.','Models from the active engine and the owned llama-server process.')}</p>
+    {#if managementVisited}<ModelManagementPanel {request} active={open} disabled={disabled||!!busy||!!uncertain} refreshRevision={managementRevision} onBusyChange={value=>managementBusy=value} onChanged={managedChanged} onModelSelected={onModelSelected?selectManaged:undefined} onOpenImages={onOpenImages?openImages:undefined} />{/if}
     {#if onManage}
       <nav class="management-links" aria-label={tr('Gestion des moteurs et modèles','Engine and model management')}>
         <button type="button" onclick={()=>manage('chat')}>{tr('Choisir le moteur et le modèle','Choose engine and model')}</button>
@@ -145,7 +152,7 @@
   .loaded-trigger :global(svg){width:17px;height:17px;}
   .loaded-count{font-size:10px;font-variant-numeric:tabular-nums;}
   .loaded-trigger:focus-visible{outline:2px solid var(--ring);outline-offset:2px;}
-  .loaded-popover{position:fixed;inset:auto;margin:0;padding:0;width:min(410px,calc(100vw - 24px));max-height:min(65dvh,560px);overflow:auto;border:1px solid var(--border);border-radius:12px;background:var(--background);color:var(--foreground);}
+  .loaded-popover{position:fixed;inset:auto;margin:0;padding:0;width:min(500px,calc(100vw - 24px));max-height:min(75dvh,700px);overflow:auto;border:1px solid var(--border);border-radius:12px;background:var(--background);color:var(--foreground);}
   header{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px 9px;background:var(--background);border-bottom:1px solid var(--border);}
   h2{margin:0;font-size:15px;font-weight:600;letter-spacing:-.2px;}
   .menu-actions{display:flex;gap:2px;}

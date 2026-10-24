@@ -4,7 +4,8 @@
   import { tr } from '../preferences.svelte';
   import { post, message, type Request } from './types';
   import RangeField from './RangeField.svelte';
-  let { request, onDirtyChange, onInferenceChange, active = true }: { request: Request; onDirtyChange?: (dirty: boolean) => void; onInferenceChange?: () => void; active?: boolean } = $props();
+  let { request, onDirtyChange, onInferenceChange, active = true, idPrefix='' }: { request: Request; onDirtyChange?: (dirty: boolean) => void; onInferenceChange?: () => void; active?: boolean; idPrefix?:string } = $props();
+  const fieldId=(id:string)=>idPrefix+id;
   let data = $state<any>(null), catalogue = $state<any>(null), directory = $state(''), binaryPath = $state(''), port = $state(1238), contextSize = $state(8192), gpuLayers = $state(0), selected = $state('');
   let busy = $state(false), loading = $state(false), failure = $state(''), notice = $state(''), consent = $state(false), mounted = $state(false), nonce = $state(''), wasActive = false;
   const localDirty = $derived(!!data && (directory !== data.profile.directory || binaryPath !== data.profile.binaryPath || Number(port) !== data.profile.port || Number(contextSize) !== data.profile.contextSize || Number(gpuLayers) !== data.profile.gpuLayers));
@@ -53,16 +54,16 @@
 {#if loading && !data}<p role="status">{tr('Lecture du profil…', 'Reading profile…')}</p>{/if}
 {#if data}
   <form onsubmit={event => { event.preventDefault(); void save(); }}>
-    <label class="setting-field" for="llama-library-directory">{tr('Dossier GGUF partagé', 'Shared GGUF directory')}<input id="llama-library-directory" bind:value={directory} disabled={busy || owned || !data.canConfigureLocal} /></label>
-    <label class="setting-field" for="llama-server-binary">{tr('Binaire llama-server sur le PC', 'llama-server binary on the PC')}<input id="llama-server-binary" bind:value={binaryPath} disabled={busy || owned || !data.canConfigureLocal} /></label>
-    <label class="setting-field" for="llama-server-port">{tr('Port du processus possédé', 'Owned process port')}<input id="llama-server-port" type="number" min="1024" max="65535" step="1" bind:value={port} disabled={busy || owned || !data.canConfigureLocal} /></label>
+    <label class="setting-field" for={fieldId('llama-library-directory')}>{tr('Dossier GGUF partagé', 'Shared GGUF directory')}<input id={fieldId('llama-library-directory')} bind:value={directory} disabled={busy || owned || !data.canConfigureLocal} /></label>
+    <label class="setting-field" for={fieldId('llama-server-binary')}>{tr('Binaire llama-server sur le PC', 'llama-server binary on the PC')}<input id={fieldId('llama-server-binary')} bind:value={binaryPath} disabled={busy || owned || !data.canConfigureLocal} /></label>
+    <label class="setting-field" for={fieldId('llama-server-port')}>{tr('Port du processus possédé', 'Owned process port')}<input id={fieldId('llama-server-port')} type="number" min="1024" max="65535" step="1" bind:value={port} disabled={busy || owned || !data.canConfigureLocal} /></label>
     {#if !data.canConfigureLocal}<p class="settings-description">{tr('Le dossier, le binaire et le port se règlent depuis le navigateur du PC serveur. La sélection du modèle et ses paramètres restent disponibles ici.', 'Configure the directory, binary and port from the server PC browser. Model selection and its parameters remain available here.')}</p>{/if}
     <div class="settings-actions"><Button type="button" variant="outline" onclick={scan} disabled={busy || loading}>{tr('Actualiser les GGUF', 'Refresh GGUF files')}</Button></div>
-    <label class="setting-field" for="llama-library-model">{tr('GGUF du profil', 'Profile GGUF')}<select id="llama-library-model" bind:value={selected} disabled={busy || !catalogue?.models?.length}><option value="">{tr('Choisir un fichier GGUF', 'Choose a GGUF file')}</option>{#each catalogue?.models || [] as item}<option value={item.id} disabled={!item.selectable}>{item.name}{item.selectable ? ' · ' + tr('compatibilité à vérifier', 'compatibility unverified') : ' · ' + tr('non pris en charge', 'unsupported')}</option>{/each}</select></label>
+    <label class="setting-field" for={fieldId('llama-library-model')}>{tr('GGUF du profil', 'Profile GGUF')}<select id={fieldId('llama-library-model')} bind:value={selected} disabled={busy || !catalogue?.models?.length}><option value="">{tr('Choisir un fichier GGUF', 'Choose a GGUF file')}</option>{#each catalogue?.models || [] as item}<option value={item.id} disabled={!item.selectable}>{item.name}{item.selectable ? ' · ' + tr('compatibilité à vérifier', 'compatibility unverified') : ' · ' + tr('non pris en charge', 'unsupported')}</option>{/each}</select></label>
     {#if chosen}<p class="settings-description">{chosen.relativePath} · {(chosen.size / 1073741824).toFixed(2)} GiB{chosen.architecture ? ' · ' + chosen.architecture : ''}</p>{/if}
     {#if catalogue}<p class="settings-description">{catalogue.models.length} {tr('GGUF affichés', 'GGUF files shown')} · {catalogue.excludedProjectors} {tr('projecteurs exclus', 'projectors excluded')}{catalogue.truncated ? ' · ' + tr('inventaire borné, liste partielle', 'bounded inventory, partial list') : ''}</p>{/if}
-    <RangeField id="llama-context-size" label={tr('Contexte demandé au lancement', 'Context requested at startup')} bind:value={contextSize} min={512} max={131072} step={1} scale="log" disabled={busy || owned} />
-    <RangeField id="llama-gpu-layers" label={tr('Couches sur GPU (0 = CPU)', 'GPU layers (0 = CPU)')} bind:value={gpuLayers} min={0} max={256} step={1} disabled={busy || owned} />
+    <RangeField id={fieldId('llama-context-size')} label={tr('Contexte demandé au lancement', 'Context requested at startup')} bind:value={contextSize} min={512} max={131072} step={1} scale="log" disabled={busy || owned} />
+    <RangeField id={fieldId('llama-gpu-layers')} label={tr('Couches sur GPU (0 = CPU)', 'GPU layers (0 = CPU)')} bind:value={gpuLayers} min={0} max={256} step={1} disabled={busy || owned} />
     <p class="settings-description">{tr('Ces valeurs sont des demandes de lancement. Le contexte effectif, la mémoire nécessaire et la compatibilité restent à confirmer par le serveur.', 'These are startup requests. Actual context, required memory and compatibility must still be confirmed by the server.')}</p>
     <Button type="submit" disabled={busy || owned || !dirty || !selected}>{tr('Enregistrer le profil', 'Save profile')}</Button>
   </form>
