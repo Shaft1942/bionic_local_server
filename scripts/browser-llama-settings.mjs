@@ -31,7 +31,7 @@ function fixture(){
     else if(pathname==='/api/projects')data={projects:[{id:'settings-project',name:'Projet synthétique',locallyOwned:true}]};
     else if(pathname==='/api/sessions')data={sessions:[{id:'web-22222222-2222-4222-8222-222222222222',projectId:'settings-project',source:'web',name:'Chat de plafond synthétique'}]};
     else if(pathname==='/api/conversation')data={id:'web-22222222-2222-4222-8222-222222222222',projectId:'settings-project',source:'web',model:'fixture-model',name:'Chat de plafond synthétique',messages:[{id:'fixture-message',role:'assistant',text:'Session synthétique.',complete:true}],generation:{status:'completed'}};
-    else if(pathname==='/api/models')data={models:[{id:'fixture-model',name:'Modèle synthétique',type:'llm',loaded:true,contextLength:16384,tools:true,vision:false,loadedInstances:[],reasoning:null},{id:'fixture-embedding',name:'Embedding synthétique',type:'embedding',loaded:true,contextLength:4096,loadedInstances:[]}]};
+    else if(pathname==='/api/models')data={provider:inference.provider,inferenceRevision:inference.revision,models:[{id:'fixture-model',name:'Modèle synthétique',type:'llm',loaded:true,contextLength:16384,tools:true,vision:false,loadedInstances:[],reasoning:null},{id:'fixture-embedding',name:'Embedding synthétique',type:'embedding',loaded:true,contextLength:4096,loadedInstances:[]}]};
     else if(pathname==='/api/inference/settings'){
       if(method==='POST'){
         assert.equal(body.expectedRevision,inference.revision);Object.assign(inference,{provider:body.provider,apiUrl:body.apiUrl,llamaUrl:body.llamaUrl,revision:'inference-'+(++revision)});

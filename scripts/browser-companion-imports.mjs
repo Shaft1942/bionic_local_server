@@ -23,7 +23,7 @@ function fixture(){
   if(name==='/api/ping')value={version:'2.6.0-beta.7',instanceId:'imports-fixture'};
   else if(name==='/api/projects')value={projects:[{id:'p1',name:'Projet synthétique',locallyOwned:true},{id:'p2',name:'Autre projet',locallyOwned:true}]};
   else if(name==='/api/sessions')value={sessions:[],total:0};
-  else if(name==='/api/models')value={models:[{id:'fixture',name:'Fixture',type:'llm',loaded:true,contextLength:4096}]};
+  else if(name==='/api/models')value={provider:'bionic',inferenceRevision:'fixture',models:[{id:'fixture',name:'Fixture',type:'llm',loaded:true,contextLength:4096}]};
   else if(name==='/api/inference/settings')value={provider:'bionic',revision:'fixture',editable:true};
   else if(name==='/api/inference/model-selection')value={busy:false};
   else if(name==='/api/comfy/settings')value={enabled:false,available:false,workflows:[]};

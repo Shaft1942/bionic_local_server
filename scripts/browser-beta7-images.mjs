@@ -40,8 +40,8 @@ function fixture() {
     let data;
     if (name === '/api/ping') data = { version: '2.6.0-beta.7', instanceId: 'beta7-images' };
     else if (name === '/api/projects') data = { projects: [{ id: pid, name: 'Projet images synthétique', locallyOwned: true }, { id: 'beta7-project-b', name: 'Autre projet synthétique', locallyOwned: true }] };
-    else if (name === '/api/models') data = { models: [{ id: 'fixture-model', name: 'Modèle synthétique', type: 'llm', loaded: true, contextLength: 16384, loadedInstances: [] }] };
-    else if (name === '/api/inference/settings') data = { provider: 'bionic', apiUrl: 'http://127.0.0.1:1234', editable: true, busy: false };
+    else if (name === '/api/models') data = { provider:'bionic', inferenceRevision:'synthetic-images', models: [{ id: 'fixture-model', name: 'Modèle synthétique', type: 'llm', loaded: true, contextLength: 16384, loadedInstances: [] }] };
+    else if (name === '/api/inference/settings') data = { provider: 'bionic', revision:'synthetic-images', apiUrl: 'http://127.0.0.1:1234', editable: true, busy: false };
     else if (name === '/api/comfy/settings') data = { enabled: true, available: true, workflowId: 'workflow-a', workflows: [{ id: 'workflow-a', label: 'Workflow synthétique' }], modelPolicy: 'keep' };
     else if (name === '/api/model-preferences') data = { automatic: true, maxOutputTokens: 8192, applyToAllSessions: true };
     else if (name === '/api/sessions') data = { sessions: [...chats.values()].filter(chat => chat.projectId === url.searchParams.get('projectId')).map(({ messages, ...chat }) => chat), total: chats.size };

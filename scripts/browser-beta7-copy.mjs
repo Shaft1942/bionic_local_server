@@ -28,7 +28,7 @@ try { for (const width of [1280, 390]) for (const mode of ['http-lan', 'secure-l
       requests.push({ path: url.pathname, method: route.request().method() }); let value;
       if (url.pathname === '/api/ping') value = { instanceId, app: 'bionic-mobile-local', version: '2.6.0-beta.7' };
       else if (url.pathname === '/api/projects') value = { projects: [{ id: 'p1', name: 'Projet synthétique' }] };
-      else if (url.pathname === '/api/models') value = { models: [{ id: 'fixture', name: 'Modèle synthétique', type: 'llm', loaded: true, contextLength: 4096 }] };
+      else if (url.pathname === '/api/models') value = { provider:'bionic', inferenceRevision:'synthetic', models: [{ id: 'fixture', name: 'Modèle synthétique', type: 'llm', loaded: true, contextLength: 4096 }] };
       else if (url.pathname === '/api/inference/settings') value = { provider: 'bionic', revision: 'synthetic', editable: true, apiUrl: 'http://127.0.0.1:19997' };
       else if (url.pathname === '/api/comfy/settings') value = { enabled: false, available: false, workflows: [] };
       else if (url.pathname === '/api/sessions') value = { sessions: [{ id, projectId: 'p1', name: chat.name, source: 'web' }], total: 1 };

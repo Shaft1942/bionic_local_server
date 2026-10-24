@@ -28,7 +28,7 @@ function fixture() {
     let value;
     if (name === '/api/ping') value = { instanceId, version: '2.6.0-beta.7' };
     else if (name === '/api/projects') value = { projects: [{ id: pid, name: 'Projet synthétique', locallyOwned: true }] };
-    else if (name === '/api/models') value = { models: [{ id: 'fixture', name: 'Modèle synthétique', type: 'llm', loaded: true, loadedInstances: [], contextLength: 4096 }] };
+    else if (name === '/api/models') value = { provider:'bionic', inferenceRevision:'synthetic', models: [{ id: 'fixture', name: 'Modèle synthétique', type: 'llm', loaded: true, loadedInstances: [], contextLength: 4096 }] };
     else if (name === '/api/inference/settings') value = { provider: 'bionic', revision: 'synthetic', editable: true, apiUrl: 'http://127.0.0.1:19997' };
     else if (name === '/api/comfy/settings') value = { enabled: false, available: false, workflows: [] };
     else if (name === '/api/inference/model-selection') value = { busy: false, reconciliationRequired: false };
