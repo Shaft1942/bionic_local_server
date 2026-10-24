@@ -2,7 +2,7 @@
 
 # Canaé — compagnon local
 
-**Candidate locale Canaé 2.6.0-beta.9** : moteur, modèle et réflexion réunis dans le chat, choix natifs du modèle et confirmation GGUF dans l’application ; voir [les nouveautés beta.9](docs/beta9-models.md). Les acquis beta.8 restent conservés : aide, copie par bloc, brouillons, pièces jointes et imports multiples.
+**Candidate locale Canaé 2.6.0-beta.10** : sélecteurs du chat compacts, conversations rangées sous leurs projets, actions intégrées aux messages et accès à la gestion des moteurs, modèles et images ; voir [les nouveautés beta.10](docs/beta10-interface.md). Les choix de réflexion du modèle, les GGUF, l’aide, les brouillons, les pièces jointes et les imports multiples restent disponibles.
 
 La bêta 6 ajoute le curseur de quantité d’images dans le chat et l’atelier et renforce les reprises des moteurs et des sauvegardes. Voir [l’audit, les corrections et les extensions proposées](docs/beta6-audit.md).
 

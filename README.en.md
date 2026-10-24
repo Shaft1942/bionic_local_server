@@ -2,7 +2,7 @@
 
 # Canaé — local companion
 
-**Local candidate Canaé 2.6.0-beta.9** adds engine, model and reported reasoning choices in chat, with an in-app GGUF confirmation; see [beta.9 changes](docs/beta9-models.md). It preserves beta.8 help, individual code copying, drafts, attachments and multiple file imports.
+**Local candidate Canaé 2.6.0-beta.10** adds compact chat selectors, conversations nested under their projects, message header actions and access to engine, model and image management; see [beta.10 changes](docs/beta10-interface.md). Reported reasoning choices, GGUF models, help, drafts, attachments and multiple file imports remain available.
 
 **Stable reference 2.5.0** · Chat with the models on your PC and access your projects from your phone’s browser over your local network.
 
