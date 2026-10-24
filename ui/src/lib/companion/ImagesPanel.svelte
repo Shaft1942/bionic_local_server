@@ -3,6 +3,7 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import ImageCountField from './ImageCountField.svelte';
 	import { tr } from './preferences.svelte';
+	import { panelStorageKey,readPanelStorage } from './panel-storage';
 	type Api = (route: string, options?: RequestInit) => Promise<any>;
 	type Job = { id: string; status: string; prompt: string; seed: number; format: string; width?: number; height?: number; workflowId: string; workflowLabel?: string; queuedLocally?: boolean; promptId?: string; error?: string; image?: any; loras?: { name?: string; strength?: number }[]; modelPolicy?: string; queuePosition?: number };
 	type Track = { requestId: string; kind: 'direct' | 'retry'; chatId?: string; messageId?: string; jobId?: string; job?: Job; issue?: string; terminal?: boolean };
@@ -17,8 +18,8 @@
 	const workflow = $derived(settings?.workflows?.find((item: any) => item.id === workflowId));
 	const effectiveMemoryPolicy = $derived(settings?.imageMemoryPolicy?.effectiveDefaultPolicy ?? settings?.modelPolicy);
 	const active = (job?: Job) => !!job && ['waiting-resource', 'submitting', 'queued', 'running'].includes(job.status);
-	const storageKey = (pid = projectId) => `companion-prototype:${instanceId}:${window.location.pathname}:image-tracking:${pid}`;
-	const draftKey = (pid = projectId) => `companion-prototype:${instanceId}:${window.location.pathname}:image-draft:${pid}`;
+	const storageKey = (pid = projectId) => panelStorageKey(instanceId,'image-tracking',pid);
+	const draftKey = (pid = projectId) => panelStorageKey(instanceId,'image-draft',pid);
 	const labels: Record<string, string> = $derived({ 'waiting-resource': tr('En attente de ressource',"Waiting for resources"), submitting: tr('Soumission au serveur',"Submitting to server"), queued: tr('Dans la file',"Queued"), running: tr('Génération en cours',"Generating"), succeeded: tr('Image prête',"Image ready"), failed: tr('Échec',"Failed"), unknown: tr('Résultat incertain',"Uncertain result"), cancelled: tr('Annulée localement',"Cancelled locally"), stopped: tr('Arrêtée',"Stopped") });
 	const params = (values: Record<string, string>) => new URLSearchParams(values).toString();
 	const imageUrl = (job: Job, download = false) => '/api/comfy/generation-image?' + params({ projectId, jobId: job.id, ...(download ? { download: '1' } : {}) });
@@ -98,9 +99,9 @@
 		loadedProject = pid; loadedInstance = instanceId; const token = ++epoch; ready = false; settings = null; tracks = []; gallery = []; failure = ''; notice = ''; prompt = ''; negativePrompt = ''; seed = '42'; format = 'square'; workflowId = ''; imageCount = 1;
 		if (!pid) return;
 		try {
-			const saved = JSON.parse(localStorage.getItem(storageKey(pid)) ?? '[]');
+			const saved = JSON.parse(readPanelStorage(localStorage,instanceId,'image-tracking',pid,window.location.pathname) ?? '[]');
 			if (Array.isArray(saved)) tracks = saved.filter(track => typeof track?.requestId === 'string' && ['direct', 'retry'].includes(track.kind)).slice(-100);
-			const draft = JSON.parse(sessionStorage.getItem(draftKey(pid)) ?? 'null');
+			const draft = JSON.parse(readPanelStorage(sessionStorage,instanceId,'image-draft',pid,window.location.pathname) ?? 'null');
 			if (draft) { prompt = typeof draft.prompt === 'string' ? draft.prompt : ''; negativePrompt = typeof draft.negativePrompt === 'string' ? draft.negativePrompt : ''; seed = typeof draft.seed === 'string' ? draft.seed : '42'; format = ['square', 'portrait', 'landscape'].includes(draft.format) ? draft.format : 'square'; workflowId = typeof draft.workflowId === 'string' ? draft.workflowId : ''; }
 			if (Number.isInteger(draft?.imageCount) && draft.imageCount >= 1 && draft.imageCount <= 5) imageCount = draft.imageCount;
 		} catch { /* Le serveur demeure l'autorité de suivi. */ }

@@ -3,6 +3,7 @@
 	import { ArrowUp, RefreshCw, Folder, FileText } from '@lucide/svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { tr } from './preferences.svelte';
+	import { panelStorageKey,readPanelStorage,clearPanelStorage } from './panel-storage';
 	type Api = (route: string, options?: RequestInit) => Promise<any>;
 	type Root = { id: string; name: string; writable: boolean };
 	type Entry = { name: string; path: string; directory: boolean };
@@ -27,19 +28,19 @@
 	const dirty = $derived(!!file?.editable && text !== original);
 	$effect(() => { onDirtyChange?.(dirty); });
 	const query = (relative = location, rid = rootId, pid = projectId) => new URLSearchParams({ projectId: pid, rootId: rid, path: relative });
-	const draftKey = (pid: string, rid: string, path: string, identity = instanceId) => `companion-prototype:${identity}:${window.location.pathname}:file:${pid}:${rid}:${path}`;
+	const draftKey = (pid: string, rid: string, path: string, identity = instanceId) => panelStorageKey(identity,'file',`${pid}:${rid}:${path}`);
 	function rememberDraft() {
 		if (!file?.editable || !loadedProject) return;
 		try {
 			const key = draftKey(loadedProject, file.rootId, file.path, loadedInstance);
 			if (text !== original) sessionStorage.setItem(key, JSON.stringify({ text, original, hash: baseHash }));
-			else sessionStorage.removeItem(key);
+			else clearPanelStorage(sessionStorage,loadedInstance,'file',`${loadedProject}:${file.rootId}:${file.path}`);
 		} catch { notice = tr('Le brouillon ne peut pas être conservé dans ce navigateur. Télécharge-le avant de quitter.',"The draft cannot be stored in this browser. Download it before leaving."); }
 	}
 	function displayFile(next: ProjectFile) {
 		file = next; original = next.text ?? ''; text = original; baseHash = next.hash ?? ''; conflict = false; serverVersion = null;
 		try {
-			const saved = sessionStorage.getItem(draftKey(loadedProject, next.rootId, next.path));
+			const saved = readPanelStorage(sessionStorage,loadedInstance,'file',`${loadedProject}:${next.rootId}:${next.path}`,window.location.pathname);
 			if (saved && next.editable) {
 				const draft = JSON.parse(saved);
 				if (typeof draft.text === 'string' && typeof draft.original === 'string' && typeof draft.hash === 'string') {
@@ -86,7 +87,7 @@
 			try {
 				const saved = await request('/api/file/save', { method: 'POST', body: JSON.stringify({ projectId: pid, rootId: current.rootId, path: current.path, hash: baseHash, text: content }) });
 				if (pid !== projectId || epoch !== sequence) return;
-				sessionStorage.removeItem(draftKey(pid, current.rootId, current.path)); displayFile(saved); notice = tr('Fichier enregistré. La copie précédente est conservée par le serveur.',"File saved. The server keeps the previous copy.");
+				clearPanelStorage(sessionStorage,loadedInstance,'file',`${pid}:${current.rootId}:${current.path}`); displayFile(saved); notice = tr('Fichier enregistré. La copie précédente est conservée par le serveur.',"File saved. The server keeps the previous copy.");
 			} catch (error: any) {
 				if (pid === projectId && epoch === sequence) { conflict = error?.status === 409; rememberDraft(); }
 				throw error;
@@ -104,7 +105,7 @@
 	function useServerVersion() {
 		if (!file || !serverVersion) return;
 		if (dirty && !window.confirm(tr('Remplacer ce brouillon par la version serveur ? Télécharge-le d’abord si tu veux le conserver.',"Replace this draft with the server version? Download it first if you want to keep it."))) return;
-		sessionStorage.removeItem(draftKey(projectId, file.rootId, file.path)); const version = serverVersion; displayFile(version); notice = tr('Version serveur chargée.',"Server version loaded.");
+		clearPanelStorage(sessionStorage,loadedInstance,'file',`${projectId}:${file.rootId}:${file.path}`); const version = serverVersion; displayFile(version); notice = tr('Version serveur chargée.',"Server version loaded.");
 	}
 	function downloadDraft() {
 		if (!file) return;
