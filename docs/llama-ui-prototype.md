@@ -1,4 +1,4 @@
-# Canaé et llama-ui — 2.6.0-beta.4
+# Canaé et llama-ui — 2.6.0-beta.5
 
 Cette candidate utilise une interface Svelte adaptée de llama-ui. Le compagnon conserve l’autorité sur les projets, conversations, fichiers, droits et travaux images. L’interface, le moteur de conversation et le fournisseur d’images ont des rôles distincts.
 
@@ -33,7 +33,9 @@ Sur le PC de cette préversion, la bibliothèque autorisée est `E:/AI/Models`. 
 
 Le profil possédé utilise un port distinct (1238 par défaut) et zéro couche GPU initialement. Le serveur externe sur 1237 ne peut pas être adopté ou arrêté. Un modèle encore chargé dans un moteur configuré bloque le nouveau lancement ; son état ambigu bloque également l’opération. Les modifications de dossier, binaire et port exigent le navigateur du PC serveur ; la sélection d’un modèle de cette bibliothèque est accessible sur le réseau authentifié.
 
-Avec llama-server actif, le champ de message propose **Fichier GGUF**, puis **Charger le GGUF**. Choisir un fichier ne lance rien. La confirmation charge ou remplace seulement le processus possédé ; après vérification du modèle, de son alias et de son contexte, Canaé applique sa connexion aux prochains messages. Il n’est pas nécessaire de modifier l’URL dans les paramètres pour ce parcours. Le modèle actuellement actif reste affiché séparément tant que le choix n’a pas abouti. Avec Bionic, la liste habituelle des modèles est conservée.
+Avec llama-server actif, le champ **Modèle** existant propose le modèle actuellement chargé et les **Fichiers GGUF** de la bibliothèque. Sélectionner un GGUF demande confirmation, puis charge ou remplace seulement le processus possédé ; après vérification du modèle, de son alias et de son contexte, Canaé applique sa connexion aux prochains messages. Il n’y a ni second sélecteur ni bouton de chargement dans le composer. Une annulation ou un refus remet le modèle actif dans le champ. Pendant une opération non confirmée, ce même champ indique le chargement ou la vérification ; son suivi est relu automatiquement sans nouvelle soumission. Avec Bionic, la liste habituelle des modèles est conservée.
+
+Le bouton **Modèles chargés**, à côté de la déconnexion dans la navigation gauche, affiche les instances en mémoire et leur contexte, y compris les embeddings Bionic. Leur déchargement est confirmé explicitement et refusé pendant les travaux concernés. Pour llama-server, seul un processus possédé par Canaé peut être arrêté depuis ce menu. Le serveur direct externe ne dispose pas d’une commande de déchargement prise en charge par ce connecteur et n’est pas adopté. Un résultat perdu est vérifié par lecture, sans second envoi.
 
 Le chargement bloque les nouveaux envois et changements concurrents ; les réponses/images actives ou incertaines le refusent. L’intention est enregistrée avant effet dans un journal privé. Après perte de réponse, la lecture de son suivi peut terminer l’activation d’un processus déjà confirmé ; elle ne lance ni n’arrête aucun processus. Un état incertain demande une vérification et n’autorise aucune nouvelle soumission automatique. Les brouillons et permissions restent conservés. Passer au profil possédé efface, après confirmation, le jeton llama-server externe afin qu’il ne traverse pas cette nouvelle connexion ; le jeton Bionic reste séparé.
 

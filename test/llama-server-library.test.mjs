@@ -89,6 +89,64 @@ test('unknown loading survives browser reread without POST; explicit stop remain
   backend.setReady(true); assert.equal((await manager.snapshot()).operation.state, 'succeeded'); assert.equal(backend.calls.length, 1);
   await manager.action(action(settings.snapshot(), 'stop', 'request-stop-unknown')); assert.equal(backend.calls.length, 2);
 });
+test('an ambiguous stop settles after confirmed child exit on GET and permits a new explicit start', async t => {
+  const { settings, library } = await fixture(t), model = (await library.inventory()).models[0], calls = [];
+  let child, exitConfirmed = false;
+  const backend = {
+    async occupied() { return !!child && !exitConfirmed; },
+    async launch(profile) { calls.push('launch'); child = { profile }; exitConfirmed = false; return child; },
+    async inspect() { return exitConfirmed ? { state: 'stopped', owned: false, exitConfirmed: true } : { state: 'running', owned: true }; },
+    async stop() { calls.push('stop'); throw Object.assign(Error('Synthetic delayed exit'), { status: 409, code: 'llama-stop-unknown' }); },
+    close() {}
+  };
+  const manager = createLlamaServerManager({ settings, processBackend: backend, assertIdle: async () => {}, assertConnectorAvailable: async () => {} });
+  await manager.action(action(settings.snapshot(), 'start', 'request-stop-recover-start', model.id));
+  await assert.rejects(manager.action(action(settings.snapshot(), 'stop', 'request-stop-recover-stop')), { code: 'llama-stop-unknown' });
+  const pending = await manager.snapshot(); assert.equal(pending.operation.state, 'unknown'); assert.equal(pending.lifecycle.reconciliationRequired, true); assert.deepEqual(calls, ['launch', 'stop']);
+  exitConfirmed = true;
+  const recovered = await manager.snapshot(); assert.equal(recovered.operation.state, 'succeeded'); assert.equal(recovered.process.state, 'configured'); assert.equal(recovered.process.model, null); assert.equal(recovered.lifecycle.reconciliationRequired, false); assert.deepEqual(calls, ['launch', 'stop']);
+  await manager.action(action(settings.snapshot(), 'start', 'request-stop-recover-next', model.id)); assert.deepEqual(calls, ['launch', 'stop', 'launch']);
+});
+
+test('a slow stop reread cannot erase a new explicitly started child', async t => {
+  const { settings, library } = await fixture(t), model = (await library.inventory()).models[0], calls = [];
+  let child, exitConfirmed = false, holdRead = false, releaseRead, readReached = false;
+  const gate = new Promise(resolve => { releaseRead = resolve; });
+  const backend = {
+    async occupied() { if (holdRead) { holdRead = false; readReached = true; await gate; return false; } return !!child && !exitConfirmed; },
+    async launch(profile) { calls.push('launch'); child = { profile }; exitConfirmed = false; return child; },
+    async inspect() { return exitConfirmed ? { state: 'stopped', owned: false, exitConfirmed: true } : { state: 'running', owned: true }; },
+    async stop() { calls.push('stop'); throw Object.assign(Error('Synthetic delayed exit'), { status: 409, code: 'llama-stop-unknown' }); }, close() {}
+  };
+  const manager = createLlamaServerManager({ settings, processBackend: backend, assertIdle: async () => {}, assertConnectorAvailable: async () => {} });
+  await manager.action(action(settings.snapshot(), 'start', 'request-reread-old-start', model.id));
+  await assert.rejects(manager.action(action(settings.snapshot(), 'stop', 'request-reread-old-stop')), { code: 'llama-stop-unknown' });
+  exitConfirmed = true; holdRead = true;
+  const delayed = manager.snapshot();
+  while (!readReached) await new Promise(resolve => setTimeout(resolve, 1));
+  try { await manager.action(action(settings.snapshot(), 'start', 'request-reread-new-start', model.id)); } finally { releaseRead(); }
+  const current = await delayed; assert.equal(current.process.state, 'running'); assert.equal(current.process.owned, true); assert.equal(current.process.model.id, model.id); assert.equal(current.operation.requestId, 'request-reread-new-start'); assert.deepEqual(calls, ['launch', 'stop', 'launch']);
+});
+
+test('a foreign listener after delayed stop is reported unowned without a repeated stop or adoption', async t => {
+  const { settings, library } = await fixture(t), model = (await library.inventory()).models[0], calls = [];
+  let live = false, exitConfirmed = false, foreign = false;
+  const backend = {
+    async occupied() { return foreign || live; },
+    async launch(profile) { calls.push('launch'); live = true; return { profile }; },
+    async inspect() { return exitConfirmed ? { state: 'stopped', owned: false, exitConfirmed: true } : { state: 'running', owned: true }; },
+    async stop() { calls.push('stop'); throw Object.assign(Error('Synthetic delayed exit'), { status: 409, code: 'llama-stop-unknown' }); }, close() {}
+  };
+  const manager = createLlamaServerManager({ settings, processBackend: backend, assertIdle: async () => {}, assertConnectorAvailable: async () => {} });
+  await manager.action(action(settings.snapshot(), 'start', 'request-stop-foreign-start', model.id));
+  await assert.rejects(manager.action(action(settings.snapshot(), 'stop', 'request-stop-foreign-stop')), { code: 'llama-stop-unknown' });
+  live = false; exitConfirmed = true; foreign = true;
+  const status = await manager.snapshot(); assert.equal(status.operation.state, 'failed'); assert.equal(status.operation.code, 'llama-port-still-occupied'); assert.equal(status.process.state, 'detected-unowned'); assert.equal(status.process.model, null); assert.equal(status.lifecycle.reconciliationRequired, false);
+  await assert.rejects(manager.action(action(settings.snapshot(), 'stop', 'request-stop-foreign-refuse')), { code: 'llama-not-owned' });
+  await assert.rejects(manager.action(action(settings.snapshot(), 'start', 'request-start-foreign-refuse', model.id)), { code: 'llama-external-listener' });
+  assert.deepEqual(calls, ['launch', 'stop']);
+});
+
 test('external listener stays unowned; local-only profile changes and replacement validation precede stop', async t => {
   const { settings, library } = await fixture(t), model = (await library.inventory()).models[0], foreign = fakeBackend({ foreign: true });
   const manager = createLlamaServerManager({ settings, processBackend: foreign, assertIdle: async () => {}, assertConnectorAvailable: async () => {} });

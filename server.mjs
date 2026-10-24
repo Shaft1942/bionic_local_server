@@ -1302,20 +1302,24 @@ async function handleRequest(req, res) {
         json(res, 200, await saveOutputPreference(await body(req, 4096))); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/models') {
+        const observedInference = inferenceSettings.snapshot();
         const listed = await modelService.list();
-        if (inferenceOperations.size && !Object.entries(activeWork()).some(([key, value]) => key !== 'uncertainInference' && !!value)) await recordInferenceMutation({ status: 'reconciled' });
-        json(res, 200, { models: listed, generationActive: busy.size > 0, unloading: modelManagementBusy, reconciliationRequired: inferenceOperations.size > 0 }); return;
+        if (observedInference.revision === inferenceSettings.snapshot().revision && inferenceOperations.size && !Object.entries(activeWork()).some(([key, value]) => key !== 'uncertainInference' && !!value)) await recordInferenceMutation({ status: 'reconciled' });
+        json(res, 200, { models: listed, provider: observedInference.provider, inferenceRevision: observedInference.revision, generationActive: busy.size > 0, unloading: modelManagementBusy, reconciliationRequired: inferenceOperations.size > 0 }); return;
       }
       if (req.method === 'POST' && url.pathname === '/api/models/unload') {
         assertServiceAdmission();
         if (busy.size > 0) throw fail(409, 'Une réponse est en cours dans le compagnon. Arrête-la ou attends sa fin avant de décharger un modèle.');
         if (modelManagementBusy) throw fail(409, 'Un déchargement est déjà en cours.');
         const input = await body(req, 2048);
+        if (input?.expectedInferenceRevision !== undefined && (typeof input.expectedInferenceRevision !== 'string' || !/^[\w-]{1,100}$/.test(input.expectedInferenceRevision))) throw Object.assign(fail(400, 'Révision de connexion invalide.'), { code: 'inference-invalid-revision' });
+        const assertInferenceRevision = () => { if (input?.expectedInferenceRevision !== undefined && input.expectedInferenceRevision !== inferenceSettings.snapshot().revision) throw Object.assign(fail(409, 'La connexion du moteur a changé. Actualise les modèles chargés avant de décharger une instance.'), { code: 'inference-stale-revision' }); };
         assertServiceAdmission();
+        assertInferenceRevision();
         if (busy.size > 0 || modelManagementBusy) throw fail(409, 'Le modèle est en cours d’utilisation. Réessaie après la fin de l’opération.');
         modelManagementBusy = true;
         let releaseModel=()=>{};
-        try { releaseModel=await gpuScheduler.acquireModel();assertServiceAdmission();json(res, 200, await modelService.unload(input.instanceId)); }
+        try { releaseModel=await gpuScheduler.acquireModel();assertServiceAdmission();assertInferenceRevision();json(res, 200, await modelService.unload(input.instanceId)); }
         finally { releaseModel();modelManagementBusy = false; }
         return;
       }

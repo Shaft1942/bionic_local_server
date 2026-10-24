@@ -67,6 +67,16 @@ async function dropReply(page, pathname) {
   await page.route('**' + pathname, async route => { try { const response = await route.fetch(); assert.equal(response.status(), 200, await response.text()); await route.abort('failed'); done(); } catch (error) { failed(error); } });
   return async () => { await promise; await page.unroute('**' + pathname); };
 }
+async function active(page, filename) {
+  await page.waitForFunction(name => { const select = document.querySelector('.composer [aria-label="Modèle"]'); return select && !select.disabled && select.value.startsWith('llamacpp:') && select.selectedOptions[0]?.textContent === name; }, filename);
+}
+async function oneField(page) {
+  assert.equal(await page.locator('.composer').getByRole('combobox', { name: 'Modèle', exact: true }).count(), 1);
+  const box = await page.locator('.composer').getByRole('combobox', { name: 'Modèle', exact: true }).boundingBox(); assert(box && box.width >= 80 && box.height >= 20, 'The existing model field must remain visible');
+  assert.equal(await page.getByRole('combobox', { name: 'Fichier GGUF', exact: true }).count(), 0);
+  assert.equal(await page.locator('.composer').getByRole('button', { name: /Charger le GGUF|Actualiser les modèles du champ de message|Configurer le moteur d’inférence/ }).count(), 0);
+  assert.equal(await page.locator('.composer .gguf-row, .composer .active-row').count(), 0);
+}
 const results = [];
 try {
   for (const width of [1280, 390]) {
@@ -77,46 +87,52 @@ try {
     const actionCount = () => posts.filter(pathname => pathname === '/api/inference/select-model').length;
     try {
       await page.goto(f.url); await page.locator('#access-code').fill(PROTOTYPE_CODE); await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
-      const picker = page.getByRole('combobox', { name: 'Fichier GGUF', exact: true }), prompt = page.getByRole('textbox', { name: 'Message', exact: true });
-      await picker.waitFor(); await page.waitForFunction(() => document.querySelector('[aria-label="Fichier GGUF"]')?.options.length === 3);
+      const picker = page.getByRole('combobox', { name: 'Modèle', exact: true }), prompt = page.getByRole('textbox', { name: 'Message', exact: true });
+      await picker.waitFor(); await page.waitForFunction(() => document.querySelector('[aria-label="Modèle"] optgroup[label="Fichiers GGUF"]')?.children.length === 2);
       const files = await f.manager.inventory(), e4b = files.models.find(item => item.name.startsWith('Gemma')), qwen = files.models.find(item => item.name.startsWith('Qwen'));
       assert.equal(files.models.length, 2); assert.equal(files.excludedProjectors, 1);
+      const gemmaName = 'Gemma-E4B-fixture-Q4.gguf', qwenName = 'Qwen-9B-fixture-Q4.gguf';
+      assert.equal(await picker.locator('option[value="gguf:' + e4b.id + '"]').textContent(), gemmaName); assert.equal(await picker.locator('option[value="gguf:' + qwen.id + '"]').textContent(), qwenName); await oneField(page);
       await prompt.fill('Brouillon conservé pendant le choix de modèle.');
-      await picker.selectOption(e4b.id); assert.equal(f.stats.starts, 0); assert.equal(actionCount(), 0);
-      page.once('dialog', dialog => dialog.dismiss()); await page.getByRole('button', { name: 'Charger le GGUF', exact: true }).click();
-      assert.equal(f.stats.starts, 0); assert.equal(actionCount(), 0); assert.equal(await prompt.inputValue(), 'Brouillon conservé pendant le choix de modèle.');
-      page.on('dialog', dialog => { confirmations.push(dialog.message()); dialog.accept(); });
-      await page.getByRole('button', { name: 'Charger le GGUF', exact: true }).click(); await page.getByRole('button', { name: 'GGUF actif', exact: true }).waitFor();
+      page.once('dialog', dialog => dialog.dismiss()); await picker.selectOption('gguf:' + e4b.id);
+      await page.waitForFunction(() => document.querySelector('.composer [aria-label="Modèle"]')?.value === '');
+      assert.equal(f.stats.starts, 0); assert.equal(actionCount(), 0); assert.equal(await picker.inputValue(), ''); assert.equal(await prompt.inputValue(), 'Brouillon conservé pendant le choix de modèle.');
+      const acceptDialog = dialog => { confirmations.push(dialog.message()); dialog.accept(); };
+      page.on('dialog', acceptDialog);
+      await picker.selectOption('gguf:' + e4b.id); await active(page, gemmaName);
       assert.equal(f.stats.starts, 1); assert.equal(actionCount(), 1); assert.equal((await f.manager.snapshot()).process.model.id, e4b.id);
       assert.equal(await prompt.inputValue(), 'Brouillon conservé pendant le choix de modèle.');
-      await page.reload(); await picker.waitFor(); await page.getByRole('button', { name: 'GGUF actif', exact: true }).waitFor(); assert.equal(await picker.inputValue(), e4b.id); assert.equal(f.stats.starts, 1); assert.equal(actionCount(), 1);
+      const beforeCancel = await picker.inputValue(); page.off('dialog', acceptDialog); page.once('dialog', dialog => dialog.dismiss());
+      await picker.selectOption('gguf:' + qwen.id); await active(page, gemmaName); assert.equal(await picker.inputValue(), beforeCancel); assert.equal(actionCount(), 1); assert.equal(f.stats.starts, 1); page.on('dialog', acceptDialog);
+      await page.reload(); await active(page, gemmaName); assert.equal(await picker.inputValue(), beforeCancel); assert.equal(f.stats.starts, 1); assert.equal(actionCount(), 1);
       const tokenState = await (await context.request.get(f.url + '/api/inference/settings')).json();
       const tokenSetup = await context.request.post(f.url + '/api/inference/settings', { data: { provider: 'llamacpp', llamaToken: 'synthetic-fixture-token', expectedRevision: tokenState.revision }, headers: { Origin: f.url } }); assert.equal(tokenSetup.status(), 200, await tokenSetup.text());
-      await page.reload(); await page.getByRole('button', { name: 'GGUF actif', exact: true }).waitFor();
-      await picker.selectOption(qwen.id); const dropped = await dropReply(page, '/api/inference/select-model');
-      await page.getByRole('button', { name: 'Charger le GGUF', exact: true }).click(); await dropped(); await page.getByRole('status').filter({ hasText: 'État retrouvé' }).waitFor(); await page.getByRole('button', { name: 'GGUF actif', exact: true }).waitFor();
+      await page.reload(); await active(page, gemmaName);
+      const dropped = await dropReply(page, '/api/inference/select-model');
+      await picker.selectOption('gguf:' + qwen.id); await dropped(); await active(page, qwenName);
       assert.equal(f.stats.starts, 2); assert.equal(f.stats.stops, 1); assert.equal(actionCount(), 2); assert.equal((await f.manager.snapshot()).process.model.id, qwen.id);
       assert(confirmations.at(-1).includes('jeton du llama-server externe sera effacé')); assert.equal((await (await context.request.get(f.url + '/api/inference/settings')).json()).hasLlamaToken, false);
       assert.equal(await page.getByRole('button', { name: 'Envoyer', exact: true }).isEnabled(), true);
       assert.equal(await prompt.inputValue(), 'Brouillon conservé pendant le choix de modèle.');
-      await page.reload(); await page.getByRole('button', { name: 'GGUF actif', exact: true }).waitFor(); assert.equal(await picker.inputValue(), qwen.id); assert.equal(actionCount(), 2); assert.equal(f.stats.starts, 2);
-      f.setBusy(true); await picker.selectOption(e4b.id); await page.getByRole('button', { name: 'Charger le GGUF', exact: true }).click(); await page.getByRole('alert').filter({ hasText: 'tâche synthétique' }).waitFor(); assert.equal(f.stats.starts, 2); assert.equal(f.stats.stops, 1); f.setBusy(false);
-      f.setExternal(true); await page.getByRole('button', { name: 'Charger le GGUF', exact: true }).click(); await page.getByRole('alert').filter({ hasText: 'serveur externe' }).waitFor(); assert.equal(f.stats.starts, 2); assert.equal(f.stats.stops, 1); f.setExternal(false);
-      f.delay(); await page.getByRole('button', { name: 'Charger le GGUF', exact: true }).click();
-      await page.getByRole('button', { name: 'Chargement…', exact: true }).waitFor(); assert.equal(await page.getByRole('button', { name: 'Envoyer', exact: true }).isDisabled(), true);
+      await page.reload(); await active(page, qwenName); assert.equal(actionCount(), 2); assert.equal(f.stats.starts, 2);
+      f.setBusy(true); await picker.selectOption('gguf:' + e4b.id); await page.getByRole('alert').filter({ hasText: 'tâche synthétique' }).waitFor(); await active(page, qwenName); assert.equal(f.stats.starts, 2); assert.equal(f.stats.stops, 1); f.setBusy(false);
+      f.setExternal(true); await picker.selectOption('gguf:' + e4b.id); await page.getByRole('alert').filter({ hasText: 'serveur externe' }).waitFor(); await active(page, qwenName); assert.equal(f.stats.starts, 2); assert.equal(f.stats.stops, 1); f.setExternal(false);
+      f.delay(); await picker.selectOption('gguf:' + e4b.id);
+      await page.waitForFunction(() => document.querySelector('.composer [aria-label="Modèle"]')?.selectedOptions[0]?.textContent?.startsWith('Chargement…')); assert.equal(await page.getByRole('button', { name: 'Envoyer', exact: true }).isDisabled(), true);
       await prompt.press('Enter'); assert.equal(posts.filter(pathname => pathname === '/api/chat').length, 0); assert.equal(f.stats.modelCalls, 0);
-      f.release(); await page.getByRole('button', { name: 'GGUF actif', exact: true }).waitFor(); assert.equal(f.stats.starts, 3); assert.equal(f.stats.stops, 2);
-      f.unknown(); await picker.selectOption(qwen.id); await page.getByRole('button', { name: 'Charger le GGUF', exact: true }).click();
-      await page.getByRole('button', { name: 'À vérifier', exact: true }).waitFor(); assert.equal(await page.getByRole('button', { name: 'Envoyer', exact: true }).isDisabled(), true); assert.equal(f.stats.starts, 4);
-      const beforeRecovery = actionCount(); f.confirm(); await page.getByRole('button', { name: 'GGUF actif', exact: true }).waitFor();
+      f.release(); await active(page, gemmaName); assert.equal(f.stats.starts, 3); assert.equal(f.stats.stops, 2);
+      f.unknown(); await picker.selectOption('gguf:' + qwen.id);
+      await page.waitForFunction(() => document.querySelector('.composer [aria-label="Modèle"]')?.selectedOptions[0]?.textContent?.startsWith('À vérifier')); assert.equal(await page.getByRole('button', { name: 'Envoyer', exact: true }).isDisabled(), true); assert.equal(f.stats.starts, 4);
+      const beforeRecovery = actionCount(); f.confirm(); await active(page, qwenName);
       assert.equal(actionCount(), beforeRecovery); assert.equal(f.stats.starts, 4); assert.equal(f.stats.stops, 3); assert.equal(await page.getByRole('button', { name: 'Envoyer', exact: true }).isEnabled(), true);
+      await oneField(page);
       await shot(page, width + '-composer-gguf.png');
       const inference = await (await context.request.get(f.url + '/api/inference/settings')).json();
       const switched = await context.request.post(f.url + '/api/inference/settings', { data: { provider: 'bionic', expectedRevision: inference.revision }, headers: { Origin: f.url } }); assert.equal(switched.status(), 200, await switched.text());
-      await page.reload(); const legacy = page.getByRole('combobox', { name: 'Modèle', exact: true }); await legacy.waitFor(); await legacy.selectOption('bionic-two'); assert.equal(await legacy.inputValue(), 'bionic-two'); assert.equal(await picker.count(), 0); assert.equal(f.stats.starts, 4);
+      await page.reload(); const legacy = page.getByRole('combobox', { name: 'Modèle', exact: true }); await legacy.waitFor(); await legacy.selectOption('bionic-two'); assert.equal(await legacy.inputValue(), 'bionic-two'); assert.equal(await picker.locator('optgroup').count(), 0); assert.equal(f.stats.starts, 4);
       await page.reload(); await legacy.waitFor(); assert.equal(await legacy.inputValue(), 'bionic-two'); assert.equal(await prompt.inputValue(), 'Brouillon conservé pendant le choix de modèle.');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true); assert.deepEqual(errors, []); assert.deepEqual(csp, []);
-      results.push({ width, ggufCatalogueBesideMessage: true, selectionWithoutEffect: true, cancelledConfirmationWithoutEffect: true, explicitStart: true, activeFromServerAfterReload: true, lostReplyAndReloadWithoutRepost: true, busyAndExternalRefusedBeforeEffect: true, sendAndEnterBlockedDuringTransition: true, unknownThenGetRecoveryWithoutRepostAndSendEnabled: true, tokenClearingDisclosedInConfirmation: true, promptPreserved: true, bionicSelectPreserved: true, starts: f.stats.starts, stops: f.stats.stops, modelCalls: f.stats.modelCalls, selectionPosts: actionCount(), pageErrors: errors.length, cspErrors: csp.length });
+      results.push({ width, singleExistingModelField: true, fullGgufFilenamesInOptions: true, noAdditionalComposerButtonOrModelRow: true, cancelledSelectionRevertsWithoutEffect: true, explicitStartOnSelection: true, activeFromServerAfterReload: true, lostReplyAndReloadWithoutRepost: true, busyAndExternalRefusedBeforeEffectAndFieldReverted: true, sendAndEnterBlockedDuringTransition: true, unknownThenGetRecoveryWithoutRepostAndSendEnabled: true, tokenClearingDisclosedInConfirmation: true, promptPreserved: true, bionicSelectPreserved: true, starts: f.stats.starts, stops: f.stats.stops, modelCalls: f.stats.modelCalls, selectionPosts: actionCount(), pageErrors: errors.length, cspErrors: csp.length });
     } catch (error) { await shot(page, width + '-composer-models-failure.png').catch(() => {}); console.error(JSON.stringify({ width, errors, csp, stats: f.stats, posts })); throw error; }
     finally { f.release(); await context.close(); await f.app.close(); const resolved = path.resolve(f.root); assert(path.dirname(resolved) === path.resolve(os.tmpdir()) && path.basename(resolved).startsWith('canae-composer-models-')); await fs.rm(resolved, { recursive: true, force: true }); }
   }

@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.6.0-beta.5 — Canaé — candidate locale
+
+- Le champ **Modèle** existant propose directement les GGUF : choix, confirmation et activation depuis un seul sélecteur, sans second champ ni bouton de chargement ajouté.
+- Le menu **Modèles chargés** revient près de la déconnexion, avec les instances en mémoire et leur déchargement compatible. Bionic inclut les modèles d’embedding ; un profil llama-server possédé peut être arrêté explicitement. Un serveur externe n’est pas adopté.
+- Les refus et annulations conservent le modèle actif ; une réponse perdue ou un démarrage incertain se vérifient sans nouvelle soumission. Les paramètres regroupés, les brouillons et la fermeture extérieure sont conservés.
+
 ## 2.6.0-beta.4 — Canaé — candidate locale
 
 - Choix du GGUF depuis le champ de message avec chargement confirmé, remplacement du modèle possédé et activation de sa connexion une fois le modèle et son contexte prêts. Le modèle actif reste distinct du fichier sélectionné ; les réponses perdues se vérifient sans second lancement.

@@ -24,13 +24,13 @@ async function fixture(t, options = {}) {
   await fs.mkdir(path.join(root, 'data'));
   await fs.writeFile(path.join(root, 'data', 'config.json'), JSON.stringify({ instanceId: randomUUID(), salt: 'synthetic', passwordHash: scryptSync('synthetic-code', 'synthetic', 32).toString('hex'), adminToken: 'synthetic-admin' }));
   await fs.writeFile(path.join(root, 'registry.json'), JSON.stringify({ projects: [['p1', { projectWorkingDirectoryPath: root }]] }));
-  const state = { calls: [], submissions: [], imageStatus: null, hold: false, release: null, renameGate: null, failRename: false, connections: null, loaded: true, failModelMutation: null };
+  const state = { calls: [], submissions: [], imageStatus: null, hold: false, release: null, renameGate: null, failRename: false, connections: null, loaded: true, failModelMutation: null, catalogueGate: null, catalogueReadReached: false };
   const settings = { port: 8769, apiUrl: 'http://127.0.0.1:1235', llamaUrl: 'http://127.0.0.1:1236', inferenceProvider: 'bionic', bionicRoot: root, registryPath: path.join(root, 'registry.json'), extraRoots: [], python: 'python', comfyUrl: 'http://127.0.0.1:19999', resourcePolicy: 'independent' };
   const comfy = { async submit(args, owner) { const job = { id: randomUUID(), status: 'queued', owner, prompt: args.prompt, seed: 42, width: 1024, height: 1024 }; state.submissions.push(job); return { ...job, owner: undefined }; }, get(id) { const job = state.submissions.find(job => job.id === id); return { ...job, owner: undefined }; }, owner(id) { return state.submissions.find(job => job.id === id).owner; }, findForOwner(owner) { return state.submissions.find(job => Object.keys(owner).every(key => owner[key] === job.owner[key])); }, async image() { return { bytes: Buffer.from('synthetic-image-data'), mime: 'image/png' }; }, getSettings() { return { enabled: true, activeJobs: 0 }; }, lifecycleStatus() { return { active: 0, uncertain: state.imageStatus === 'unknown' ? 1 : 0 }; }, async close() {} };
   const fetchImpl = async (url, request = {}) => {
     state.calls.push({ url, request }); const target = new URL(url);
     assert(['http://127.0.0.1:1235', 'http://127.0.0.1:1236'].includes(target.origin));
-    if (target.pathname === '/api/v1/models') return Response.json({ models: [{ key: 'shared-alias', display_name: 'Synthetic Bionic', type: 'llm', loaded_instances: state.loaded ? [{ id: 'bionic-loaded', config: { context_length: 8192 } }] : [], capabilities: { trained_for_tool_use: true } }] });
+    if (target.pathname === '/api/v1/models') { state.catalogueReadReached = true; if (state.catalogueGate) await state.catalogueGate; return Response.json({ models: [{ key: 'shared-alias', display_name: 'Synthetic Bionic', type: 'llm', loaded_instances: state.loaded ? [{ id: 'bionic-loaded', config: { context_length: 8192 } }] : [], capabilities: { trained_for_tool_use: true } }] }); }
     if (['/api/v1/models/unload', '/api/v1/models/load'].includes(target.pathname)) {
       const operation = target.pathname.split('/').at(-1), journal = JSON.parse(await fs.readFile(path.join(root, 'data', 'inference-operations.json'), 'utf8'));
       assert(journal.operations.some(item => item.operation === operation && item.status === 'pending'), 'intent must be durable before model mutation HTTP'); assert(!JSON.stringify(journal).includes('BIONIC_FIXTURE'));
@@ -65,6 +65,46 @@ const input = provider => ({ provider, apiUrl: 'http://127.0.0.1:1235', llamaUrl
 async function save(f, provider, extra = {}) { return f.request('/api/inference/settings', { ...input(provider), expectedRevision: (await snapshot(f)).revision, ...extra }); }
 async function model(f) { return (await f.request('/api/models')).json().models[0]; }
 async function until(predicate) { for (let n = 0; n < 150; n++) { if (await predicate()) return; await wait(5); } assert.fail('fixture condition timed out'); }
+
+test('loaded-model unload binds the menu revision to its connection and keeps legacy callers compatible', async t => {
+  const f = await fixture(t), first = await snapshot(f), catalogue = (await f.request('/api/models')).json();
+  assert.equal(catalogue.provider, first.provider); assert.equal(catalogue.inferenceRevision, first.revision);
+  assert.equal((await save(f, 'bionic')).statusCode, 200);
+  const before = f.state.calls.length;
+  const stale = await f.request('/api/models/unload', { instanceId: 'bionic-loaded', expectedInferenceRevision: first.revision });
+  assert.equal(stale.statusCode, 409); assert.equal(stale.json().code, 'inference-stale-revision'); assert.equal(f.state.calls.length, before); assert.equal(f.state.loaded, true);
+  const malformed = await f.request('/api/models/unload', { instanceId: 'bionic-loaded', expectedInferenceRevision: { unexpected: true } }); assert.equal(malformed.statusCode, 400); assert.equal(f.state.calls.length, before);
+  const current = await snapshot(f), unloaded = await f.request('/api/models/unload', { instanceId: 'bionic-loaded', expectedInferenceRevision: current.revision });
+  assert.equal(unloaded.statusCode, 200, unloaded.text()); assert.equal(unloaded.json().unloaded, true);
+  f.state.loaded = true;
+  const legacy = await f.request('/api/models/unload', { instanceId: 'bionic-loaded' }); assert.equal(legacy.statusCode, 200, legacy.text()); assert.equal(legacy.json().unloaded, true);
+});
+
+test('a catalogue read that overlaps a connection change retains the original identity', async t => {
+  const f = await fixture(t), first = await snapshot(f); let release;
+  f.state.catalogueGate = new Promise(resolve => { release = resolve; });
+  const pending = f.raw('/api/models'); await until(() => f.state.catalogueReadReached);
+  try {
+    assert.equal((await save(f, 'llamacpp')).statusCode, 200);
+  } finally { release(); }
+  await pending.work; f.state.catalogueGate = null;
+  const old = pending.res.json(); assert.equal(old.provider, 'bionic'); assert.equal(old.inferenceRevision, first.revision); assert.equal(old.models[0].id, 'shared-alias');
+  const current = (await f.request('/api/models')).json(); assert.equal(current.provider, 'llamacpp'); assert.equal(current.inferenceRevision, (await snapshot(f)).revision); assert.notEqual(current.inferenceRevision, old.inferenceRevision);
+  assert.equal(f.state.calls.filter(call => call.request.method === 'POST').length, 0);
+});
+
+test('waiting for the model reservation prevents another tab from changing the unload connection', async t => {
+  const f = await fixture(t), first = await snapshot(f); let release, reached = false;
+  const gate = new Promise(resolve => { release = resolve; }), acquire = f.app.gpuScheduler.acquireModel;
+  f.app.gpuScheduler.acquireModel = async (...args) => { reached = true; await gate; return acquire(...args); };
+  const pending = f.raw('/api/models/unload', { instanceId: 'bionic-loaded', expectedInferenceRevision: first.revision });
+  await until(() => reached);
+  try {
+    assert.equal((await save(f, 'llamacpp')).statusCode, 409); assert.equal((await snapshot(f)).revision, first.revision); assert.equal(f.state.loaded, true);
+  } finally { release(); }
+  await pending.work; assert.equal(pending.res.statusCode, 200, pending.res.text()); assert.equal(pending.res.json().unloaded, true);
+  assert.equal(f.state.calls.filter(call => new URL(call.url).pathname === '/api/v1/models/unload').length, 1);
+});
 
 test('web inference selection persists and applies one provider; tokens and model identities never cross engines', async t => {
   const f = await fixture(t), first = await snapshot(f);
