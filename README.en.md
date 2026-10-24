@@ -2,7 +2,7 @@
 
 # Canaé — local companion
 
-**Local candidate Canaé 2.6.0-beta.3** adds the llama-ui interface, centered windows, native settings with sliders and HTTP/HTTPS/mTLS security. Select one conversation engine in the webapp and share GGUF files with Bionic without copying them. Internet and available images are enabled by default; explicit opt-outs remain respected. See [the candidate and its limits](docs/llama-ui-prototype.md). This candidate has not been published.
+**Local candidate Canaé 2.6.0-beta.4** adds the llama-ui interface, centered windows, native settings with sliders and HTTP/HTTPS/mTLS security. Select one conversation engine in the webapp and share GGUF files with Bionic without copying them. Internet and available images are enabled by default; explicit opt-outs remain respected. See [the candidate and its limits](docs/llama-ui-prototype.md). This candidate has not been published.
 
 **Stable reference 2.5.0** · Chat with the models on your PC and access your projects from your phone’s browser over your local network.
 

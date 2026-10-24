@@ -15,7 +15,7 @@ try{for(const width of [1280,390]){
   page.on('pageerror',error=>errors.push(error.message));
   const nav=()=>page.getByRole('navigation',{name:'Espace du projet',exact:true});
   try{
-    await page.goto(fixture.baseUrl+'/prototype/');await page.getByLabel('Code d’accès du prototype').fill(PROTOTYPE_CODE);await page.getByRole('button',{name:'Se connecter',exact:true}).click();await nav().waitFor();
+    await page.goto(fixture.baseUrl+'/prototype/');assert.equal((await page.locator('body').innerText()).includes('llama-ui'),false,'home describes Canaé without implementation branding');await page.getByLabel('Code d’accès du prototype').fill(PROTOTYPE_CODE);await page.getByRole('button',{name:'Se connecter',exact:true}).click();await nav().waitFor();
     assert.equal(await page.locator('.navigation-footer').getByRole('button',{name:'Paramètres',exact:true}).count(),0);
     await page.getByRole('textbox',{name:'Message',exact:true}).fill('Brouillon conservé pendant les fenêtres');
     for(const name of ['Fichiers','Images','Activité','Paramètres']){
@@ -28,7 +28,12 @@ try{for(const width of [1280,390]){
       await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
       assert.equal(await page.getByRole('textbox',{name:'Message',exact:true}).inputValue(),'Brouillon conservé pendant les fenêtres');
       assert.equal(await nav().getByRole('button',{name,exact:true}).evaluate(element=>element===document.activeElement),true,'focus returns to opener');
+      await nav().getByRole('button',{name,exact:true}).click();await dialog.waitFor();await page.waitForTimeout(170);
+      const bounds=await dialog.boundingBox();assert(bounds);const inside={x:bounds.x+bounds.width/2,y:bounds.y+2};
+      await page.mouse.click(inside.x,inside.y);assert.equal(await dialog.isVisible(),true,'inside click keeps popup open');
+      await page.mouse.move(inside.x,inside.y);await page.mouse.down();await page.mouse.move(2,2);await page.mouse.up();assert.equal(await dialog.isVisible(),true,'drag from inside to outside keeps popup open');
+      await page.mouse.click(2,2);await dialog.waitFor({state:'hidden'});assert.equal(await page.getByRole('textbox',{name:'Message',exact:true}).inputValue(),'Brouillon conservé pendant les fenêtres','outside click preserves draft');
     }
-    assert.deepEqual(errors,[]);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));results.push({width,centeredPopups:4,focusTrap:true,escapeAndFocusReturn:true,composerDraftPreserved:true,duplicateSettingsRemoved:true,pageErrors:0});
+    assert.deepEqual(errors,[]);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));results.push({width,centeredPopups:4,focusTrap:true,escapeAndFocusReturn:true,outsideClickCloses:true,insideAndDragPreserved:true,composerDraftPreserved:true,homeBranding:true,duplicateSettingsRemoved:true,pageErrors:0});
   }finally{await context.close();await fixture.app.close();assert(path.dirname(root)===path.resolve(os.tmpdir())&&path.basename(root).startsWith('canae-surfaces-'));await fs.rm(root,{recursive:true,force:true});}
 }console.log(JSON.stringify({mode:'real-http-native-dialog-synthetic-services',results},null,2));}finally{await browser.close();}

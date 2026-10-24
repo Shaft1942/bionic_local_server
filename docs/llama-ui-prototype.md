@@ -1,8 +1,8 @@
-# Canaé et llama-ui — 2.6.0-beta.3
+# Canaé et llama-ui — 2.6.0-beta.4
 
 Cette candidate utilise une interface Svelte adaptée de llama-ui. Le compagnon conserve l’autorité sur les projets, conversations, fichiers, droits et travaux images. L’interface, le moteur de conversation et le fournisseur d’images ont des rôles distincts.
 
-Fichiers, Images, Activité et Paramètres s’ouvrent dans une fenêtre centrée. Échap ou la croix ferment la fenêtre et rendent le focus au bouton d’ouverture. La conversation et son brouillon restent présents ; fermer les paramètres conserve les modifications non enregistrées en mémoire dans cet onglet. Le raccourci Paramètres en bas à gauche a été supprimé.
+Fichiers, Images, Activité et Paramètres s’ouvrent dans une fenêtre centrée. Échap, la croix ou un clic sur le fond extérieur ferment la fenêtre et rendent le focus au bouton d’ouverture. Un clic intérieur ou un glissement commencé dedans ne la ferme pas. La conversation et son brouillon restent présents ; fermer les paramètres conserve les modifications non enregistrées en mémoire dans cet onglet. Le raccourci Paramètres en bas à gauche a été supprimé.
 
 Les cases à cocher utilisent leur affichage natif. Les valeurs numériques pour lesquelles une progression a du sens disposent d’un curseur et d’une saisie exacte : LoRA −2 à 20, budget de réponse de 1 à 5 millions de tokens (échelle logarithmique), contexte de lancement et couches GPU du profil llama-server. Un plafond demandé ne garantit pas que le modèle ou le serveur peut l’accepter ; le contexte effectivement confirmé reste l’autorité. Les URL, ports, graines et jetons gardent une saisie adaptée.
 
@@ -10,10 +10,9 @@ Les cases à cocher utilisent leur affichage natif. Les valeurs numériques pour
 
 Ouvrir **Paramètres** depuis la navigation ou la barre du projet. Les rubriques sont les suivantes :
 
-- **Conversation** : sélectionner Bionic ou llama-server, saisir leurs adresses locales et éventuellement des jetons séparés, tester la connexion, appliquer le moteur actif, régler le plafond de réponse par modèle ou conversation. Un seul moteur est actif à la fois. Les modèles sont actualisables et les instances Bionic déchargeables avec confirmation.
-- **Images et ComfyUI** : adresse et activation du fournisseur, découverte bornée, workflow, deux LoRA par profil et forces, contrôle de compatibilité, politique du modèle texte et nettoyage après workflow.
-- **Modèles llama-server** : bibliothèque GGUF partagée, profil de lancement possédé, choix du fichier, contexte et couches GPU, démarrage/remplacement/arrêt explicites. Aucun téléchargement ni chargement automatique.
-- **Serveurs du PC** : état, profil de lancement, détection d’une installation, choix natif sur le PC et commandes explicites Bionic/ComfyUI. Les nonces, révisions et accords restent ceux du serveur.
+- **Conversation** : choisir le modèle à régler et son plafond de réponse, globalement ou pour cette conversation. Les instances Bionic peuvent être déchargées avec confirmation.
+- **Serveurs du PC → Moteurs d’inférence** : sélectionner Bionic ou llama-server, préparer leurs adresses et jetons séparés, tester/appliquer la connexion ; configurer les profils et le lancement Bionic et llama-server. Bibliothèque GGUF, contexte et couches GPU restent configurables ici. Le registre des fournisseurs présente les seuls moteurs implémentés ; ajouter un moteur demande aussi son adaptateur et ses contrôles.
+- **Serveurs du PC → Génération d’images** : adresse et activation ComfyUI, découverte bornée, workflow, deux LoRA par profil et forces, contrôle de compatibilité, politique du modèle texte et nettoyage après workflow ; configuration et commandes explicites du serveur ComfyUI. Les nonces, révisions et accords restent ceux du serveur.
 - **Apparence et brouillons** : thème système/clair/sombre, français/anglais et durée des brouillons (onglet, une heure, un jour, sept jours). Ces choix sont propres au navigateur et à l’instance. Effacer les brouillons ne supprime ni les conversations ni le suivi des demandes.
 - **Connexion sécurisée** : état HTTP/HTTPS/mTLS, autorité publique, appareils, création/révocation et préparation guidée. Les changements de transport conservent leurs preuves et confirmations. Les exports privés restent temporaires et ne sont pas mémorisés dans les préférences.
 - **Mises à jour et diagnostic** : canal Stable/Bêta, vérification, installation explicite, diagnostic et liens d’aide. Une installation est refusée tant qu’un fichier modifié doit être sauvegardé.
@@ -32,7 +31,13 @@ Le changement d’inférence se fait ensuite dans la webapp, sans redémarrer le
 
 Sur le PC de cette préversion, la bibliothèque autorisée est `E:/AI/Models`. Seuls les répertoires autorisés et leurs sous-dossiers sont parcourus avec des bornes ; les liens et projecteurs multimodaux sont exclus du profil texte. Les en-têtes sont lus sans parcourir les poids. La présence d’un GGUF ne garantit pas sa compatibilité avec la version de llama-server installée. Le fichier est ouvert à son emplacement d’origine, comme par Bionic.
 
-Le profil possédé utilise un port distinct (1238 par défaut) et zéro couche GPU initialement. Le serveur externe sur 1237 ne peut pas être adopté ou arrêté. Un modèle encore chargé dans un moteur configuré bloque le nouveau lancement ; son état ambigu bloque également l’opération. Une fois le profil démarré explicitement, sa connexion se sélectionne dans **Conversation**. Les modifications de dossier, binaire et port exigent le navigateur du PC serveur ; la sélection d’un modèle de cette bibliothèque est accessible sur le réseau authentifié.
+Le profil possédé utilise un port distinct (1238 par défaut) et zéro couche GPU initialement. Le serveur externe sur 1237 ne peut pas être adopté ou arrêté. Un modèle encore chargé dans un moteur configuré bloque le nouveau lancement ; son état ambigu bloque également l’opération. Les modifications de dossier, binaire et port exigent le navigateur du PC serveur ; la sélection d’un modèle de cette bibliothèque est accessible sur le réseau authentifié.
+
+Avec llama-server actif, le champ de message propose **Fichier GGUF**, puis **Charger le GGUF**. Choisir un fichier ne lance rien. La confirmation charge ou remplace seulement le processus possédé ; après vérification du modèle, de son alias et de son contexte, Canaé applique sa connexion aux prochains messages. Il n’est pas nécessaire de modifier l’URL dans les paramètres pour ce parcours. Le modèle actuellement actif reste affiché séparément tant que le choix n’a pas abouti. Avec Bionic, la liste habituelle des modèles est conservée.
+
+Le chargement bloque les nouveaux envois et changements concurrents ; les réponses/images actives ou incertaines le refusent. L’intention est enregistrée avant effet dans un journal privé. Après perte de réponse, la lecture de son suivi peut terminer l’activation d’un processus déjà confirmé ; elle ne lance ni n’arrête aucun processus. Un état incertain demande une vérification et n’autorise aucune nouvelle soumission automatique. Les brouillons et permissions restent conservés. Passer au profil possédé efface, après confirmation, le jeton llama-server externe afin qu’il ne traverse pas cette nouvelle connexion ; le jeton Bionic reste séparé.
+
+Un lancement manuel depuis les paramètres conserve la possibilité de sélectionner ensuite la connexion dans **Serveurs du PC → Moteurs d’inférence**. Les commandes sur Bionic, ComfyUI et llama-server restent indépendantes du choix du fichier.
 
 La propriété du processus repose sur son handle enfant, jamais sur un PID seul. Une déconnexion du navigateur ne le relance pas. Après un redémarrage du compagnon, un ancien processus encore présent reste détecté sans être adopté : son arrêt se fait sur le PC. Ce profil doit être réservé à Canaé ; les demandes qu’un client tiers lui enverrait directement ne sont pas comptées comme travaux de Canaé.
 

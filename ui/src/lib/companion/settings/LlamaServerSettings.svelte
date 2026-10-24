@@ -40,16 +40,16 @@
     if (!confirm(question)) return;
     busy = true; failure = ''; notice = '';
     const requestId = newId();
-    try { await post(request, '/api/llama-server/action', { action: kind, requestId, expectedRevision: data.profile.revision, ...(kind !== 'stop' ? { modelId: selected } : {}), consent: true }, { 'X-Local-Service-CSRF': nonce }); await refresh(true); onInferenceChange?.(); notice = tr('Action confirmée. La connexion du moteur se choisit séparément dans Conversation.', 'Action confirmed. Select the engine connection separately under Conversation.'); }
+    try { await post(request, '/api/llama-server/action', { action: kind, requestId, expectedRevision: data.profile.revision, ...(kind !== 'stop' ? { modelId: selected } : {}), consent: true }, { 'X-Local-Service-CSRF': nonce }); await refresh(true); onInferenceChange?.(); notice = tr('Action confirmée. Vérifie la connexion du moteur dans Moteurs d’inférence.', 'Action confirmed. Check the engine connection under Inference engines.'); }
     catch (error) { failure = message(error); await refresh(true); notice = tr('État relu après l’action. Aucun démarrage, arrêt ou remplacement renvoyé automatiquement.', 'State refreshed after the action. No start, stop or replacement was automatically submitted again.'); } finally { busy = false; consent = false; }
   }
   $effect(() => { if (mounted && active && !wasActive) { wasActive = true; void refresh(true); } else if (!active) wasActive = false; });
   onMount(() => { mounted = true; wasActive = active; void refresh(false, true); return () => { mounted = false; }; });
 </script>
 
-<h2>{tr('Bibliothèque et processus llama-server', 'llama-server library and process')}</h2>
+<h3>{tr('Bibliothèque et lancement de llama-server', 'llama-server library and startup')}</h3>
 <p class="settings-description">{tr('Les GGUF de la bibliothèque restent partagés avec Bionic, sans copie. Un fichier présent ne garantit pas sa compatibilité avec ce binaire. Les projecteurs multimodaux sont exclus de ce profil texte.', 'Library GGUF files remain shared with Bionic, without copying. A file on disk does not guarantee compatibility with this binary. Multimodal projectors are excluded from this text profile.')}</p>
-<p class="settings-description">{tr('Le serveur existant sur 1237 reste externe : Canaé ne peut ni l’arrêter ni y changer le GGUF. Ce profil démarre un processus distinct sur 1238 par défaut. Un seul moteur de conversation doit être chargé à la fois.', 'The existing server on 1237 remains external: Canaé cannot stop it or change its GGUF. This profile starts a separate process on 1238 by default. Only one conversation engine should be loaded at a time.')}</p>
+<p class="settings-description">{tr('Canaé contrôle uniquement les processus qu’elle démarre. Un serveur lancé ailleurs reste externe : son arrêt et son changement de GGUF s’effectuent dans son application. Un seul moteur de conversation doit être chargé à la fois.', 'Canaé controls only processes it starts. A server started elsewhere remains external: stop it or change its GGUF in its own application. Only one conversation engine should be loaded at a time.')}</p>
 {#if loading && !data}<p role="status">{tr('Lecture du profil…', 'Reading profile…')}</p>{/if}
 {#if data}
   <form onsubmit={event => { event.preventDefault(); void save(); }}>

@@ -5,10 +5,14 @@
   import { tr } from './preferences.svelte';
   let { open, title, onClose, navigation, children }: { open:boolean; title:string; onClose:()=>void; navigation:Snippet; children:Snippet } = $props();
   let dialog=$state<HTMLDialogElement>();
+  let backdropPointer:number|null=null;
+  function outside(event:PointerEvent){if(!dialog)return false;const box=dialog.getBoundingClientRect();return event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom;}
+  function pointerDown(event:PointerEvent){backdropPointer=event.button===0&&outside(event)?event.pointerId:null;}
+  function pointerUp(event:PointerEvent){const close=backdropPointer===event.pointerId&&outside(event);backdropPointer=null;if(close)onClose();}
   $effect(()=>{if(!dialog)return;if(open&&!dialog.open)dialog.showModal();else if(!open&&dialog.open)dialog.close();});
 </script>
 
-<dialog bind:this={dialog} aria-label={title} class="workspace-dialog" oncancel={event=>{event.preventDefault();onClose();}} onclose={()=>{if(open)onClose();}}>
+<dialog bind:this={dialog} aria-label={title} class="workspace-dialog" onpointerdown={pointerDown} onpointerup={pointerUp} onpointercancel={()=>backdropPointer=null} oncancel={event=>{event.preventDefault();onClose();}} onclose={()=>{if(open)onClose();}}>
   <header class="workspace-dialog-header">{@render navigation()}<Button variant="ghost" size="icon" aria-label={tr('Fermer la fenêtre','Close window')} onclick={onClose}><X /></Button></header>
   <div class="workspace-dialog-content">{@render children()}</div>
 </dialog>

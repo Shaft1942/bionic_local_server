@@ -6,6 +6,7 @@ import { createInferenceGate } from './lib/inference-gate.mjs';
 import { createJobCoordinator } from './lib/job-coordinator.mjs';
 import { createCompanionLifecycle, withShutdownDeadline } from './lib/companion-lifecycle.mjs';
 import { createInferenceSettings, createInferenceRuntime, checkInferenceConnection } from './lib/inference-settings.mjs';
+import { createInferenceModelSelection } from './lib/inference-model-selection.mjs';
 import { createLlamaServerLibrary } from './lib/llama-server-library.mjs';
 import { assertExternalInferenceIdle } from './lib/llama-server-admission.mjs';
 import { createLlamaServerSettings, createLlamaServerManager, createLlamaServerProcess } from './lib/llama-server-settings.mjs';
@@ -208,9 +209,10 @@ function cacheLease(id, state, summaryOnly) {
   return state.chat;
 }
 let modelManagementBusy = false;
-let localServices, localSetup, llamaServer, localServiceBarrier = false;
+let localServices, localSetup, llamaServer, inferenceSelection, localServiceBarrier = false;
 function assertServiceAdmission() {
   lifecycle.assertAdmission();
+  if (inferenceSelection?.lifecycleStatus().active || inferenceSelection?.lifecycleStatus().reconciliationRequired) throw Object.assign(fail(409, 'Un choix de modèle attend sa fin ou sa vérification. Relis le sélecteur de modèle.'), { code: 'inference-selection-active' });
   if (llamaServer?.activeCount() || llamaServer?.lifecycleStatus().reconciliationRequired) throw Object.assign(fail(409, 'Une opération llama-server attend sa fin ou sa vérification. Relis son état dans les paramètres.'), { code: 'llama-operation-active' });
   if (inferenceOperations.size) throw Object.assign(fail(409, 'Un changement de modèle attend confirmation. Actualise son catalogue avant de poursuivre.'), { code: 'inference-operation-unconfirmed' });
   if (localServiceBarrier) throw Object.assign(fail(409, 'Une opération sur les serveurs du PC est en cours. Attends sa fin.'), { code: 'service-operation-active' });
@@ -232,6 +234,7 @@ function activeWork() {
   const gpu = gpuScheduler.snapshot();
   return { security: Number(certificateWeb.busy || !!certificateTransport?.status().candidate), conversations: busy.size, generations: active.size,
     uncertainInference: inferenceOperations.size,
+    inferenceSelection: Number(inferenceSelection?.lifecycleStatus().active || false), uncertainInferenceSelection: Number(inferenceSelection?.lifecycleStatus().reconciliationRequired || false),
     llamaServer: llamaServer?.activeCount() || 0, uncertainLlamaServer: Number(llamaServer?.lifecycleStatus().reconciliationRequired || false),
     localServices: localServices?.activeCount() || 0, pendingModelLoads: modelService?.pendingCount?.() || 0,
     gpuWork: gpu.activeModels + gpu.activeImages + gpu.queuedModels + gpu.queuedImages,
@@ -387,6 +390,11 @@ function apiHeaders() { const token = inferenceSettings.current().bionicToken; r
 function inferenceHeaders() { const current = inferenceSettings.current(), token = inferenceProvider === 'llamacpp' ? current.llamaToken : current.bionicToken; return token ? { Authorization: `Bearer ${token}` } : {}; }
 let modelTransport = (!options.inferenceFactory && options.modelTransport) || inferenceRuntime.modelTransport;
 function inferenceSettingsDTO() { return { ...inferenceSettings.snapshot(), editable: inferenceEditable, reconciliationRequired: inferenceOperations.size > 0, busy: localServiceBarrier || updatePreparing || updateMaintenance || lifecycle.status().stopping || Object.values(activeWork()).some(Boolean) || inFlightMutations > 0 }; }
+function publishInferenceRuntime(proposed, runtime) {
+  inferenceRuntime = runtime; modelTransport = runtime.modelTransport;
+  inferenceProvider = proposed.provider; API = inferenceProvider === 'llamacpp' ? proposed.llamaUrl : proposed.apiUrl;
+  Object.assign(settings, { inferenceProvider, apiUrl: proposed.apiUrl, llamaUrl: proposed.llamaUrl });
+}
 const projectFileOptions = { backupDirectory: path.join(DATA, 'file-backups'), imageDirectory: path.join(DATA, 'image-attachments'), registryPath: settings.registryPath, extraRoots: settings.extraRoots, python: settings.python, protectedPaths: () => [DATA, path.join(ROOT, 'config.launchers.local.json'), path.join(RUNTIME, 'local-services'), path.join(RUNTIME, 'local-service-hosts'), path.join(ROOT, 'scripts', 'local-service-host.py'), path.join(ROOT, 'scripts', 'select-local-service-installation.ps1'), ...localServices?.protectedPaths?.() || []] };
 const nativeProjectFiles = options.projectFiles || createProjectFiles(projectFileOptions);
 const projectFiles = options.projectFiles || createProjectFiles({ ...projectFileOptions, rootsProvider: localProjects.rootsFor });
@@ -1163,6 +1171,16 @@ async function handleRequest(req, res) {
         if (!url.pathname.startsWith('/api/updates/') || url.pathname === '/api/updates/preferences') { inFlightMutations++; countedMutation = true; }
       }
       if (req.method === 'GET' && url.pathname === '/api/inference/settings') { json(res, 200, inferenceSettingsDTO()); return; }
+      if (url.pathname === '/api/inference/model-selection' || url.pathname === '/api/inference/select-model') {
+        res.setHeader('Cache-Control', 'no-store');
+        const session = sessions.get(cookie(req));
+        if (!session.localServiceNonce) session.localServiceNonce = randomBytes(32).toString('base64url');
+        if (req.method === 'GET' && url.pathname === '/api/inference/model-selection') { json(res, 200, { ...await inferenceSelection.snapshot(), editable: inferenceEditable, csrfNonce: session.localServiceNonce }); return; }
+        if (req.method !== 'POST' || url.pathname !== '/api/inference/select-model') throw fail(404, 'Action de sélection inconnue.');
+        if (req.headers.origin !== protocol + '//' + req.headers.host || req.headers['x-local-service-csrf'] !== session.localServiceNonce) throw Object.assign(fail(403, 'Choix refusé. Relis le sélecteur de modèle.'), { code: 'csrf-refused' });
+        if (!inferenceEditable) throw Object.assign(fail(403, 'Les connexions de cette fixture sont fixées par son lanceur.'), { code: 'inference-settings-disabled' });
+        json(res, 200, { ...await inferenceSelection.select(await body(req, 4096)), editable: inferenceEditable, csrfNonce: session.localServiceNonce }); return;
+      }
       if (req.method === 'GET' && url.pathname === '/api/image-provider') { json(res, 200, imageProvider.publicInfo()); return; }
       if (url.pathname === '/api/llama-server' || url.pathname.startsWith('/api/llama-server/')) {
         res.setHeader('Cache-Control', 'no-store');
@@ -1170,8 +1188,11 @@ async function handleRequest(req, res) {
         if (!session.localServiceNonce) session.localServiceNonce = randomBytes(32).toString('base64url');
         const canConfigureLocal = /^(?:127\.|::ffff:127\.)/.test(req.socket.remoteAddress) || req.socket.remoteAddress === '::1';
         if (req.method === 'POST' && (req.headers.origin !== protocol + '//' + req.headers.host || req.headers['x-local-service-csrf'] !== session.localServiceNonce)) throw Object.assign(fail(403, 'Action llama-server refusée. Actualise les paramètres.'), { code: 'csrf-refused' });
+        // An explicit stop remains an escape from an ambiguous owned selection.
+        const input = req.method === 'POST' ? await body(req, 4096) : undefined;
+        if (req.method === 'POST' && (inferenceSelection.lifecycleStatus().active || inferenceSelection.lifecycleStatus().reconciliationRequired) && !(url.pathname === '/api/llama-server/action' && input?.action === 'stop' && !inferenceSelection.lifecycleStatus().active)) throw Object.assign(fail(409, 'Relis le choix de modèle avant une autre opération.'), { code: 'inference-selection-active' });
         if (req.method === 'GET' && url.pathname.endsWith('/models') && !canConfigureLocal && url.searchParams.get('directory') && path.resolve(url.searchParams.get('directory')) !== path.resolve((await llamaServer.snapshot()).profile.directory)) throw fail(403, 'Le catalogue distant reste limité au dossier configuré sur le PC.');
-        const result = await llamaServer.handle({ method: req.method, pathname: url.pathname, query: url.searchParams, body: req.method === 'POST' ? await body(req, 4096) : undefined, canConfigureLocal });
+        const result = await llamaServer.handle({ method: req.method, pathname: url.pathname, query: url.searchParams, body: input, canConfigureLocal });
         if (!result) throw fail(404, 'Action llama-server inconnue.');
         json(res, result.status, { ...result.body, csrfNonce: session.localServiceNonce }); return;
       }
@@ -1185,9 +1206,7 @@ async function handleRequest(req, res) {
           const proposed = inferenceSettings.propose(input), runtime = validateInferenceRuntime(inferenceFactory(proposed, { fetchImpl: fetch }));
           await inferenceSettings.save(input);
           // Constructors above have no effect. Once persistence succeeds, publish one runtime.
-          inferenceRuntime = runtime; modelTransport = runtime.modelTransport;
-          inferenceProvider = proposed.provider; API = inferenceProvider === 'llamacpp' ? proposed.llamaUrl : proposed.apiUrl;
-          Object.assign(settings, { inferenceProvider, apiUrl: proposed.apiUrl, llamaUrl: proposed.llamaUrl });
+          publishInferenceRuntime(proposed, runtime);
           json(res, 200, { ...inferenceSettingsDTO(), busy: false, applied: true }); return;
         } finally { release(); }
       }
@@ -1518,12 +1537,13 @@ localServices = options.localServiceSupervisor || await (options.localServiceSup
 localSetup=options.localServiceSetup||createLocalServiceSetup({root:ROOT,platform:options.localServicePlatform||process.platform,connections:()=>({bionicUrl:settings.apiUrl,comfyUrl:comfyImages.getSettings?.().url||settings.comfyUrl}),...options.localServiceSetupOptions});
 if (options.llamaServerManager) llamaServer = options.llamaServerManager;
 else {
-  const library = createLlamaServerLibrary(), processBackend = createLlamaServerProcess();
-  const profile = await createLlamaServerSettings({ filename: path.join(DATA, 'llama-server-settings.json'), library, reservedPorts: [PORT, settings.certificateProofPort].filter(Number.isInteger) });
+  const library = options.llamaServerLibrary || createLlamaServerLibrary(), processBackend = options.llamaServerProcess || createLlamaServerProcess();
+  const profile = options.llamaServerSettings || await createLlamaServerSettings({ filename: path.join(DATA, 'llama-server-settings.json'), library, reservedPorts: [PORT, settings.certificateProofPort].filter(Number.isInteger) });
   llamaServer = createLlamaServerManager({ settings: profile, library, processBackend,
+    startTimeoutMs: options.llamaServerOptions?.startTimeoutMs, pollMs: options.llamaServerOptions?.pollMs,
     assertIdle() {
       lifecycle.assertAdmission();
-      const work = activeWork(); delete work.llamaServer; delete work.uncertainLlamaServer;
+      const work = activeWork(); delete work.llamaServer; delete work.uncertainLlamaServer; delete work.inferenceSelection; delete work.uncertainInferenceSelection;
       if (localServiceBarrier || updatePreparing || updateMaintenance || Object.values(work).some(Boolean) || inFlightMutations > 1) throw Object.assign(fail(409, 'Attends la fin des réponses, images et opérations avant de modifier llama-server.'), { code: 'llama-work-active' });
       localServices.assertAdmission();
     },
@@ -1542,6 +1562,24 @@ else {
     }
   });
 }
+inferenceSelection = await createInferenceModelSelection({ filename: path.join(DATA, 'inference-model-selection.json'), fs, manager: llamaServer, inferenceSettings,
+  assertIdle() {
+    lifecycle.assertAdmission();
+    const work = activeWork(); delete work.inferenceSelection; delete work.uncertainInferenceSelection; delete work.uncertainLlamaServer;
+    if (!inferenceEditable || localServiceBarrier || updatePreparing || updateMaintenance || Object.values(work).some(Boolean) || inFlightMutations > 1) throw Object.assign(fail(409, 'Attends la fin des réponses, images et opérations avant de choisir un GGUF.'), { code: 'inference-selection-busy' });
+    localServices.assertAdmission();
+  },
+  prepareActivation(endpoint) {
+    if (!inferenceEditable) throw Object.assign(fail(403, 'Cette connexion est fixée par son lanceur.'), { code: 'inference-settings-disabled' });
+    // The selection consent includes switching to the owned, tokenless endpoint.
+    // A token scoped to an external llama-server must never cross this boundary.
+    const input = { provider: 'llamacpp', llamaUrl: endpoint, clearLlamaToken: true };
+    const proposed = inferenceSettings.propose(input), runtime = validateInferenceRuntime(inferenceFactory(proposed, { fetchImpl: fetch }));
+    return { input, proposed, runtime };
+  },
+  async readActiveModel(prepared, alias) { return (await prepared.runtime.modelService.list()).find(model => model.inferenceId === alias || model.name === alias); },
+  async activate(prepared, expectedRevision) { await inferenceSettings.save({ ...prepared.input, expectedRevision }); publishInferenceRuntime(prepared.proposed, prepared.runtime); }
+});
 const server = http.createServer(handle);
 server.requestTimeout = settings.requestTimeoutMs || 180000;
 server.headersTimeout = 15000;
@@ -1573,7 +1611,7 @@ function close() {
   return closing;
 }
 if (options.enableUpdateScheduling) server.once('listening', () => updater.start());
-return { server, handle, close, config, settings, certificateStore, attachCertificateTransport: controller => { certificateTransport = controller; }, clearSecuritySessions: () => { certificateWeb.clear(); sessions.clear(); }, refreshSecurityAddresses, readWeb, webChats, chatSnapshot, conversationModelContext, sendChat, chatStates, persistChat, measurements, inferenceGate, gpuScheduler, coordinator, lifecycle, activeWork, updater, localServices, llamaServer, addresses:localIPs, withScanCycle };
+return { server, handle, close, config, settings, certificateStore, attachCertificateTransport: controller => { certificateTransport = controller; }, clearSecuritySessions: () => { certificateWeb.clear(); sessions.clear(); }, refreshSecurityAddresses, readWeb, webChats, chatSnapshot, conversationModelContext, sendChat, chatStates, persistChat, measurements, inferenceGate, gpuScheduler, coordinator, lifecycle, activeWork, updater, localServices, llamaServer, inferenceSelection, addresses:localIPs, withScanCycle };
 }
 
 if (process.argv[1] && (process.platform === 'win32' ? path.resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase() : path.resolve(process.argv[1]) === fileURLToPath(import.meta.url))) {

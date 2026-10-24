@@ -3,11 +3,12 @@
   import Button from '$lib/components/ui/button/button.svelte';
   import { tr } from '../preferences.svelte';
   import { post,message,uuid,type Request } from './types';
-  let {request,active=true,onDirtyChange}:{request:Request;active?:boolean;onDirtyChange?:(dirty:boolean)=>void}=$props();
+  let {request,active=true,onDirtyChange,scope='all'}:{request:Request;active?:boolean;onDirtyChange?:(dirty:boolean)=>void;scope?:'all'|'bionic'|'comfyui'}=$props();
   let services=$state<any[]>([]),setup=$state<any>(null),profiles=$state<Record<string,Record<string,string>>>({}),candidates=$state<Record<string,any[]>>({});
   let nonce=$state(''),storageKey='',refreshing=false;
   let pending=$state<Record<string,string>>({}),intention=$state<any>(null),consents=$state<Record<string,boolean>>({}),busy=$state(''),failure=$state(''),notice=$state('');
   const names:Record<string,string>={bionic:'Bionic',comfyui:'ComfyUI'};
+  const visibleServices=$derived(services.filter(service=>scope==='all'||service.id===scope));
   const fields:Record<string,string[]>={bionic:['appPath','cliPath','apiInfoPath'],comfyui:['workingDirectory','pythonPath','entryPath']};
   const fieldName=(key:string)=>({appPath:tr('Application Bionic','Bionic application'),cliPath:tr('Commande Bionic','Bionic command'),apiInfoPath:tr('Fichier d’informations API','API information file'),workingDirectory:tr('Dossier ComfyUI','ComfyUI folder'),pythonPath:tr('Exécutable Python','Python executable'),entryPath:tr('Script de démarrage','Startup script')}[key]||key);
   const dirty=$derived(!!setup&&(JSON.stringify(profiles)!==JSON.stringify(Object.fromEntries((setup.services||[]).map((item:any)=>[item.id,{...item.profile}])))||Object.values(consents).some(Boolean)));
@@ -24,10 +25,10 @@
   onMount(()=>{void(async()=>{try{const ping=await request('/api/ping');storageKey='bionic:llama-services:'+ping.instanceId;pending=JSON.parse(sessionStorage.getItem(storageKey)||'{}');}catch{}await refresh();})();const timer=setInterval(()=>{if(active&&!document.hidden)void refresh();},3000);return()=>clearInterval(timer);});
 </script>
 
-<h2>{tr('Serveurs du PC','PC servers')}</h2><p class="settings-description">{tr('Démarrage et arrêt manuels des services configurés. Chaque action dépend de l’identité du processus, de l’activité et des droits confirmés par le serveur.','Manually start and stop configured services. Each action depends on process identity, activity and permissions confirmed by the server.')}</p>
+<h3>{scope==='all'?tr('Lancement des serveurs','Server startup'):scope==='bionic'?tr('Lancement de Bionic','Bionic startup'):tr('Lancement de ComfyUI','ComfyUI startup')}</h3><p class="settings-description">{tr('Démarrage et arrêt manuels des services configurés. Chaque action dépend de l’identité du processus, de l’activité et des droits confirmés par le serveur.','Manually start and stop configured services. Each action depends on process identity, activity and permissions confirmed by the server.')}</p>
 <div class="settings-actions"><Button variant="outline" onclick={refresh} disabled={!!busy}>{tr('Actualiser les états','Refresh status')}</Button><Button variant="ghost" onclick={reload} disabled={!!busy||!nonce}>{tr('Relire la configuration du PC','Reload PC configuration')}</Button></div>
-{#if !services.length}<p>{tr('Aucun service disponible.','No service available.')}</p>{/if}
-{#each services as service (service.id)}
+{#if !visibleServices.length}<p>{tr('Aucun service disponible.','No service available.')}</p>{/if}
+{#each visibleServices as service (service.id)}
   <section class="service-section" aria-label={names[service.id]||service.id}><h3>{names[service.id]||service.id}</h3>
   <dl class="settings-dl"><dt>{tr('Processus','Process')}</dt><dd>{service.process?.state||tr('Inconnu','Unknown')}</dd><dt>API</dt><dd>{service.api?.state||tr('Non vérifiée','Not checked')}</dd><dt>{tr('Activité','Activity')}</dt><dd>{service.activity?.state||tr('Inconnue','Unknown')}{service.activity?.count?' · '+service.activity.count:''}</dd><dt>{tr('Modèles','Models')}</dt><dd>{service.model?.state||tr('Non vérifiés','Not checked')}</dd></dl>
   <div class="settings-actions">{#each ['start','stop','restart'] as action}<Button variant={action==='start'?'default':'outline'} disabled={!!busy||!!pending[service.id]||!service.actions?.[action]?.allowed} onclick={()=>intend(service,action)}>{action==='start'?tr('Démarrer','Start'):action==='stop'?tr('Arrêter','Stop'):tr('Redémarrer','Restart')} {names[service.id]}</Button>{/each}</div>
@@ -43,5 +44,5 @@
     <pre>{JSON.stringify({configuration:service.configuration,actions:service.actions},null,2)}</pre>
   </details></section>
 {/each}
-{#if intention}<div class="confirm-action" role="group" aria-label={tr('Confirmer l’action du serveur','Confirm server action')}><h3>{tr('Confirmer l’action','Confirm action')} · {names[intention.id]}</h3><p class="settings-description">{tr('Cette action peut interrompre l’accès au service. Les états et la révision seront revérifiés avant tout effet.','This action may interrupt access to the service. Status and revision will be checked again before any effect.')}</p><div class="settings-actions"><Button onclick={act} disabled={!!busy||services.find(item=>item.id===intention.id)?.revision!==intention.revision}>{tr('Confirmer','Confirm')}</Button><Button variant="ghost" onclick={()=>intention=null}>{tr('Annuler','Cancel')}</Button></div></div>{/if}
+{#if intention&&(scope==='all'||intention.id===scope)}<div class="confirm-action" role="group" aria-label={tr('Confirmer l’action du serveur','Confirm server action')}><h3>{tr('Confirmer l’action','Confirm action')} · {names[intention.id]}</h3><p class="settings-description">{tr('Cette action peut interrompre l’accès au service. Les états et la révision seront revérifiés avant tout effet.','This action may interrupt access to the service. Status and revision will be checked again before any effect.')}</p><div class="settings-actions"><Button onclick={act} disabled={!!busy||services.find(item=>item.id===intention.id)?.revision!==intention.revision}>{tr('Confirmer','Confirm')}</Button><Button variant="ghost" onclick={()=>intention=null}>{tr('Annuler','Cancel')}</Button></div></div>{/if}
 {#if failure}<p class="settings-error" role="alert">{failure}</p>{/if}{#if notice}<p class="settings-feedback" role="status">{notice}</p>{/if}

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { X, RefreshCw } from '@lucide/svelte';
   import Button from '$lib/components/ui/button/button.svelte';
   import { tr, preferences, setPreferences, type Preferences } from './preferences.svelte';
@@ -11,17 +11,22 @@
   import SecuritySettings from './settings/SecuritySettings.svelte';
   import MaintenanceSettings from './settings/MaintenanceSettings.svelte';
   import './settings/settings.css';
-  let { request, projectId, chatId = '', modelId = '', onInferenceChange, onPreferencesChange, onClose, beforeMaintenance, active=true, onDirtyChange }: { request: Request; projectId: string; chatId?: string; modelId?: string; onInferenceChange?: () => void; onPreferencesChange?: (value: Preferences & { clearDrafts?: boolean }) => void; onClose?: () => void; beforeMaintenance?: () => boolean | Promise<boolean>; active?:boolean; onDirtyChange?:(dirty:boolean)=>void } = $props();
+  type SettingsPage='conversation'|'servers'|'appearance'|'security'|'maintenance';
+  type ServerSection='inference'|'images';
+  let { request, projectId, chatId = '', modelId = '', onInferenceChange, onPreferencesChange, onClose, beforeMaintenance, active=true, onDirtyChange, navigationRequest }: { request: Request; projectId: string; chatId?: string; modelId?: string; onInferenceChange?: () => void; onPreferencesChange?: (value: Preferences & { clearDrafts?: boolean }) => void; onClose?: () => void; beforeMaintenance?: () => boolean | Promise<boolean>; active?:boolean; onDirtyChange?:(dirty:boolean)=>void; navigationRequest?:{page:SettingsPage;section?:ServerSection;revision:number} } = $props();
   let page = $state('conversation'), revision = $state(0), error = $state(''), cleared = $state(false);
   let visited=$state(['conversation']);
+  let serverSection=$state<ServerSection>('inference'),visitedServerSections=$state<ServerSection[]>(['inference']);
   let dirtyGroups=$state<Record<string,boolean>>({});
   const dirty=$derived(Object.values(dirtyGroups).some(Boolean));
   function changed(group:string,value:boolean){if(dirtyGroups[group]!==value)dirtyGroups={...dirtyGroups,[group]:value};}
   $effect(()=>{onDirtyChange?.(dirty);});
-  const pages = $derived([{ id:'conversation',label:tr('Conversation','Conversation') },{id:'llama',label:tr('Modèles llama-server','llama-server models')},{id:'images',label:tr('Images et ComfyUI','Images and ComfyUI')},{id:'services',label:tr('Serveurs du PC','PC servers')},{id:'appearance',label:tr('Apparence et brouillons','Appearance and drafts')},{id:'security',label:tr('Connexion sécurisée','Secure connection')},{id:'maintenance',label:tr('Mises à jour et diagnostic','Updates and diagnostics')}]);
+  const pages = $derived([{ id:'conversation',label:tr('Conversation','Conversation') },{id:'servers',label:tr('Serveurs du PC','PC servers')},{id:'appearance',label:tr('Apparence et brouillons','Appearance and drafts')},{id:'security',label:tr('Connexion sécurisée','Secure connection')},{id:'maintenance',label:tr('Mises à jour et diagnostic','Updates and diagnostics')}]);
   function updatePreference(next: Partial<Preferences>) { try { const value = setPreferences(next); onPreferencesChange?.(value); error = ''; } catch { error = tr('Préférence appliquée à cet onglet ; stockage du navigateur indisponible.','Preference applied to this tab; browser storage unavailable.'); } }
   function clearDrafts() { onPreferencesChange?.({ ...preferences, clearDrafts: true }); cleared = true; }
   function selectPage(next:string){page=next;if(!visited.includes(next))visited=[...visited,next];error='';document.querySelector('.settings-content')?.scrollTo(0,0);}
+  function selectServerSection(next:ServerSection){serverSection=next;if(!visitedServerSections.includes(next))visitedServerSections=[...visitedServerSections,next];error='';document.querySelector('.settings-content')?.scrollTo(0,0);}
+  $effect(()=>{const target=navigationRequest;if(target)untrack(()=>{selectPage(target.page);if(target.page==='servers'&&target.section)selectServerSection(target.section);});});
   function refresh(){if(confirm(tr('Relire les paramètres et abandonner les modifications non enregistrées ?','Reload settings and discard unsaved changes?'))){dirtyGroups={};revision++;}}
   onMount(() => { const close = (event: KeyboardEvent) => { if (active&&event.key === 'Escape') onClose?.(); };const leave=(event:BeforeUnloadEvent)=>{if(dirty){event.preventDefault();event.returnValue='';}};addEventListener('beforeunload',leave);addEventListener('keydown', close); return () => {removeEventListener('keydown', close);removeEventListener('beforeunload',leave);}; });
 </script>
@@ -31,10 +36,17 @@
   <div class="settings-layout"><nav class="settings-navigation" aria-label={tr('Catégories des paramètres','Settings categories')}>{#each pages as item}<button aria-current={page === item.id ? 'page' : undefined} onclick={() => selectPage(item.id)}>{item.label}</button>{/each}<a href="/legacy/">{tr('Ancienne interface','Previous interface')}</a></nav>
   <div class="settings-content">
     {#key revision}
-    {#if visited.includes('conversation')}<div class="settings-page" hidden={page!=='conversation'}><InferenceSettings {request} {projectId} {chatId} {modelId} {onInferenceChange} active={active&&page==='conversation'} onDirtyChange={value=>changed('inference',value)} /></div>{/if}
-    {#if visited.includes('llama')}<div class="settings-page" hidden={page!=='llama'}><LlamaServerSettings {request} {onInferenceChange} active={active&&page==='llama'} onDirtyChange={value=>changed('llama',value)} /></div>{/if}
-    {#if visited.includes('images')}<div class="settings-page" hidden={page!=='images'}><ImageSettings {request} onDirtyChange={value=>changed('images',value)} /></div>{/if}
-    {#if visited.includes('services')}<div class="settings-page" hidden={page!=='services'}><ServicesSettings {request} active={active&&page==='services'} onDirtyChange={value=>changed('services',value)} /></div>{/if}
+    {#if page==='servers'}
+      <h2>{tr('Serveurs du PC','PC servers')}</h2><p class="settings-description">{tr('Configure les connexions et le lancement des moteurs de conversation et de génération d’images.','Configure connections and startup for conversation and image generation engines.')}</p>
+      <nav class="server-navigation" aria-label={tr('Types de serveurs','Server types')}>
+        <button aria-current={serverSection==='inference'?'page':undefined} onclick={()=>selectServerSection('inference')}>{tr('Moteurs d’inférence','Inference engines')}</button>
+        <button aria-current={serverSection==='images'?'page':undefined} onclick={()=>selectServerSection('images')}>{tr('Génération d’images','Image generation')}</button>
+      </nav>
+    {/if}
+    <div class="settings-page" hidden={page!=='conversation'&&!(page==='servers'&&serverSection==='inference')}><InferenceSettings {request} {projectId} {chatId} {modelId} {onInferenceChange} scope={page==='servers'?'engines':'conversation'} active={active&&(page==='conversation'||page==='servers'&&serverSection==='inference')} onDirtyChange={value=>changed('inference',value)} /></div>
+    {#if visited.includes('servers')&&visitedServerSections.includes('images')}<div class="settings-page" hidden={page!=='servers'||serverSection!=='images'}><ImageSettings {request} onDirtyChange={value=>changed('images',value)} /></div>{/if}
+    {#if visited.includes('servers')}<div class="settings-page" hidden={page!=='servers'}><div class="settings-divider"></div><ServicesSettings {request} scope={serverSection==='inference'?'bionic':'comfyui'} active={active&&page==='servers'} onDirtyChange={value=>changed('services',value)} /></div>{/if}
+    {#if visited.includes('servers')&&visitedServerSections.includes('inference')}<div class="settings-page" hidden={page!=='servers'||serverSection!=='inference'}><div class="settings-divider"></div><LlamaServerSettings {request} {onInferenceChange} active={active&&page==='servers'&&serverSection==='inference'} onDirtyChange={value=>changed('llama',value)} /></div>{/if}
     {#if visited.includes('security')}<div class="settings-page" hidden={page!=='security'}><SecuritySettings {request} active={active&&page==='security'} /></div>{/if}
     {#if visited.includes('maintenance')}<div class="settings-page" hidden={page!=='maintenance'}><MaintenanceSettings {request} {beforeMaintenance} active={active&&page==='maintenance'} /></div>{/if}
     {#if page==='appearance'}<div class="settings-page">
@@ -49,3 +61,10 @@
     {#if error}<p role="alert" class="settings-error">{error}</p>{/if}
   </div></div>
 </section>
+
+<style>
+  .server-navigation{display:flex;flex-wrap:wrap;gap:6px;margin:18px 0 24px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+  .server-navigation button{padding:9px 13px;border-radius:8px;color:var(--muted-foreground);font-size:13px;line-height:1.4;text-align:left;}
+  .server-navigation button:hover{background:var(--muted);color:var(--foreground);}
+  .server-navigation button[aria-current=page]{background:var(--secondary);color:var(--foreground);font-weight:500;}
+</style>

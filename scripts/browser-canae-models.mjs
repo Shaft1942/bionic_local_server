@@ -37,7 +37,8 @@ async function fixture() {
 }
 async function openSettings(page) {
   await page.getByRole('navigation', { name: 'Espace du projet', exact: true }).getByRole('button', { name: 'Paramètres', exact: true }).click();
-  await page.getByRole('navigation', { name: 'Catégories des paramètres', exact: true }).getByRole('button', { name: /llama-server/i }).click();
+  await page.getByRole('navigation', { name: 'Catégories des paramètres', exact: true }).getByRole('button', { name: 'Serveurs du PC',exact:true }).click();
+  await page.getByRole('navigation', { name: 'Types de serveurs', exact: true }).getByRole('button', { name: 'Moteurs d’inférence',exact:true }).click();
   await page.getByRole('combobox', { name: 'GGUF du profil', exact: true }).waitFor();
 }
 async function shot(page, name) { if (captures) await page.screenshot({ path: path.join(captures, name), fullPage: false }); }
@@ -74,8 +75,9 @@ try {
       const ping = await (await context.request.get(f.url + '/api/ping')).json();
       await page.evaluate(instanceId => localStorage.setItem('bionic:llama-preferences:' + instanceId, JSON.stringify({ language: 'en', theme: 'system', draftHours: 24 })), ping.instanceId);
       await page.reload(); await page.getByRole('navigation', { name: 'Project workspace', exact: true }).getByRole('button', { name: 'Settings', exact: true }).click();
-      await page.getByRole('navigation', { name: 'Settings categories', exact: true }).getByRole('button', { name: 'llama-server models', exact: true }).click();
-      await page.getByRole('heading', { name: 'llama-server library and process', exact: true }).waitFor(); await page.getByRole('slider', { name: 'Slider for Context requested at startup', exact: true }).waitFor();
+      await page.getByRole('navigation', { name: 'Settings categories', exact: true }).getByRole('button', { name: 'PC servers', exact: true }).click();
+      await page.getByRole('navigation', { name: 'Server types', exact: true }).getByRole('button', { name: 'Inference engines', exact: true }).click();
+      await page.getByRole('heading', { name: 'llama-server library and startup', exact: true }).waitFor(); await page.getByRole('slider', { name: 'Slider for Context requested at startup', exact: true }).waitFor();
       assert.equal(f.stats.starts, 2); assert.equal(f.stats.stops, 2); assert.deepEqual(errors, []); await shot(page, width + '-canae-models-en.png');
       results.push({ width, catalogue: true, noImplicitStart: true, exactContextAndSlider: true, lostReplyRecoveredByGet: true, reloadWithoutRepost: true, replaceAndStopExplicit: true, busyRefusedBeforeEffect: true, localeSwitch: true, starts: f.stats.starts, stops: f.stats.stops, pageErrors: errors.length });
     } catch (error) { await shot(page, width + '-canae-models-failure.png').catch(() => {}); console.error(JSON.stringify({ width, errors, posts: posts.map(item => item.pathname), stats: f.stats })); throw error; }

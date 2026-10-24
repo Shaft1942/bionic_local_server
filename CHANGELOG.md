@@ -1,5 +1,12 @@
 # Journal des versions
 
+## 2.6.0-beta.4 — Canaé — candidate locale
+
+- Choix du GGUF depuis le champ de message avec chargement confirmé, remplacement du modèle possédé et activation de sa connexion une fois le modèle et son contexte prêts. Le modèle actif reste distinct du fichier sélectionné ; les réponses perdues se vérifient sans second lancement.
+- Paramètres regroupés sous **Serveurs du PC**, avec **Moteurs d’inférence** (Bionic et llama-server) et **Génération d’images** (ComfyUI). Conversation conserve les réglages du modèle et de longueur de réponse.
+- Les fenêtres se ferment au clic sur le fond extérieur, en conservant les brouillons. Cliquer dedans ou commencer un glissement dedans ne les ferme pas.
+- L’accueil présente Canaé sans mention de l’interface utilisée.
+
 ## 2.6.0-beta.3 — Canaé — candidate locale
 
 - L’application devient Canaé, avec la mascotte fournie. Les identifiants techniques et le format des mises à jour restent compatibles.

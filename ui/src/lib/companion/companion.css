@@ -96,6 +96,9 @@ input { background: transparent; border: 1px solid var(--border); border-radius:
 .composer [data-slot=textarea]:focus-visible { box-shadow: none; }
 .composer-toolbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-top: 3px; }
 .composer-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 3px; min-width: 0; }
+.composer-controls:has(.model-picker.llama) { flex:1; }
+.composer-model { min-width:0; max-width:100%; }
+.composer-model:has(.model-picker.llama) { flex:1 1 300px; }
 .composer-controls select { max-width: 220px; background: transparent; border: 0; border-radius: 6px; padding: 7px 20px 7px 6px; font-size: 11px; color: var(--muted-foreground); text-overflow: ellipsis; }
 .send-controls { display: flex; align-items: center; flex-shrink: 0; gap: 3px; }
 .send-button { border-radius: 50%; }
