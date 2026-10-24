@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { createLocalServiceAdapters as createAdapters } from '../lib/local-service-adapters.mjs';
 const identity = { pid: 4321, createdAt: 'synthetic-start-time', executable: 'C:/fixture/Bionic.exe', configIdentity: { mtimeMs: 1, ino: 2 } };
-const createLocalServiceAdapters = options => createAdapters({ inspectController: async () => structuredClone(identity), ...options });
+const cliIdentity = { size: 123, sha256: 'a'.repeat(64) };
+const createLocalServiceAdapters = options => createAdapters({ inspectController: async () => structuredClone(identity), readCliIdentity: async () => ({ ...cliIdentity }), ...options });
 
-const profile = { id: 'bionic', port: 1235, url: 'http://fixture.invalid:1235', fingerprint: 'fixture', cliPath: 'C:/fixture/lms.exe', apiInfoPath: 'C:/fixture/http-server.json', exclusiveControl: true };
+const profile = { id: 'bionic', port: 1235, url: 'http://fixture.invalid:1235', fingerprint: 'fixture', cliPath: 'C:/fixture/lms.exe', apiInfoPath: 'C:/fixture/http-server.json', exclusiveControl: true, fileIdentity: { cliPath: cliIdentity } };
 const receipt = { profileFingerprint: 'fixture', apiPort: 1235, controllerIdentity: identity };
 const json = data => ({ ok: true, json: async () => data });
 
@@ -152,5 +153,42 @@ test('cold auto-started API requires listener ownership of the exact spawned des
     if (ownsApi) assert.equal((await adapters.start({ ...profile, appPath: 'C:/fixture/Bionic.exe' })).desktopPid, 4321);
     else await assert.rejects(adapters.start({ ...profile, appPath: 'C:/fixture/Bionic.exe' }), { code: 'identity_unconfirmed' });
     assert.equal(starts, 0);
+  }
+});
+
+test('changed or missing CLI content identity refuses before any CLI invocation or Desktop fallback', async () => {
+  for (const expected of [cliIdentity, undefined]) {
+    let calls = 0, spawns = 0;
+    const adapters = createLocalServiceAdapters({ platform: 'win32', readCliIdentity: async () => ({ ...cliIdentity, sha256: 'b'.repeat(64) }), execFileImpl: async () => { calls++; }, spawnImpl: () => { spawns++; } });
+    await assert.rejects(adapters.start({ ...profile, appPath: identity.executable, fileIdentity: { cliPath: expected } }), { code: 'identity_unconfirmed', effectAttempted: false });
+    assert.equal(calls, 0); assert.equal(spawns, 0);
+  }
+});
+
+test('CLI content is revalidated before start and stop effects after a valid status call', async () => {
+  for (const action of ['start', 'stop']) {
+    let reads = 0; const calls = [];
+    const adapters = createLocalServiceAdapters({ platform: 'win32', readCliIdentity: async () => ++reads >= 2 ? { ...cliIdentity, sha256: 'b'.repeat(64) } : cliIdentity,
+      execFileImpl: async (file, args) => { calls.push(args[1]); return { stdout: JSON.stringify({ running: action === 'stop', port: profile.port }) }; },
+    });
+    await assert.rejects(action === 'start' ? adapters.start(profile) : adapters.stop(profile, receipt), { code: 'identity_unconfirmed', effectAttempted: false });
+    assert.deepEqual(calls, ['status']);
+  }
+});
+
+for (const portState of ['absent', 'present', 'unknown', 'error']) test(`Bionic API-unavailable stop observation requires official stopped status and native listener ${portState}`, async () => {
+  const adapters = createLocalServiceAdapters({ platform: 'win32', fetchImpl: async () => { throw Error('Synthetic unavailable API'); },
+    execFileImpl: async () => ({ stdout: JSON.stringify({ running: false, port: profile.port }) }),
+    inspectPort: async () => { if (portState === 'error') throw Error('Synthetic native timeout'); return portState; },
+  });
+  const observed = await adapters.observe(profile, { ...receipt, profileFingerprint: 'legacy-fingerprint' });
+  assert.equal(observed.process.state, portState === 'absent' ? 'stopped' : 'unknown');
+  assert.equal(observed.api.state, 'unavailable');
+});
+
+test('an absent listener never overrides a running or different-port official Bionic status', async () => {
+  for (const status of [{ running: true, port: profile.port }, { running: false, port: profile.port + 1 }, { running: false }]) {
+    const adapters = createLocalServiceAdapters({ platform: 'win32', fetchImpl: async () => { throw Error('Synthetic unavailable API'); }, execFileImpl: async () => ({ stdout: JSON.stringify(status) }), inspectPort: async () => 'absent' });
+    assert.equal((await adapters.observe(profile, receipt)).process.state, 'unknown');
   }
 });

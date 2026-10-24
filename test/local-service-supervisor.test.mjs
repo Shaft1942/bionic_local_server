@@ -203,3 +203,24 @@ for (const [action, correlated] of [['restart', true], ['start', false], ['resta
   if (correlated) assert.doesNotThrow(() => supervisor.assertAdmission());
   else assert.throws(() => supervisor.assertAdmission(), { code: 'local_service_maintenance' });
 });
+
+test('Comfy timed-out adapter start retains its correlated owned receipt and reload confirms late API readiness', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'launcher-comfy-late-api-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const profile = { id: 'comfyui', type: 'comfyui-python', fingerprint: 'late-comfy-profile', exclusiveControl: true, port: 8188, url: 'http://fixture.invalid:8188', startTimeoutMs: 1 };
+  const receipt = Object.freeze({ version: 1, id: 'comfyui', pid: 9001, profileFingerprint: profile.fingerprint, operationId: '12345678-1234-1234-1234-123456789abc', token: 'f'.repeat(64) });
+  let ready = false, launches = 0;
+  const supervisor = await createLocalServiceSupervisor({ root, platform: 'win32', profilesLoader: async () => ({ revision: 'late-comfy', errors: {}, comfyui: profile }),
+    processBackend: { async launch() { launches++; return receipt; }, async inspect(value) { assert.equal(value.token, receipt.token); assert.equal(value.operationId, receipt.operationId); return { state: 'running' }; } },
+    inspectController: async () => ({ pid: receipt.pid, createdAt: 'synthetic-owned-start', executable: 'C:/fixture/python.exe' }),
+    fetchImpl: async url => { if (!ready) throw Error('Synthetic API is still importing'); return Response.json(url.endsWith('/queue') ? { queue_running: [], queue_pending: [] } : { system: { comfyui_version: 'synthetic' } }); },
+  }); t.after(() => supervisor.close());
+  const state = (await supervisor.snapshot()).services.find(service => service.id === 'comfyui');
+  const operation = await supervisor.action('comfyui', intent(state.revision));
+  const timedOut = await done(supervisor, operation.id);
+  assert.equal(timedOut.status, 'unknown'); assert.equal(timedOut.resultCode, 'availability_unconfirmed');
+  assert.throws(() => supervisor.assertAdmission(), { code: 'local_service_maintenance' });
+  ready = true;
+  await supervisor.reload();
+  assert.equal((await supervisor.operation(operation.id)).status, 'succeeded');
+  assert.doesNotThrow(() => supervisor.assertAdmission()); assert.equal(launches, 1);
+});

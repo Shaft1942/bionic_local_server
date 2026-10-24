@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { loadLocalServiceProfiles } from '../lib/local-service-config.mjs';
+import { loadLocalServiceProfiles, launcherCLIIdentity } from '../lib/local-service-config.mjs';
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'launcher-config-'));
@@ -74,4 +74,31 @@ test('Bionic desktop bootstrap is optional and API metadata may not exist while 
   f.config.services.bionic.apiInfoPath = path.join(f.root, 'missing-parent', 'file.json');
   await f.write(f.config);
   assert.equal((await loadLocalServiceProfiles(f)).errors.bionic, 'PROFILE_PATH_UNAVAILABLE');
+});
+
+test('Bionic CLI byte-identical recreation preserves its profile while changed executable bytes revoke it', async t => {
+  const f = await fixture(t), cliPath = path.join(f.root, 'lms.exe');
+  await fs.writeFile(cliPath, 'synthetic CLI content A'); f.config.services.bionic.cliPath = cliPath;
+  await f.write(f.config);
+  const first = await loadLocalServiceProfiles(f);
+  assert.match(first.bionic.fileIdentity.cliPath.sha256, /^[a-f0-9]{64}$/);
+  const replacement = path.join(f.root, 'replacement.exe');
+  await fs.writeFile(replacement, 'synthetic CLI content A'); await fs.rename(replacement, cliPath);
+  assert.equal((await loadLocalServiceProfiles(f)).bionic.fingerprint, first.bionic.fingerprint);
+  const before = await fs.stat(cliPath);
+  await fs.writeFile(cliPath, 'synthetic CLI content B'); await fs.utimes(cliPath, before.atime, before.mtime);
+  assert.notEqual((await loadLocalServiceProfiles(f)).bionic.fingerprint, first.bionic.fingerprint);
+});
+
+test('CLI hashing rejects metadata drift during the bounded read and enforces its byte limit', async t => {
+  const f = await fixture(t), cliPath = path.join(f.root, 'lms.exe');
+  await fs.writeFile(cliPath, 'synthetic stable CLI');
+  let closed = false;
+  const unstableFS = { ...fs, async open(filename, flags) {
+    const handle = await fs.open(filename, flags); let reads = 0;
+    return { async stat() { const value = await handle.stat(); return ++reads === 2 ? { ...value, mtimeMs: value.mtimeMs + 1 } : value; },
+      createReadStream: options => handle.createReadStream(options), async close() { closed = true; await handle.close(); } };
+  } };
+  await assert.rejects(launcherCLIIdentity(cliPath, { fs: unstableFS }), { code: 'CLI_IDENTITY_UNCONFIRMED' }); assert.equal(closed, true);
+  await assert.rejects(launcherCLIIdentity(cliPath, { maxBytes: 2 }), { code: 'CLI_IDENTITY_UNCONFIRMED' });
 });

@@ -18,6 +18,10 @@ La fin confirmée d’un processus termine l’opération correspondante. La sé
 
 La reprise des démarrages et redémarrages ComfyUI exige un reçu corrélé à la bonne opération. Un reçu ancien ou appartenant à une autre demande ne suffit pas à confirmer l’action.
 
+Ce reçu est conservé aussi quand l’API devient prête après le délai initial. Le démarrage se réconcilie alors par relecture, sans lancer une deuxième instance.
+
+Bionic peut recopier son CLI lors du démarrage du Desktop. L’identité approuvée du CLI repose sur le chemin canonique et le contenu SHA-256, vérifiés avant chaque invocation. Une recopie identique reste utilisable ; des octets modifiés imposent une nouvelle validation. Les preuves du contrôleur (processus, date de création, exécutable et configuration native) restent nécessaires. Après un arrêt natif, un nouveau démarrage exige à la fois le statut arrêté du CLI et l’absence de listener local confirmée.
+
 Une erreur ponctuelle d’écriture d’un checkpoint texte conserve l’état à sauvegarder. Le serveur retente sa persistance même quand le navigateur est déconnecté et qu’aucun nouveau token n’arrive.
 
 ## Extensions restant à concevoir

@@ -6,6 +6,7 @@
 - Les lots réutilisent leurs travaux après reconnexion ou redémarrage, sans nouvelle soumission. Les seeds sont distinctes et les demandes invalides sont refusées avant effet.
 - Un remplacement llama-server incertain ne peut plus déclarer réussi le chargement de l’ancien modèle. Les démarrages terminés tardivement se réconcilient à la relecture et libèrent les opérations suivantes.
 - Les reprises des démarrages et redémarrages ComfyUI exigent un reçu du contrôleur corrélé à la bonne opération.
+- Un démarrage ComfyUI prêt après le délai initial conserve son reçu corrélé pour la récupération. Bionic reconnaît une recopie identique de son CLI par son contenu, refuse un binaire modifié et permet un nouveau départ après un arrêt natif prouvé.
 - Une erreur ponctuelle de sauvegarde d’une réponse en cours est retentée même sans nouveau token ni client connecté.
 
 ## 2.6.0-beta.5 — Canaé — candidate locale
