@@ -40,7 +40,7 @@ async function fixture(){
   return{app,root,files:bootstrap.files,stats,url:'http://127.0.0.1:'+app.server.address().port};
 }
 async function sidebar(page){if(await page.locator('dialog[open]').count())await page.getByRole('button',{name:'Fermer la fenêtre',exact:true}).click();const opener=page.getByRole('button',{name:'Ouvrir la navigation',exact:true});if(await opener.isVisible())await opener.click();}
-async function closeSidebar(page,width){if(width<760){const button=page.getByRole('button',{name:'Fermer la navigation',exact:true});if(await button.isVisible())await button.click();}}
+async function closeSidebar(page,width){if(width<760)await page.getByRole('button',{name:'Fermer la navigation',exact:true}).waitFor({state:'hidden'});}
 async function projectChat(page,width){await sidebar(page);await page.getByRole('button',{name:'Nouveau chat dans Atelier de démonstration',exact:true}).click();await page.getByLabel('Projet de la conversation: Atelier de démonstration',{exact:true}).waitFor();await closeSidebar(page,width);}
 async function openProjectChat(page,width,name){await sidebar(page);const group=page.locator('[data-project-id="'+PROTOTYPE_PROJECT+'"]');const toggle=group.locator('.project-collapse');if(await toggle.getAttribute('aria-expanded')!=='true')await toggle.click();await group.getByRole('button',{name,exact:true}).click();await page.getByLabel('Projet de la conversation: Atelier de démonstration',{exact:true}).waitFor();await closeSidebar(page,width);}
 async function topTab(page,name){await page.getByRole('navigation',{name:'Espace du projet',exact:true}).getByRole('button',{name,exact:true}).click();}
