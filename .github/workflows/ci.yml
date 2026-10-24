@@ -16,11 +16,6 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    # Keep fixture paths canonical instead of inheriting Windows 8.3 user TEMP aliases.
-    env:
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
-      TMPDIR: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -28,6 +23,9 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
+      # Avoid Windows 8.3 user TEMP aliases in canonical fixture-path checks.
+      - name: Use runner-owned temporary directory
+        run: node -e "require('node:fs').appendFileSync(process.env.GITHUB_ENV, ['TEMP', 'TMP', 'TMPDIR'].map(key => key + '=' + process.env.RUNNER_TEMP).join('\n') + '\n')"
       - run: npm run check
       # Bound process contention for cold PowerShell and certificate operations.
       - run: node --test --test-concurrency=2 test/*.test.mjs
