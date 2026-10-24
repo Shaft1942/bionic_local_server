@@ -18,7 +18,8 @@ const schema = {
   EmptyLatentImage:{input:{required:{width:['INT'],height:['INT'],batch_size:['INT']}},output:['LATENT']},
   KSampler:{input:{required:{model:['MODEL'],positive:['CONDITIONING'],negative:['CONDITIONING'],latent_image:['LATENT'],seed:['INT'],steps:['INT'],cfg:['FLOAT'],sampler_name:[['euler','euler_ancestral']],scheduler:[['simple','normal']],denoise:['FLOAT']}},output:['LATENT']},
   VAEDecode:{input:{required:{samples:['LATENT'],vae:['VAE']}},output:['IMAGE']},
-  SaveImage:{input:{required:{images:['IMAGE'],filename_prefix:['STRING']}},output:[]}
+  SaveImage:{input:{required:{images:['IMAGE'],filename_prefix:['STRING']}},output:['IMAGE']},
+  FreeMemoryAfterWorkflow:{input:{required:{},optional:{trigger:['*']}},output:[],output_node:true}
 };
 async function fixture(t,options={}) {
   const directory=await fs.mkdtemp(path.join(os.tmpdir(),'comfy-settings-test-'));

@@ -78,6 +78,7 @@
             <label class="agent-files-option"><input id="agent-web" type="checkbox"><span>Rechercher et lire Internet</span></label>
             <label class="agent-files-option"><input id="agent-web-approval" type="checkbox"><span>Valider chaque recherche et URL avant envoi</span></label>
             <label class="agent-files-option"><input id="agent-images" type="checkbox" aria-describedby="image-settings-help"><span>Générer des images avec ComfyUI</span></label>
+            <label class="image-model-choice" for="image-workflow"><span>Modèle d’image</span><select id="image-workflow" aria-describedby="image-settings-help"></select></label>
             <p id="image-settings-help" class="tools-help">Active et configure ComfyUI dans les paramètres.</p>
             <label class="agent-files-option"><input id="agent-scripts" type="checkbox"><span>Scripts sur le PC, avec validation</span></label>
             <p class="tools-help">Chaque script attend ton accord dans le chat avant de s’exécuter.</p>
@@ -152,8 +153,15 @@
           <label class="settings-check"><input id="comfy-enabled" type="checkbox"><span>Activer ComfyUI pour ce compagnon</span></label>
           <label for="comfy-url">Adresse du serveur ComfyUI</label><input id="comfy-url" type="url" placeholder="http://127.0.0.1:8188" required autocomplete="off" spellcheck="false" aria-describedby="comfy-url-help">
           <p id="comfy-url-help">Adresse vue depuis le PC qui héberge le compagnon. Exemple réseau : http://192.168.1.197:8188.</p>
-          <label for="comfy-workflow">Workflow</label><select id="comfy-workflow"></select>
-          <p>Le workflow choisi conserve ses modèles et ses réglages. Chaque message nécessite aussi l’option Images dans le menu Outils.</p>
+          <label for="comfy-workflow">Modèle d’image</label><select id="comfy-workflow"></select>
+          <fieldset class="comfy-loras"><legend>Jusqu’à deux LoRA pour ce modèle</legend>
+            <p>La liste vient de ComfyUI et comprend ses dossiers supplémentaires et ses téléchargements. Utilise des LoRA SDXL / Illustrious pour HassakuXL, ou Krea2 pour Krea2. Leur présence dans la liste ne garantit pas leur compatibilité.</p>
+            <div class="comfy-lora-row"><div><label for="comfy-lora-1">LoRA 1</label><select id="comfy-lora-1"><option value="">Aucun LoRA</option></select></div><div class="comfy-lora-strength"><label for="comfy-lora-1-strength">Force du LoRA 1<output id="comfy-lora-1-value" for="comfy-lora-1-strength" aria-hidden="true">1,00</output></label><input id="comfy-lora-1-strength" type="range" min="-2" max="20" step="0.05" value="1"></div></div>
+            <div class="comfy-lora-row"><div><label for="comfy-lora-2">LoRA 2</label><select id="comfy-lora-2"><option value="">Aucun LoRA</option></select></div><div class="comfy-lora-strength"><label for="comfy-lora-2-strength">Force du LoRA 2<output id="comfy-lora-2-value" for="comfy-lora-2-strength" aria-hidden="true">1,00</output></label><input id="comfy-lora-2-strength" type="range" min="-2" max="20" step="0.05" value="1"></div></div>
+            <p>Force 0 : LoRA désactivé. Les deux choix et leurs forces sont conservés séparément pour chaque modèle.</p>
+            <button id="comfy-loras-refresh" class="file-action" type="button">Actualiser les LoRA de ComfyUI</button><p id="comfy-loras-status" role="status"></p>
+          </fieldset>
+          <p>Le modèle choisi conserve son workflow et ses réglages. Free Memory after Workflow (/free) libère les modèles ComfyUI après la sauvegarde de chaque image. Chaque message nécessite aussi l’option Images dans le menu Outils.</p>
           <p id="comfy-experimental">La chaîne Hassaku vers Krea2 reste expérimentale et n’est pas proposée comme workflow automatique.</p>
           <div class="settings-actions"><button id="comfy-test" class="file-action" type="button">Tester la connexion et les modèles</button><button id="comfy-save" class="primary" type="submit">Enregistrer ComfyUI</button></div>
           <p id="comfy-result" role="status"></p><p id="comfy-error" class="error" role="alert" hidden></p>

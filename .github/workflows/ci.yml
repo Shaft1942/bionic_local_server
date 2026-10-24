@@ -1,11 +1,17 @@
 name: Vérifications
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
+    timeout-minutes: 15
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest]

@@ -35,7 +35,7 @@ function fixture(intercept=()=>undefined) {
     if(route==='/api/capabilities')return {items:[{name:'Capacité actuelle',description:'Description actuelle.'}]};
     throw Error('Unexpected API route '+route);
   };
-  const context=vm.createContext({document,Intl,URLSearchParams});
+  const context=vm.createContext({document,Intl,URLSearchParams,structuredClone});
   vm.runInContext(source,context);
   const settings=context.createCompanionSettings({api,getState:()=>state,node:(tag,className,textContent)=>({tag,className,textContent}),onChange(){}});
   const fire=(id,type='click')=>element(id).listeners[type]({currentTarget:element(id),preventDefault(){}});
@@ -43,6 +43,47 @@ function fixture(intercept=()=>undefined) {
   async function saveOutput(value,all=false){element('output-mode').value=value===null?'auto':'manual';element('output-tokens').value=value??8192;element('output-all-sessions').checked=all;return fire('output-settings-form','submit');}
   return {state,element,settings,writes,fire,open,saveOutput};
 }
+
+test('LoRA form keeps two choices and strengths independently when switching image models',async()=>{
+  const data={...defaultComfy,enabled:true,workflows:[{id:'krea2_turbo',label:'Krea2'},{id:'hassaku_illustrious',label:'HassakuXL'}],loraProfiles:{krea2_turbo:[],hassaku_illustrious:[]}};
+  const f=fixture((route,options)=>route==='/api/comfy/loras'?{loras:['downloaded.safetensors','extra/detail.safetensors']}:route==='/api/comfy/settings'?options?.method==='POST'?{...data,...JSON.parse(options.body)}:structuredClone(data):undefined);
+  await f.open();await tick();
+  f.element('comfy-lora-1').value='downloaded.safetensors';f.element('comfy-lora-1-strength').value='0.6';
+  f.element('comfy-lora-2').value='extra/detail.safetensors';f.element('comfy-lora-2-strength').value='0.25';
+  f.fire('comfy-lora-1-strength','input');f.fire('comfy-lora-2-strength','input');
+  assert.equal(f.element('comfy-lora-1-value').textContent,'0,60');assert.equal(f.element('comfy-lora-2-value').textContent,'0,25');
+  f.element('comfy-workflow').value='hassaku_illustrious';f.fire('comfy-workflow','change');
+  assert.equal(f.element('comfy-lora-1').value,'');
+  f.element('comfy-lora-1').value='extra/detail.safetensors';f.element('comfy-lora-1-strength').value='0.9';
+  f.element('comfy-workflow').value='krea2_turbo';f.fire('comfy-workflow','change');
+  assert.equal(f.element('comfy-lora-1').value,'downloaded.safetensors');assert.equal(f.element('comfy-lora-1-strength').value,'0.6');assert.equal(f.element('comfy-lora-2-strength').value,'0.25');
+  assert.equal(f.element('comfy-lora-1-value').textContent,'0,60');assert.equal(f.element('comfy-lora-1-strength').attributes['aria-valuetext'],'0,60');
+  await f.fire('comfy-settings-form','submit');
+  const saved=f.writes.findLast(write=>write.route==='/api/comfy/settings').body;
+  assert.equal(saved.loraProfiles.krea2_turbo.length,2);assert.equal(saved.loraProfiles.hassaku_illustrious[0].strength,.9);
+  f.element('image-workflow').value='hassaku_illustrious';assert.equal(f.settings.decorate({model:'m',imageAccess:true}).imageWorkflowId,'hassaku_illustrious');
+});
+
+test('late LoRA catalog replies cannot overwrite a newer settings view or its selected slots',async()=>{
+  const old=deferred();let reads=0;
+  const data={...defaultComfy,loraProfiles:{krea2_turbo:[{name:'new.safetensors',strength:.5}]}};
+  const f=fixture(route=>route==='/api/comfy/settings'?structuredClone(data):route==='/api/comfy/loras'?++reads===1?old.promise:{loras:['new.safetensors']}:undefined);
+  await f.open();f.settings.close();await f.open();await tick();
+  assert.equal(f.element('comfy-lora-1').value,'new.safetensors');
+  old.resolve({loras:['stale.safetensors']});await tick();
+  assert.equal(f.element('comfy-lora-1').value,'new.safetensors');assert.equal(f.element('comfy-loras-status').textContent,'1 LoRA disponible(s) dans ComfyUI.');
+});
+
+test('image selection follows each conversation and its draft when the composer is refreshed',async()=>{
+  const data={...defaultComfy,enabled:true,workflows:[{id:'krea2_turbo',label:'Krea2'},{id:'hassaku_illustrious',label:'HassakuXL'}]};
+  const f=fixture(route=>route==='/api/comfy/settings'?data:undefined);await f.settings.refresh();
+  f.state.chat={imageWorkflowId:'hassaku_illustrious'};f.settings.imagePermission();
+  assert.equal(f.element('image-workflow').value,'hassaku_illustrious');
+  f.state.draftImageWorkflowId='krea2_turbo';f.settings.imagePermission();
+  assert.equal(f.element('image-workflow').value,'krea2_turbo');
+  f.state.draftImageWorkflowId=null;f.state.chat={imageWorkflowId:'krea2_turbo'};f.settings.imagePermission();
+  assert.equal(f.element('image-workflow').value,'krea2_turbo');
+});
 
 test('a session-only draft preference is consumed after acceptance and does not leak into the next new chat',async()=>{
   const f=fixture();await f.open();await f.saveOutput(777);
