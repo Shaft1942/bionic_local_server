@@ -71,6 +71,25 @@ test('llama ignores strings, comments, tags, levels flags and ambiguous or overw
   for (const template of unknown) assert.equal(llamaThinkingCapability({ chat_template: template, chat_template_caps: { supports_reasoning_effort: true } }), null, String(template).slice(0, 120));
 });
 
+test('Gemma-style tool capture scopes do not hide an external thinking control', () => {
+  const template = `{%- macro format_message(message) -%}
+    {%- for content in message['content'] -%}{%- if content['type'] == 'text' -%}{{ content['text'] }}{%- endif -%}{%- endfor -%}
+  {%- endmacro -%}
+  {%- set rendered_tools -%}{%- for tool in tools -%}{{ tool }}{%- endfor -%}{%- endset -%}
+  {%- set enable_thinking = enable_thinking | default(false) -%}
+  {%- if enable_thinking or tools or (messages and messages[0]['role'] in ['system', 'developer']) -%}
+    {%- if enable_thinking -%}thinking header{%- endif -%}{{ rendered_tools }}
+  {%- endif -%}
+  {%- for message in messages -%}
+    {%- if message['role'] == 'assistant' -%}{{ format_message(message) }}
+    {%- elif ns.prev_message_type == 'tool_response' and enable_thinking -%}thinking continuation{%- endif -%}
+  {%- endfor -%}`;
+  assert.deepEqual(llamaThinkingCapability({ chat_template: template }).allowedOptions, ['off', 'on']);
+  const shadowed = '{% set enable_thinking %}captured constant{% endset %}{% if enable_thinking %}always true{% endif %}';
+  assert.equal(llamaThinkingCapability({ chat_template: shadowed }), null);
+  assert.equal(llamaThinkingCapability({ chat_template: '{% set unused %}unclosed' + toggleTemplate }), null);
+});
+
 test('toggle conversion never invents effort and default always omits override', () => {
   const model = { reasoning: llamaThinkingCapability({ chat_template: toggleTemplate }), capabilityEvidence: { provider: 'llamacpp' } };
   assert.deepEqual(reasoningRequest(model, 'off'), { choice: 'off', payload: { chat_template_kwargs: { enable_thinking: false } } });
