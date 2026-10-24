@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { ArrowUp, Plus, Search, Folder, MessageSquare, PanelLeftClose, PanelLeftOpen, Files, Image, Square, RefreshCw, Unplug, X, LogOut, Settings, Activity, ChevronDown, ChevronRight } from '@lucide/svelte';
+  import { ArrowUp, Plus, Search, Folder, MessageSquare, PanelLeftClose, PanelLeftOpen, Files, Image, Square, RefreshCw, Unplug, X, LogOut, Settings, Activity, ChevronDown, ChevronRight, SlidersHorizontal } from '@lucide/svelte';
   import Button from '$lib/components/ui/button/button.svelte';
   import Textarea from '$lib/components/ui/textarea/textarea.svelte';
   import Logo from '$lib/components/app/misc/Logo.svelte';
@@ -10,6 +10,7 @@
   import MessageStats from './MessageStats.svelte';
   import CopyMessage from './CopyMessage.svelte';
   import DraftDownload from './DraftDownload.svelte';
+  import ComposerPopover from './ComposerPopover.svelte';
   import MessageAttachments from './MessageAttachments.svelte';
   import FilesPanel from './FilesPanel.svelte';
   import ImagesPanel from './ImagesPanel.svelte';
@@ -294,6 +295,7 @@
   async function changedLoadedModels(){saveDraft();await refreshEngines(false);saveDraft();}
   async function changedInference(){saveDraft();model='';await refreshEngines();notice=tr('Moteur et modèle actifs actualisés.','Active engine and model updated.');saveDraft();}
   async function changedComposerEngine(current:unknown){model='';await refreshEngines(true,current);saveDraft();}
+  function openComposerFiles(){document.getElementById('chat-file-options')?.hidePopover();document.getElementById('chat-file-options-trigger')?.focus({preventScroll:true});changeTab('files');}
   async function openModelManagement(target:'chat'|'inference'|'gguf'|'images',returnFocus:HTMLButtonElement){
     if(target==='chat'){
       managementTrigger=null;changeTab('chat');if(innerWidth<760)sidebarOpen=false;
@@ -386,18 +388,26 @@
             {#if attachments.length}<div class="attachment-chips">{#each attachments as file,index}<span><Files />{file.name||file.path}<button type="button" aria-label={tr('Retirer ','Remove ')+(file.name||file.path)} onclick={()=>{attachments=attachments.filter((_,at)=>at!==index);saveDraft();}}><X /></button></span>{/each}</div>{/if}
             <Textarea id="prompt" bind:ref={composer} bind:value={prompt} oninput={()=>queueMicrotask(saveDraft)} placeholder={tr('Écris ton message…','Write your message…')} aria-label={tr('Message','Message')} maxlength={16000} onkeydown={event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();void send();}}} />
             <div class="inference-controls" role="group" aria-label={tr('Moteur, modèle et réflexion','Engine, model and reasoning')}>
-              <EnginePicker {request} {inference} disabled={starting||modelSelectionBusy||engineReadPending||engineCatalogueUnconfirmed} beforeChange={saveDraft} onBusyChange={value=>engineSelectionBusy=value} onInferenceChange={changedComposerEngine} />
+              <EnginePicker compact {request} {inference} disabled={starting||modelSelectionBusy||engineReadPending||engineCatalogueUnconfirmed} beforeChange={saveDraft} onBusyChange={value=>engineSelectionBusy=value} onInferenceChange={changedComposerEngine} />
               <div class="model-field"><ModelPicker {request} {models} {inference} bind:model disabled={starting||modelSelectionBusy||engineSelectionBusy||engineReadPending||engineCatalogueUnconfirmed} onBusyChange={value=>modelSelectionBusy=value} onSelected={()=>queueMicrotask(saveDraft)} onInferenceChange={changedInference} onFailure={message=>error=message} /></div>
-              <ReasoningPicker capability={selectedModel?.reasoning} value={reasoning} hasModel={!!selectedModel} disabled={starting||modelSelectionBusy||engineSelectionBusy||engineReadPending||engineCatalogueUnconfirmed} onChange={chooseReasoning} />
+              <ReasoningPicker compact capability={selectedModel?.reasoning} value={reasoning} hasModel={!!selectedModel} disabled={starting||modelSelectionBusy||engineSelectionBusy||engineReadPending||engineCatalogueUnconfirmed} onChange={chooseReasoning} />
               {#if engineCatalogueUnconfirmed}<div class="catalogue-recovery" role="alert"><p>{tr('Le moteur et son catalogue ne sont pas confirmés ensemble. Relis leur état avant d’envoyer un message.','The engine and its catalogue are not confirmed together. Reload their state before sending a message.')}</p><Button type="button" variant="outline" disabled={engineReadPending} onclick={()=>void refreshEngines()}>{tr('Relire le moteur et les modèles','Reload engine and models')}</Button></div>{/if}
             </div>
-            <div class="composer-toolbar"><div class="composer-controls"><Button variant="ghost" size="icon" aria-label={tr('Joindre un fichier','Attach a file')} onclick={()=>changeTab('files')}><Plus /></Button>
-              <select aria-label={tr('Droits sur les fichiers','File permissions')} bind:value={fileProfile} onchange={()=>queueMicrotask(saveDraft)} disabled={currentProject?.isUnassigned}><option value="none">{tr('Fichiers désactivés','Files disabled')}</option><option value="read">{tr('Lecture des fichiers','Read files')}</option><option value="write">{tr('Lecture et écriture','Read and write')}</option></select>
-            </div><div class="send-controls">{#if currentJob}{#if streamingIds.includes(currentJob.requestId)}<Button variant="ghost" size="icon" aria-label={tr('Déconnecter le flux sans arrêter la demande','Disconnect stream without stopping request')} onclick={detach}><Unplug /></Button>{/if}<Button variant="outline" size="icon" aria-label={tr('Arrêter la demande','Stop request')} disabled={!currentJob.id} onclick={()=>stop()}><Square /></Button>{/if}<Button type="submit" size="icon" class="send-button" aria-label={tr('Envoyer','Send')} disabled={!prompt.trim()||!model||!projectId||starting||modelSelectionBusy||engineSelectionBusy||engineReadPending||engineCatalogueUnconfirmed}><ArrowUp /></Button></div></div>
-            <details class="tool-options" onchange={()=>queueMicrotask(saveDraft)}><summary>{tr('Outils et images','Tools and images')}</summary><div class="tool-grid"><label><input type="checkbox" bind:checked={webAccess} />{tr('Recherche web','Web search')}</label><label><input type="checkbox" bind:checked={webApproval} disabled={!webAccess} />{tr('Accord pour chaque appel web','Approve each web call')}</label><label><input type="checkbox" bind:checked={scriptAccess} disabled={currentProject?.isUnassigned} />{tr('Scripts avec approbation','Scripts with approval')}</label><label><input type="checkbox" bind:checked={imageAccess} disabled={!comfy?.enabled||!comfy?.available} />{tr('Génération d’images','Image generation')}</label>
+            <div class="composer-toolbar" role="group" aria-label={tr('Fichiers, outils et envoi','Files, tools and send')}>
+              <ComposerPopover id="chat-file-options" menu="files" label={tr('Fichiers et permissions','Files and permissions')} title={tr('Fichiers','Files')+' · '+(fileProfile==='write'?tr('Lecture et écriture','Read and write'):fileProfile==='read'?tr('Lecture des fichiers','Read files'):tr('Fichiers désactivés','Files disabled'))}>
+                {#snippet trigger()}<Files aria-hidden="true" />{/snippet}
+                <h3>{tr('Fichiers','Files')}</h3><Button type="button" variant="ghost" class="composer-attach" aria-label={tr('Joindre un fichier','Attach a file')} onclick={openComposerFiles}><Plus />{tr('Joindre un fichier','Attach a file')}</Button>
+                <label class="file-permissions-label" for="chat-file-permissions">{tr('Droits sur les fichiers','File permissions')}</label><select id="chat-file-permissions" aria-label={tr('Droits sur les fichiers','File permissions')} bind:value={fileProfile} onchange={()=>queueMicrotask(saveDraft)} disabled={currentProject?.isUnassigned}><option value="none">{tr('Fichiers désactivés','Files disabled')}</option><option value="read">{tr('Lecture des fichiers','Read files')}</option><option value="write">{tr('Lecture et écriture','Read and write')}</option></select>
+              </ComposerPopover>
+              <ComposerPopover id="chat-tools-options" menu="tools" label={tr('Outils et images','Tools and images')}>
+                {#snippet trigger()}<SlidersHorizontal aria-hidden="true" />{/snippet}
+                <h3>{tr('Outils et images','Tools and images')}</h3><div class="composer-tool-options" onchange={()=>queueMicrotask(saveDraft)}><div class="tool-grid"><label><input type="checkbox" bind:checked={webAccess} />{tr('Recherche web','Web search')}</label><label><input type="checkbox" bind:checked={webApproval} disabled={!webAccess} />{tr('Accord pour chaque appel web','Approve each web call')}</label><label><input type="checkbox" bind:checked={scriptAccess} disabled={currentProject?.isUnassigned} />{tr('Scripts avec approbation','Scripts with approval')}</label><label><input type="checkbox" bind:checked={imageAccess} disabled={!comfy?.enabled||!comfy?.available} />{tr('Génération d’images','Image generation')}</label>
               {#if imageAccess}<label>{tr('Workflow','Workflow')}<select aria-label={tr('Workflow du chat','Chat workflow')} bind:value={imageWorkflowId}>{#each comfy?.workflows||[] as workflow}<option value={workflow.id}>{workflow.name||workflow.label||workflow.id}</option>{/each}</select></label>{#key projectId+':'+(chat?.id||'new')}<ImageCountField id="chat-image-count" bind:value={imageCount} disabled={!comfy?.enabled||!comfy?.available} onValueChange={()=>queueMicrotask(saveDraft)}/>{/key}<label>{tr('Modèle texte pendant les images','Text model during images')}<select aria-label={tr('Politique mémoire des images','Image memory policy')} bind:value={imageModelPolicy}><option value="">{tr('Réglage de l’application','Application setting')}</option><option value="keep">{tr('Garder chargé','Keep loaded')}</option><option value="unload">{tr('Décharger','Unload')}</option><option value="alternate">{tr('Alterner','Alternate')}</option></select></label>{/if}
-            </div><p class="quiet">{tr('Les droits sont fixés à l’envoi. Les mêmes outils sont disponibles quel que soit le moteur d’inférence.','Permissions are fixed when sent. The same tools are available with every inference engine.')}</p></details>
-            <DraftDownload text={prompt} />
+                </div><p class="quiet">{tr('Les droits sont fixés à l’envoi. Les mêmes outils sont disponibles quel que soit le moteur d’inférence.','Permissions are fixed when sent. The same tools are available with every inference engine.')}</p></div>
+              </ComposerPopover>
+              <DraftDownload text={prompt} compact />
+              <div class="send-controls">{#if currentJob}{#if streamingIds.includes(currentJob.requestId)}<Button variant="ghost" size="icon" aria-label={tr('Déconnecter le flux sans arrêter la demande','Disconnect stream without stopping request')} title={tr('Déconnecter le flux sans arrêter la demande','Disconnect stream without stopping request')} onclick={detach}><Unplug /></Button>{/if}<Button variant="outline" size="icon" aria-label={tr('Arrêter la demande','Stop request')} title={tr('Arrêter la demande','Stop request')} disabled={!currentJob.id} onclick={()=>stop()}><Square /></Button>{/if}<Button type="submit" size="icon" class="send-button" aria-label={tr('Envoyer','Send')} title={tr('Envoyer','Send')} disabled={!prompt.trim()||!model||!projectId||starting||modelSelectionBusy||engineSelectionBusy||engineReadPending||engineCatalogueUnconfirmed}><ArrowUp /></Button></div>
+            </div>
           </form><p class="composer-hint">{currentJobs.length?tr('Les nouveaux messages rejoignent la file. Tu peux quitter la page.','New messages join the queue. You can leave this page.'):tr('Entrée pour envoyer · Maj + Entrée pour une nouvelle ligne','Enter to send · Shift + Enter for a new line')}</p></div>
         </div>
     </main>
@@ -408,10 +418,11 @@
   .message-header{display:grid;grid-template-columns:minmax(0,1fr) 44px 44px;column-gap:2px;row-gap:4px;align-items:center;min-width:0;margin-bottom:6px;}
   .message-header .assistant-name{min-width:0;margin-bottom:0;}
   .message-header .assistant-name span{min-width:0;}
-  .inference-controls{display:grid;grid-template-columns:minmax(140px,.9fr) minmax(0,1.5fr) minmax(120px,1fr);align-items:start;gap:4px;margin:0;}
+  .inference-controls{display:grid;grid-template-columns:minmax(94px,.8fr) minmax(0,1.8fr) minmax(72px,.8fr);align-items:start;gap:4px;margin:0;}
   .model-field{display:flex;flex-direction:column;gap:4px;min-width:0;}
   .catalogue-recovery{grid-column:1/-1;font-size:12px;line-height:1.6;}.catalogue-recovery p{margin:0 0 8px;}
   .model-field :global(select){width:100%;max-width:100%;min-width:0;min-height:44px;background:transparent;color:var(--muted-foreground);border:0;border-radius:6px;padding:7px 20px 7px 6px;font-size:12px;text-overflow:ellipsis;}
   .model-field :global(select:focus-visible){outline:2px solid var(--ring);outline-offset:2px;}
-  @media(max-width:650px){.inference-controls{grid-template-columns:minmax(128px,.9fr) minmax(0,1.1fr);gap:0 4px;}.inference-controls :global(.reasoning-picker){grid-column:1/-1;max-width:240px;}}
+  .composer-toolbar{position:relative;align-items:center;gap:2px;margin-top:0;}.composer-toolbar .send-controls{margin-left:auto;gap:2px;}.composer-toolbar .send-controls :global(button){width:44px;height:44px;min-width:44px;flex:0 0 44px;padding:0;}.file-permissions-label{display:block;margin:12px 0 6px;}.composer-toolbar :global(.composer-attach){min-height:44px;width:100%;justify-content:flex-start;padding-left:0;}.composer-tool-options .tool-grid{grid-template-columns:minmax(0,1fr);margin-top:0;max-height:none;overflow:visible;gap:8px;}.composer-tool-options .tool-grid label{min-height:44px;}.composer-tool-options .tool-grid label:has(select){display:grid;gap:5px;}.composer-tool-options .quiet{margin:12px 0 0;}
+  @media(max-width:650px){.inference-controls{grid-template-columns:94px minmax(0,1fr) 72px;}}
 </style>

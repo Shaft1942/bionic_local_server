@@ -4,6 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url)), origin = 'http://companion-reasoning.test';
+const publicRoot = process.env.BIONIC_BROWSER_PUBLIC_DIR || path.join(root,'public');
 const { chromium } = process.env.PLAYWRIGHT_MODULE_PATH ? await import(pathToFileURL(path.join(process.env.PLAYWRIGHT_MODULE_PATH,'index.mjs')).href) : await import('playwright');
 const browser = await chromium.launch({ headless: true, channel: process.env.BIONIC_BROWSER_CHANNEL || 'chrome' });
 const captures = process.env.BIONIC_BROWSER_CAPTURES;
@@ -73,7 +74,7 @@ try { for(const width of [1280,390,320]) for(const language of ['fr','en']) {
   await context.route('**/*',async route=>{
     const url=new URL(route.request().url());assert.equal(url.origin,origin);
     if(await state.api(route))return;
-    const file=path.resolve(root,'public',url.pathname==='/prototype/'?'llama-ui/index.html':url.pathname.slice(1));assert(file.startsWith(path.join(root,'public')+path.sep));
+    const file=path.resolve(publicRoot,url.pathname==='/prototype/'?'llama-ui/index.html':url.pathname.slice(1));assert(file.startsWith(path.resolve(publicRoot)+path.sep));
     const contentType=({'.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml'})[path.extname(file)]||'text/html';
     await route.fulfill({contentType,body:await fs.readFile(file),headers:contentType==='text/html'?{'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'"}:{}});
   });
@@ -93,7 +94,7 @@ try { for(const width of [1280,390,320]) for(const language of ['fr','en']) {
   const apply=async provider=>{await engine().selectOption(provider);await button('Utiliser ce moteur','Use this engine').click();await page.waitForFunction(()=>!document.querySelector('#chat-engine')?.disabled);};
   try {
     await page.goto(origin+'/prototype/');await reasonValue('off');
-    const compact=await page.locator('.inference-controls').boundingBox();assert(compact.height<=(width>650?44:88),'The ordinary selector group occupies one desktop row or two mobile rows');
+    const compact=await page.locator('.inference-controls').boundingBox();assert(compact.height<=44,'The ordinary selector group occupies one row at every supported width');
     for(const control of [engine(),model(),reasoning(),engineOptions()]){const box=await control.boundingBox();assert(box.height>=44,'Compact controls retain a 44px touch target');assert(box.x>=compact.x&&box.x+box.width<=compact.x+compact.width+1,'Each selector fits within the compact group');}
     assert.equal(await page.locator('.engine-options').evaluate(element=>element.open),false);
     await engineOptions().focus();await page.keyboard.press('Enter');assert.equal(await page.locator('.engine-options').evaluate(element=>element.open),true);await page.keyboard.press('Escape');assert.equal(await page.locator('.engine-options').evaluate(element=>element.open),false);assert(await engineOptions().evaluate(element=>element===document.activeElement));assert.equal(state.posts.length,0,'Opening and closing engine options never mutates settings');
