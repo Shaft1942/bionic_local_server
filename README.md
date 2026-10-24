@@ -4,6 +4,13 @@ Utilisez les modèles de votre PC, consultez vos projets Bionic et continuez une
 
 Ce projet communautaire est indépendant de Bionic. Bionic et ses modèles ne sont pas inclus. Le compagnon utilise l’API locale de Bionic et un adaptateur de lecture de ses fichiers internes.
 
+Le socle **2.0.0** ajoute les plafonds de réponses par modèle/conversation,
+ComfyUI optionnel et configurable, et les projets repliables.
+Voir le [guide V2](docs/v2-utilisation.md), le [plan et les décisions](docs/v2-plan.md),
+les [métaprompts exécutés](docs/v2-metaprompts.md) et le [registre de validation](docs/v2-validation.md).
+Les liens de téléchargement ci-dessous concernent la dernière release publique V1 ;
+le candidat V2 se construit avec `npm run release` depuis sa branche.
+
 ## Quelle version télécharger ?
 
 Ce guide décrit la **version 1.10.0**, avec un assistant d’installation Windows et des mises à jour proposées au démarrage puis toutes les 24 heures. Téléchargez **`bionic-mobile-v1.10.0.zip`** depuis [la Release 1.10.0](https://github.com/Shaft1942/bionic_local_server/releases/tag/v1.10.0), avec `SHA256SUMS.txt`. **Node.js 24 ou ultérieur est requis** : l’assistant peut réutiliser une installation existante ou, avec votre accord, télécharger une copie portable officielle. Node.js n’est pas inclus dans le ZIP. Aucun Docker requis. Depuis 1.9.0, une mise à jour compatible peut être proposée dans le compagnon ; depuis 1.8.0, suivez [la procédure manuelle](docs/sauvegarde-mise-a-jour.md). **Code → Download ZIP** fournit l’état de la branche choisie, qui peut différer d’une Release. Voir [les mises à jour proposées](docs/mises-a-jour.md).
