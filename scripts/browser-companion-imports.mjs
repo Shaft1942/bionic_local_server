@@ -87,7 +87,7 @@ try{for(const width of [1280,320])for(const language of ['fr','en']){
   // Two unsaved chats share an empty chat id but must never share a late attachment.
   await page.getByRole('button',{name:tr('Fermer la fenêtre','Close window'),exact:true}).click();
   const nextDraft=async()=>{const open=page.getByRole('button',{name:tr('Ouvrir la navigation','Open navigation'),exact:true});if(await open.isVisible())await open.click();await page.getByRole('button',{name:tr('Nouveau chat','New chat'),exact:true}).click();};
-  await nextDraft();await filesTab();
+  await nextDraft();while(await page.locator('.attachment-chips button').count())await page.locator('.attachment-chips button').first().click();await filesTab();
   const draftSwitch=state.hold('switch-draft.txt'),beforeDraftSwitch=state.posts.length;
   await upload([bytes('switch-draft.txt'),bytes('not-sent-new-draft.txt')],true);await draftSwitch;
   await page.getByRole('button',{name:tr('Fermer la fenêtre','Close window'),exact:true}).click();await nextDraft();

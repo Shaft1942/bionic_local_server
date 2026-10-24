@@ -8,6 +8,7 @@ Candidate locale cumulative après la bêta 7. Une archive préparée n'est pas 
 - Chaque **bloc de code** possède sa commande Copier le code, dans les messages utilisateur et assistant. La copie complète des messages reste disponible. Un refus affiche une sélection manuelle ; aucune réussite n'est annoncée sans confirmation du navigateur.
 - **Télécharger le brouillon** près du champ de message exporte son texte actuel en `.txt`, sans envoyer, vider ou modifier la demande. Les pièces jointes restent conservées dans le projet ; ce téléchargement porte sur le texte.
 - Les **pièces jointes du message** peuvent être dépliées pour consulter le texte transmis ou l'image conservée. Un extrait reste signalé comme tel. Le contenu affiché reste passif ; il n'accorde aucun droit supplémentaire.
+- **Fichiers → Importer des fichiers / Importer puis joindre** accepte plusieurs fichiers, avec un résultat par fichier et quatre pièces jointes maximum dans le message. Un changement de projet ou de brouillon empêche une jointure tardive. Un fichier déjà reçu reste dans le projet ; arrêter le lot empêche les envois suivants. Si la réponse d'import est perdue, relire les fichiers conserve l'incertitude sans renvoyer automatiquement l'import.
 
 ## Capacités et suivi indépendants de l'écran
 
