@@ -18,11 +18,11 @@ function fixture({preexisting=false}={}){
     async inspect(value){assert.deepEqual(value,native);if(state.changed)throw Object.assign(Error('PID reused'),{code:'desktop_identity_changed',effectAttempted:false});return{state:state.desktop?'running':'stopped'};},
     async stop(value){assert.deepEqual(value,native);if(state.changed)throw Object.assign(Error('PID reused'),{code:'desktop_identity_changed',effectAttempted:false});if(state.failBeforeStop)throw Object.assign(Error('No signal yet'),{code:'desktop_identity_unconfirmed',effectAttempted:false});effects.push('desktop-stop');state.desktop=false;if(state.lostStop)throw Object.assign(Error('Lost native receipt'),{code:'desktop_status_unconfirmed',effectAttempted:true});return{state:'stopped'};}
   };
-  const options={platform:'win32',pollMs:1,desktopProcess,readCliIdentity:async()=>({...cliIdentity}),inspectController:async()=>state.api?{...native,configIdentity:{ino:1}}:null,inspectDesktop:async()=>state.launched&&state.desktop,inspectPort:async()=>state.api?'present':'absent',
+    const options={platform:'win32',pollMs:1,desktopProcess,readCliIdentity:async()=>({...cliIdentity}),inspectController:async()=>{if(state.controllerFailures){state.controllerFailures--;return null;}return state.api?{...native,configIdentity:{ino:1},...state.controllerOverride}:null;},inspectDesktop:async()=>state.launched&&state.desktop,inspectPort:async()=>state.api?'present':'absent',
     spawnImpl(){effects.push('desktop-start');state.desktop=true;state.launched=true;const child=new EventEmitter();child.pid=native.pid;child.unref=()=>{};return child;},
     execFileImpl:async(_filename,args)=>{
       if(args[1]==='start'){effects.push('api-start');state.api=true;}
-      if(args[1]==='stop'){effects.push('api-stop');state.api=false;}
+      if(args[1]==='stop'){effects.push('api-stop');if(state.cliStopUnknown)throw Error('Synthetic unconfirmed API stop');state.api=false;}
       const status=state.desktop?(state.noReady?{running:false}:{running:state.api,port:profile.port}):{running:false};
       return{stdout:JSON.stringify(status)};
     },
@@ -99,4 +99,33 @@ test('lost recovery-stop response resolves all retained intentions only after na
   f.state.failBeforeStop=false;f.state.lostStop=true;const recovery=await control.act(supervisor,'stop');assert.equal((await terminal(supervisor,recovery.id)).status,'unknown');
   await supervisor.reload();assert.equal((await supervisor.operation(first.id)).status,'succeeded');assert.equal((await supervisor.operation(recovery.id)).status,'succeeded');
   assert.doesNotThrow(()=>supervisor.assertAdmission());assert.deepEqual(f.effects,['desktop-start','api-start','api-stop','desktop-stop']);
+});
+test('transient final API identity read failure completes only an anchored Desktop receipt on reload',async t=>{
+  const f=fixture();f.state.controllerFailures=1;
+  const control=await supervised(t,f),first=await control.open();
+  const started=await control.act(first,'start');assert.equal((await terminal(first,started.id)).status,'unknown');
+  assert.equal((await first.snapshot()).services[0].actions.stop.allowed,false);await first.close();
+  const resumed=await control.open();const effects=[...f.effects];await resumed.reload();
+  assert.equal((await resumed.operation(started.id)).status,'succeeded');assert.doesNotThrow(()=>resumed.assertAdmission());
+  assert.equal((await resumed.snapshot()).services[0].actions.stop.allowed,true);assert.deepEqual(f.effects,effects,'Completing an anchored receipt never replays start');
+  const stopped=await control.act(resumed,'stop');assert.equal((await terminal(resumed,stopped.id)).status,'succeeded');assert.equal(f.state.desktop,false);
+});
+test('receipt completion never adopts a ready external API, changed Desktop or replaced identity',async()=>{
+  const f=fixture(),receipt=await f.adapters.start(profile);delete receipt.controllerIdentity;
+  const before=[...f.effects];
+  for(const override of [{pid:9999},{createdAt:'638000000000000001'},{executable:'C:/fixture/foreign.exe'}]){
+    f.state.controllerOverride=override;assert.equal((await f.adapters.reconcileReceipt(profile,receipt)).controllerIdentity,undefined);
+  }
+  f.state.controllerOverride=undefined;f.state.changed=true;assert.equal((await f.adapters.reconcileReceipt(profile,receipt)).controllerIdentity,undefined);f.state.changed=false;
+  assert.equal((await createLocalServiceAdapters({...f.options,inspectDesktop:async()=>false}).reconcileReceipt(profile,receipt)).controllerIdentity,undefined);
+  assert.equal((await f.adapters.reconcileReceipt(profile,{...receipt,desktopPid:undefined})).controllerIdentity,undefined);
+  const existing={...receipt,controllerIdentity:{...native,createdAt:'prior-identity'}};
+  assert.equal(await f.adapters.reconcileReceipt(profile,existing),existing);assert.deepEqual(f.effects,before);
+});
+test('unconfirmed API stop with same owned Desktop and ready API permits another explicit stop',async t=>{
+  const f=fixture(),control=await supervised(t,f),supervisor=await control.open();await terminal(supervisor,(await control.act(supervisor,'start')).id);
+  f.state.cliStopUnknown=true;const previous=await control.act(supervisor,'stop');assert.equal((await terminal(supervisor,previous.id)).status,'unknown');
+  const status=(await supervisor.snapshot()).services[0];assert.equal(status.api.state,'ready');assert.equal(status.actions.stop.allowed,true);assert.equal(status.process.recoveryStop,true);
+  f.state.cliStopUnknown=false;const recovery=await control.act(supervisor,'stop');assert.equal((await terminal(supervisor,recovery.id)).status,'succeeded');
+  assert.doesNotThrow(()=>supervisor.assertAdmission());assert.equal(f.state.desktop,false);assert.equal(f.effects.filter(effect=>effect==='desktop-stop').length,1);
 });
