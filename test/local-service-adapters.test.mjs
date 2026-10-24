@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events';
 import { createLocalServiceAdapters as createAdapters } from '../lib/local-service-adapters.mjs';
 const identity = { pid: 4321, createdAt: 'synthetic-start-time', executable: 'C:/fixture/Bionic.exe', configIdentity: { mtimeMs: 1, ino: 2 } };
 const cliIdentity = { size: 123, sha256: 'a'.repeat(64) };
-const createLocalServiceAdapters = options => createAdapters({ inspectController: async () => structuredClone(identity), readCliIdentity: async () => ({ ...cliIdentity }), ...options });
+const createLocalServiceAdapters = options => createAdapters({ inspectController: async () => structuredClone(identity), readCliIdentity: async () => ({ ...cliIdentity }), desktopProcess: {capture:async()=>({pid:identity.pid,createdAt:identity.createdAt,executable:identity.executable}),inspect:async()=>({state:'running'}),stop:async()=>{throw Error('Unexpected Desktop termination in API fixture');}}, ...options });
 
 const profile = { id: 'bionic', port: 1235, url: 'http://fixture.invalid:1235', fingerprint: 'fixture', cliPath: 'C:/fixture/lms.exe', apiInfoPath: 'C:/fixture/http-server.json', exclusiveControl: true, fileIdentity: { cliPath: cliIdentity } };
 const receipt = { profileFingerprint: 'fixture', apiPort: 1235, controllerIdentity: identity };
