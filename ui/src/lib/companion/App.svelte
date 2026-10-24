@@ -26,6 +26,8 @@
   import WorkspacePanel from './WorkspacePanel.svelte';
   import Approvals from './Approvals.svelte';
   import ProjectAccess from './ProjectAccess.svelte';
+  import ProjectConversations from './ProjectConversations.svelte';
+  import { createProjectSessions, type SessionGroup } from './project-sessions';
   import { activatePreferences, preferences, tr } from './preferences.svelte';
   import { ApiError, newRequestId, post, query, request, terminal } from './api';
   import { createChatClient } from './client/chat-client';
@@ -35,17 +37,23 @@
   type Draft = { text:string; updatedAt:number; attachments:any[]; model:string; reasoning:string; reasoningChoices?:Record<string,ReasoningChoice>; fileProfile:string; webAccess:boolean; webApproval:boolean; scriptAccess:boolean; imageAccess:boolean; imageWorkflowId:string; imageCount:number; imageModelPolicy:string; nonce:string };
   let authenticated=$state(false), ready=$state(false), error=$state(''), notice=$state('');
   let code=$state(''), loginBusy=$state(false);
-  let projects=$state<any[]>([]), sessions=$state<any[]>([]), models=$state<any[]>([]), sessionPage=$state<any>(null), sessionWarnings=$state<string[]>([]);
+  let projects=$state<any[]>([]), models=$state<any[]>([]), sessionGroups=$state<Record<string,SessionGroup>>({});
   let projectId=$state(''), chat=$state<any>(null), model=$state(''), inference=$state<any>(null), comfy=$state<any>(null);
   let reasoningChoices=$state<Record<string,ReasoningChoice>>({});
   let prompt=$state(''), attachments=$state<any[]>([]), fileProfile=$state('read'), webAccess=$state(true), webApproval=$state(false), scriptAccess=$state(false), imageAccess=$state(false);
   let imageWorkflowId=$state(''), imageCount=$state(1), imageModelPolicy=$state('');
   let jobs=$state<Job[]>([]), streamingIds=$state<string[]>([]);
-  let tab=$state<'chat'|'files'|'images'|'activity'|'settings'>('chat'), sidebarOpen=$state(true), search=$state(''), collapsedProjects=$state<string[]>([]);
-  let projectForm=$state(false), projectName=$state(''), creatingProject=$state(false), historyBusy=$state(false), sessionsBusy=$state(false), filesDirty=$state(false);
+  let tab=$state<'chat'|'files'|'images'|'activity'|'settings'>('chat'), sidebarOpen=$state(true), search=$state(''), expandedProjects=$state<string[]>([]);
+  let projectForm=$state(false), projectName=$state(''), creatingProject=$state(false), historyBusy=$state(false), filesDirty=$state(false);
   let instanceId=$state(''), prototypeInfo=$state<any>(null), draftNonce=$state(''), settingsVisited=$state(false), filesVisited=$state(false), imagesVisited=$state(false), activityVisited=$state(false), settingsDirty=$state(false);
   let draftKey='', storageKey='', drafts:Record<string,Draft>={};
-  let recoveryBusy=false, viewSequence=0, sessionsSequence=0, lastCatalog=0, mounted=true;
+  let recoveryBusy=false, viewSequence=0, lastCatalog=0, mounted=true;
+  const sessionCatalogue=createProjectSessions({
+    read:(pid,cursor)=>request(query('/api/sessions',{projectId:pid,limit:'100',...(cursor?{cursor}:{})})),
+    changed:groups=>sessionGroups=groups,
+    received:(pid,sessions)=>{for(const session of sessions)rememberGeneration(session,pid);},
+    failed:(failure:any)=>{if(failure?.status===401)report(failure);}
+  });
   const client=createChatClient({
     changed:(next,active)=>{jobs=next;streamingIds=active;},
     receipt:async(target,result,settled)=>{
@@ -78,7 +86,6 @@
   const selectedModel=$derived(models.find(item=>item.id===model));
   const reasoningKey=$derived(reasoningChoiceKey(inference?.provider,model));
   const reasoning=$derived(resolveReasoning(selectedModel?.reasoning,reasoningChoices[reasoningKey]??chat?.reasoningByModel?.[model]));
-  const visibleSessions=$derived(sessions.filter(item=>(item.name||'').toLocaleLowerCase().includes(search.toLocaleLowerCase())));
   const currentJobs=$derived(jobs.filter(item=>item.projectId===projectId&&(item.id?item.id===chat?.id:!chat?.id&&item.draftNonce===draftNonce)));
   const currentJob=$derived(currentJobs.find(item=>item.status!=='queued')||currentJobs[0]);
   const starting=$derived(currentJobs.some(item=>!item.id));
@@ -115,19 +122,24 @@
   }
   function report(failure:any) {
     error=failure?.message||tr('Le compagnon est indisponible.','The companion is unavailable.');
-    if(failure?.status===401){authenticated=false;chat=null;projects=[];sessions=[];client.disconnect();}
+    if(failure?.status===401){authenticated=false;chat=null;projects=[];expandedProjects=[];sessionCatalogue.reset();client.disconnect();}
   }
   async function scrollReply(){await tick();if(followReply&&messageList)messageList.scrollTop=messageList.scrollHeight;}
   function rememberGeneration(value:unknown,pid:string){client.remember(value,pid);}
-  async function refreshSessions(append=false){
-    if(!projectId||(append&&sessionsBusy))return;const pid=projectId,sequence=++sessionsSequence;const cursor=append?sessionPage?.nextCursor:'';sessionsBusy=true;
-    try{const result=await request(query('/api/sessions',{projectId:pid,limit:'100',...(cursor?{cursor}:{})}));
-      if(pid!==projectId||sequence!==sessionsSequence)return;
-      const extras=!append&&sessions.length>100?sessions.filter(item=>!result.sessions.some((known:any)=>known.id===item.id)):[];
-      sessions=append?[...sessions,...result.sessions.filter((item:any)=>!sessions.some(known=>known.id===item.id))]:[...(result.sessions||[]),...extras];
-      sessionPage=extras.length?{...sessionPage,total:result.total}:{hasMore:result.hasMore,nextCursor:result.nextCursor,total:result.total};sessionWarnings=result.warnings||[];
-      for(const session of result.sessions||[])rememberGeneration(session,pid);
-    }finally{if(sequence===sessionsSequence)sessionsBusy=false;}
+  async function refreshSessions(_append=false,pid=projectId){
+    const visible=new Set([pid,...expandedProjects,...projects.filter(item=>item.isUnassigned).map(item=>item.id)]);
+    await Promise.all([...visible].filter(Boolean).map(id=>sessionCatalogue.load(id,{refresh:true})));
+  }
+  function expandProject(id:string,open:boolean){
+    expandedProjects=open?[...new Set([...expandedProjects,id])]:expandedProjects.filter(item=>item!==id);
+    if(open)void sessionCatalogue.load(id);
+  }
+  async function openProjectSession(pid:string,id:string){
+    if(pid!==projectId){const sequence=viewSequence+1;await chooseProject(pid);if(sequence!==viewSequence)return;}
+    if(projectId===pid)await openSession(id);
+  }
+  function loadSessionGroup(pid:string,append:boolean){
+    void sessionCatalogue.load(pid,{append,refresh:!append});
   }
   function mergeHistory(previous:any,incoming:any,older=false){
     if(!previous||previous.id!==incoming.id||!incoming.pagination)return incoming;
@@ -158,7 +170,7 @@
     try{await loadConversation(projectId,id,sequence);if(sequence===viewSequence){switchDraft();await recover();}}catch(failure){report(failure);}
   }
   async function chooseProject(id:string){
-    saveDraft();++viewSequence;projectId=id;chat=null;sessions=[];sessionPage=null;error='';notice='';tab='chat';switchDraft();persist();
+    saveDraft();++viewSequence;projectId=id;chat=null;error='';notice='';tab='chat';expandProject(id,true);switchDraft();persist();
     try{await refreshSessions();}catch(failure){report(failure);}
   }
   async function newChat(pid=projectId){
@@ -166,7 +178,7 @@
     ++viewSequence;chat=null;tab='chat';notice='';error='';switchDraft();draftNonce=newRequestId();saveDraft();
     if(innerWidth<760)sidebarOpen=false;await tick();composer?.focus();
   }
-  async function reloadProjects(){const result=await request('/api/projects');projects=result.projects||[];}
+  async function reloadProjects(){const result=await request('/api/projects');projects=result.projects||[];sessionCatalogue.setProjects(projects);expandedProjects=expandedProjects.filter(id=>projects.some(item=>item.id===id));}
   async function createProject(event:SubmitEvent){
     event.preventDefault();if(!projectName.trim()||creatingProject)return;creatingProject=true;
     try{const result=await post('/api/local-projects',{name:projectName.trim()});await reloadProjects();projectForm=false;projectName='';await chooseProject(result.project.id);}
@@ -199,11 +211,12 @@
     }catch{notice=tr('La restauration locale est indisponible.','Local restoration is unavailable.');}
     await reloadProjects();authenticated=true;await refreshEngines();
     projectId=projects.some(item=>item.id===saved.projectId)?saved.projectId:projects[0]?.id||'';
+    if(projectId&&!projects.find(item=>item.id===projectId)?.isUnassigned)expandProject(projectId,true);
     if(projectId){await refreshSessions();if(saved.chatId){chat={id:saved.chatId,messages:[]};try{await loadConversation(projectId,saved.chatId);}catch(failure){chat=null;report(failure);}}switchDraft();await recover();}
     ready=true;
   }
   async function login(event:SubmitEvent){event.preventDefault();if(loginBusy)return;loginBusy=true;error='';try{await post('/api/login',{code});code='';await start();}catch(failure){report(failure);}finally{ready=true;loginBusy=false;}}
-  async function logout(){try{saveDraft();await post('/api/logout',{});client.disconnect();authenticated=false;chat=null;projects=[];sessions=[];}catch(failure){report(failure);}}
+  async function logout(){try{saveDraft();await post('/api/logout',{});client.disconnect();authenticated=false;chat=null;projects=[];expandedProjects=[];sessionCatalogue.reset();}catch(failure){report(failure);}}
   function attach(file:any,target?:{projectId:string;chatId:string;draftNonce:string;keepOpen:boolean}):boolean{
     if(target&&(target.projectId!==projectId||target.chatId!==(chat?.id||'')||target.draftNonce!==draftNonce)){error=tr('La conversation a changé. Le fichier reste dans son projet.','The conversation changed. The file remains in its project.');return false;}
     if(attachments.length>=4){error=tr('Tu peux joindre jusqu’à quatre fichiers.','You can attach up to four files.');return false;}
@@ -223,7 +236,7 @@
         const previousKey=projectId+':'+(job.id||'new'),nextKey=projectId+':'+event.id,waitingDraft=drafts[previousKey];
         if(previousKey!==nextKey&&draftKey===previousKey&&waitingDraft?.nonce===job.draftNonce){drafts[nextKey]=waitingDraft;delete drafts[previousKey];draftKey=nextKey;}
       }
-      persist();void refreshSessions().catch(report);
+      persist();void refreshSessions(false,job.projectId).catch(report);
     }
     if(projectId===job.projectId&&chat?.id===(event.id||jobs.find(item=>item.requestId===requestId)?.id)){
       const reply=chat.messages?.find((item:any)=>item.role==='assistant'&&item.requestId===requestId);
@@ -277,7 +290,7 @@
   async function changedInference(){saveDraft();model='';await refreshEngines();notice=tr('Moteur et modèle actifs actualisés.','Active engine and model updated.');saveDraft();}
   async function changedComposerEngine(current:unknown){model='';await refreshEngines(true,current);saveDraft();}
   function changeTab(next:typeof tab){saveDraft();if(next==='settings')settingsVisited=true;if(next==='files')filesVisited=true;if(next==='images')imagesVisited=true;if(next==='activity')activityVisited=true;if(tab==='settings'&&next!=='settings')void refreshEngines().catch(report);tab=next;if(next==='chat')void refreshSessions().catch(report);}
-  async function changedConversation(next:any|null){saveDraft();++viewSequence;if(!next&&chat?.id)sessions=sessions.filter(item=>item.id!==chat.id);chat=next;if(next?.projectId&&next.projectId!==projectId){projectId=next.projectId;sessions=[];sessionPage=null;await reloadProjects();}switchDraft();persist();await refreshSessions();}
+  async function changedConversation(next:any|null){const previousProjectId=projectId;saveDraft();++viewSequence;chat=next;if(next?.projectId&&next.projectId!==projectId){projectId=next.projectId;await reloadProjects();}sessionCatalogue.invalidate([previousProjectId,projectId]);if(!projects.find(item=>item.id===projectId)?.isUnassigned)expandProject(projectId,true);switchDraft();persist();await refreshSessions();}
   async function navigate(target:{projectId:string;id:string;messageId?:string}){
     if(target.projectId!==projectId)await chooseProject(target.projectId);await openSession(target.id);
     while(target.messageId&&!chat?.messages?.some((item:any)=>item.id===target.messageId)&&chat?.pagination?.hasMore)await olderMessages();
@@ -307,14 +320,7 @@
       <label class="search-field"><Search /><input aria-label={tr('Rechercher un chat','Search chats')} bind:value={search} placeholder={tr('Rechercher un chat','Search chats')} /></label>
       <div class="section-label"><span>{tr('Projets','Projects')}</span><Button variant="ghost" size="icon" aria-label={tr('Créer un projet','Create a project')} onclick={()=>projectForm=!projectForm}><Plus /></Button></div>
       {#if projectForm}<form class="project-form" onsubmit={createProject}><input aria-label={tr('Nom du projet','Project name')} bind:value={projectName} placeholder={tr('Nom du projet','Project name')} maxlength="120" required /><Button type="submit" size="sm" disabled={creatingProject}>{tr('Créer','Create')}</Button></form>{/if}
-      <div class="project-list">{#each projects as project (project.id)}<div class="project-row"><button class="project-collapse" aria-label={(collapsedProjects.includes(project.id)?tr('Déplier le projet ','Expand project '):tr('Replier le projet ','Collapse project '))+project.name} aria-expanded={!collapsedProjects.includes(project.id)} onclick={()=>collapsedProjects=collapsedProjects.includes(project.id)?collapsedProjects.filter(id=>id!==project.id):[...collapsedProjects,project.id]}>{#if collapsedProjects.includes(project.id)}<ChevronRight />{:else}<ChevronDown />{/if}</button><button class:active={project.id===projectId} onclick={()=>chooseProject(project.id)}><Folder /><span>{project.name}</span></button><button class="project-new" aria-label={tr('Nouveau chat dans ','New chat in ')+project.name} onclick={()=>newChat(project.id)}><Plus /></button></div>{/each}</div>
-      <div class="section-label"><span>{tr('Conversations','Conversations')}</span><span class="subtle">{sessionPage?.total??sessions.length}</span></div>
-      <nav class="chat-list" aria-label={tr('Conversations','Conversations')} hidden={collapsedProjects.includes(projectId)}>
-        {#each visibleSessions as session (session.id)}<button class:active={session.id===chat?.id} onclick={()=>openSession(session.id)}><MessageSquare /><span>{session.name||tr('Conversation','Conversation')}</span>{#if session.generation?.status==='running'||session.queue?.length}<span class="running-dot" aria-label={tr('En cours','Running')}></span>{/if}</button>{/each}
-        {#if !visibleSessions.length}<p class="quiet">{search?tr('Aucun chat trouvé.','No chats found.'):tr('Tes conversations apparaîtront ici.','Your conversations will appear here.')}</p>{/if}
-        {#if sessionPage?.hasMore}<Button variant="ghost" size="sm" disabled={sessionsBusy} onclick={()=>refreshSessions(true)}>{tr('Charger d’autres conversations','Load more conversations')}</Button>{/if}
-        {#if sessionWarnings.length}<p class="quiet" role="status">{tr('Liste partielle : ','Partial list: ')+sessionWarnings.join(' · ')}</p>{/if}
-      </nav>
+      <ProjectConversations {projects} groups={sessionGroups} {projectId} chatId={chat?.id} expanded={expandedProjects} {search} onExpand={expandProject} onProject={chooseProject} onConversation={openProjectSession} onNewChat={newChat} onLoad={loadSessionGroup} />
       <div class="navigation-footer"><span class="version">2.6.0-beta.9 · {inference?.provider==='llamacpp'?'llama-server':inference?.provider==='bionic'?'Bionic':tr('Moteur local','Local engine')}</span><div><a class="legacy-link" href="/legacy/">{tr('Ancienne interface','Legacy interface')}</a><div class="footer-controls"><LoadedModelsMenu {request} {models} {inference} onModelsChange={changedLoadedModels} disabled={starting||modelSelectionBusy} /><Button variant="ghost" size="icon" aria-label={tr('Se déconnecter','Sign out')} onclick={logout}><LogOut /></Button></div></div></div>
     </aside>{/if}
     <main class="workspace">
