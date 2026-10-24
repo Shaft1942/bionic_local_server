@@ -360,7 +360,7 @@
             <Textarea id="prompt" bind:ref={composer} bind:value={prompt} oninput={()=>queueMicrotask(saveDraft)} placeholder={tr('Écris ton message…','Write your message…')} aria-label={tr('Message','Message')} maxlength={16000} onkeydown={event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();void send();}}} />
             <div class="inference-controls" role="group" aria-label={tr('Moteur, modèle et réflexion','Engine, model and reasoning')}>
               <EnginePicker {request} {inference} disabled={starting||modelSelectionBusy||engineReadPending||engineCatalogueUnconfirmed} beforeChange={saveDraft} onBusyChange={value=>engineSelectionBusy=value} onInferenceChange={changedComposerEngine} />
-              <div class="model-field"><span>{tr('Modèle','Model')}</span><ModelPicker {request} {models} {inference} bind:model disabled={starting||modelSelectionBusy||engineSelectionBusy||engineReadPending||engineCatalogueUnconfirmed} onBusyChange={value=>modelSelectionBusy=value} onSelected={()=>queueMicrotask(saveDraft)} onInferenceChange={changedInference} onFailure={message=>error=message} /></div>
+              <div class="model-field"><ModelPicker {request} {models} {inference} bind:model disabled={starting||modelSelectionBusy||engineSelectionBusy||engineReadPending||engineCatalogueUnconfirmed} onBusyChange={value=>modelSelectionBusy=value} onSelected={()=>queueMicrotask(saveDraft)} onInferenceChange={changedInference} onFailure={message=>error=message} /></div>
               <ReasoningPicker capability={selectedModel?.reasoning} value={reasoning} hasModel={!!selectedModel} disabled={starting||modelSelectionBusy||engineSelectionBusy||engineReadPending||engineCatalogueUnconfirmed} onChange={chooseReasoning} />
               {#if engineCatalogueUnconfirmed}<div class="catalogue-recovery" role="alert"><p>{tr('Le moteur et son catalogue ne sont pas confirmés ensemble. Relis leur état avant d’envoyer un message.','The engine and its catalogue are not confirmed together. Reload their state before sending a message.')}</p><Button type="button" variant="outline" disabled={engineReadPending} onclick={()=>void refreshEngines()}>{tr('Relire le moteur et les modèles','Reload engine and models')}</Button></div>{/if}
             </div>
@@ -381,11 +381,10 @@
   .message-header{display:grid;grid-template-columns:minmax(0,1fr) 44px 44px;column-gap:2px;row-gap:4px;align-items:center;min-width:0;margin-bottom:6px;}
   .message-header .assistant-name{min-width:0;margin-bottom:0;}
   .message-header .assistant-name span{min-width:0;}
-  .inference-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);align-items:start;gap:12px;margin:8px 0 12px;}
+  .inference-controls{display:grid;grid-template-columns:minmax(140px,.9fr) minmax(0,1.5fr) minmax(120px,1fr);align-items:start;gap:4px;margin:0;}
   .model-field{display:flex;flex-direction:column;gap:4px;min-width:0;}
-  .model-field>span{font-size:11px;line-height:1.5;color:var(--muted-foreground);}
   .catalogue-recovery{grid-column:1/-1;font-size:12px;line-height:1.6;}.catalogue-recovery p{margin:0 0 8px;}
-  .model-field :global(select){width:100%;max-width:100%;min-width:0;min-height:44px;background:var(--background);color:var(--foreground);border:1px solid var(--border);border-radius:7px;padding:8px 25px 8px 10px;font-size:12px;text-overflow:ellipsis;}
+  .model-field :global(select){width:100%;max-width:100%;min-width:0;min-height:44px;background:transparent;color:var(--muted-foreground);border:0;border-radius:6px;padding:7px 20px 7px 6px;font-size:12px;text-overflow:ellipsis;}
   .model-field :global(select:focus-visible){outline:2px solid var(--ring);outline-offset:2px;}
-  @media(max-width:650px){.inference-controls{grid-template-columns:minmax(0,1fr);gap:10px;}}
+  @media(max-width:650px){.inference-controls{grid-template-columns:minmax(128px,.9fr) minmax(0,1.1fr);gap:0 4px;}.inference-controls :global(.reasoning-picker){grid-column:1/-1;max-width:240px;}}
 </style>

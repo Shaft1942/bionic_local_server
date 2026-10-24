@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte';
+  import { Ellipsis } from '@lucide/svelte';
   import Button from '$lib/components/ui/button/button.svelte';
   import WorkspaceDialog from './WorkspaceDialog.svelte';
   import { tr } from './preferences.svelte';
@@ -12,11 +13,15 @@
   } = $props();
   let choice = $state(''), busy = $state(false), uncertain = $state(false), failure = $state(''), notice = $state('');
   let localProfile=$state<LocalProfile|null>(null),localProposal=$state<{current:EngineState;profile:LocalProfile}|null>(null),localTrigger=$state<HTMLButtonElement>();
+  let options=$state<HTMLDetailsElement>(),optionsTrigger=$state<HTMLElement>();
   let seenRevision = '', live = true, profileSequence=0;
   $effect(() => { const revision = inference?.revision; if (revision && revision !== seenRevision) untrack(() => { seenRevision = revision; choice = inference?.provider || ''; }); });
   $effect(()=>{const provider=inference?.provider,revision=inference?.revision;if(provider==='llamacpp'&&revision)untrack(()=>{void refreshProfile();});else localProfile=null;});
   const editable = $derived(inference?.editable === true && !inference.busy && !inference.reconciliationRequired && typeof inference.revision === 'string');
   const canUseLocal=$derived(inference?.provider==='llamacpp'&&!!localProfile&&inference.llamaUrl!==localProfile.endpoint);
+  const help=$derived(busy ? tr('Lecture de l’état du serveur…', 'Reading server state…') : !editable ? tr('Changement indisponible. Vérifie les réglages et les demandes en cours.', 'Change unavailable. Check settings and active requests.') : tr('Utilise la connexion déjà configurée sur le PC.', 'Uses the connection already configured on the PC.'));
+  function closeOptions(event:PointerEvent){if(options?.open&&!localProposal&&event.target instanceof Node&&!options.contains(event.target))options.open=false;}
+  function escapeOptions(event:KeyboardEvent){if(event.key==='Escape'&&options?.open&&!document.querySelector('dialog[open]')){event.preventDefault();options.open=false;optionsTrigger?.focus();}}
   onMount(() => { live = true; return () => { live = false;profileSequence++; onBusyChange?.(false); }; });
   async function currentState():Promise<EngineState> {
     const value: unknown = await request('/api/inference/settings', { signal: AbortSignal.timeout(15000) });
@@ -82,6 +87,7 @@
       if(current.provider!=='llamacpp'||current.editable!==true||current.busy||current.reconciliationRequired||current.revision!==target.current.revision||profile.revision!==target.profile.revision||profile.endpoint!==target.profile.endpoint){
         failure=tr('La connexion ou le profil a changé. Relis le choix avant de confirmer à nouveau.','The connection or profile changed. Review the choice before confirming again.');await onInferenceChange(current);return;
       }
+      if(options)options.open=false;
       beforeChange();
       await change({provider:'llamacpp',llamaUrl:profile.endpoint,expectedRevision:current.revision,...(current.hasLlamaToken?{clearLlamaToken:true}:{})});
     }catch{if(live){localProfile=null;failure=tr('Profil local non confirmé. Aucun changement envoyé.','Local profile unconfirmed. No change was sent.');}}
@@ -89,17 +95,26 @@
   }
 </script>
 
+<svelte:window onpointerdown={closeOptions} onkeydown={escapeOptions} />
+
 <div class="engine-picker">
-  <label for="chat-engine">{tr('Moteur · tous les chats', 'Engine · all chats')}</label>
-  <select id="chat-engine" bind:value={choice} disabled={disabled || busy || uncertain || !editable} aria-describedby="chat-engine-help">
+  <label class="control-label" for="chat-engine">{tr('Moteur · tous les chats', 'Engine · all chats')}</label>
+  <select id="chat-engine" bind:value={choice} disabled={disabled || busy || uncertain || !editable} aria-describedby="chat-engine-help" title={tr('Moteur · tous les chats', 'Engine · all chats')}>
     {#if !inference || !['bionic','llamacpp'].includes(inference.provider)}<option value="">{tr('Moteur non confirmé', 'Engine unconfirmed')}</option>{/if}
     <option value="bionic">Bionic</option><option value="llamacpp">llama.cpp</option>
   </select>
-  <p id="chat-engine-help">{busy ? tr('Lecture de l’état du serveur…', 'Reading server state…') : !editable ? tr('Changement indisponible. Vérifie les réglages et les demandes en cours.', 'Change unavailable. Check settings and active requests.') : tr('Utilise la connexion déjà configurée sur le PC.', 'Uses the connection already configured on the PC.')}</p>
-  {#if choice && choice !== inference?.provider && !uncertain}<Button type="button" variant="outline" disabled={disabled || busy || !editable} onclick={apply}>{tr('Utiliser ce moteur', 'Use this engine')}</Button>{/if}
-  {#if canUseLocal}<button bind:this={localTrigger} type="button" class="local-profile-action" disabled={disabled||busy||uncertain||!editable} onclick={proposeLocal}>{tr('Utiliser les GGUF locaux','Use local GGUFs')}</button>{/if}
-  {#if uncertain}<Button type="button" variant="outline" onclick={reread} disabled={busy}>{tr('Relire le moteur', 'Reload engine')}</Button>{/if}
-  {#if failure}<p role="alert">{failure}</p>{/if}{#if notice}<p role="status">{notice}</p>{/if}
+  <details bind:this={options} class="engine-options">
+    <summary bind:this={optionsTrigger} aria-label={tr('Options du moteur','Engine options')} title={tr('Options du moteur','Engine options')} aria-controls="chat-engine-options"><Ellipsis size={16} /></summary>
+    <div id="chat-engine-options" class="engine-options-content">
+      <p class="engine-scope">{tr('Moteur · tous les chats', 'Engine · all chats')}</p>
+      <p id="chat-engine-help">{help}</p>
+      {#if canUseLocal}<button bind:this={localTrigger} type="button" class="local-profile-action" disabled={disabled||busy||uncertain||!editable} onclick={proposeLocal}>{tr('Utiliser les GGUF locaux','Use local GGUFs')}</button>{/if}
+    </div>
+  </details>
+  {#if choice && choice !== inference?.provider && !uncertain}<div class="engine-feedback"><p>{tr('Ce choix concerne tous les chats.','This choice applies to all chats.')}</p><Button type="button" variant="outline" disabled={disabled || busy || !editable} onclick={apply}>{tr('Utiliser ce moteur', 'Use this engine')}</Button></div>{/if}
+  {#if busy}<p class="engine-feedback" role="status">{help}</p>{:else if !editable && inference}<p class="engine-feedback">{help}</p>{/if}
+  {#if uncertain}<div class="engine-feedback"><Button type="button" variant="outline" onclick={reread} disabled={busy}>{tr('Relire le moteur', 'Reload engine')}</Button></div>{/if}
+  {#if failure}<p class="engine-feedback" role="alert">{failure}</p>{/if}{#if notice}<p class="engine-feedback" role="status">{notice}</p>{/if}
 </div>
 
 <WorkspaceDialog open={!!localProposal} title={tr('Utiliser les GGUF locaux','Use local GGUFs')} onClose={closeLocal}>
@@ -114,12 +129,15 @@
 </WorkspaceDialog>
 
 <style>
-  .engine-picker{display:flex;flex-direction:column;gap:4px;min-width:0;}
-  label{font-size:11px;color:var(--muted-foreground);line-height:1.5;}
-  select{width:100%;max-width:100%;min-width:0;min-height:44px;background:var(--background);color:var(--foreground);border:1px solid var(--border);border-radius:7px;padding:8px 25px 8px 10px;font-size:12px;}
+  .engine-picker{display:grid;grid-template-columns:minmax(0,1fr) 44px;align-items:start;min-width:0;position:relative;}
+  .control-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+  select{width:100%;max-width:100%;min-width:0;min-height:44px;background:transparent;color:var(--muted-foreground);border:0;border-radius:6px;padding:7px 20px 7px 6px;font-size:12px;text-overflow:ellipsis;}
   select:disabled{opacity:.65;}select:focus-visible{outline:2px solid var(--ring);outline-offset:2px;}
   p{font-size:11px;line-height:1.45;color:var(--muted-foreground);margin:0;overflow-wrap:anywhere;}
   p[role=alert]{color:var(--foreground);font-weight:500;}
+  .engine-options{min-width:0;}.engine-options summary{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:6px;color:var(--muted-foreground);cursor:pointer;list-style:none;}.engine-options summary::-webkit-details-marker{display:none;}.engine-options summary:hover{background:var(--muted);color:var(--foreground);}.engine-options summary:focus-visible{outline:2px solid var(--ring);outline-offset:2px;}
+  .engine-options-content{position:absolute;z-index:30;top:calc(100% + 4px);left:0;width:min(290px,calc(100vw - 64px));padding:12px;background:var(--background);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px #0002;}.engine-options-content p+p{margin-top:4px;}.engine-scope{font-weight:500;color:var(--foreground);}
+  .engine-feedback{grid-column:1/-1;margin:4px 6px 0;}.engine-feedback :global(button){min-height:44px;max-width:100%;margin-top:4px;white-space:normal;}
   .local-profile-action{text-align:left;min-height:44px;text-decoration:underline;text-underline-offset:3px;font-size:12px;}.local-profile-action:disabled{opacity:.55;}.local-profile-action:focus-visible{outline:2px solid var(--ring);outline-offset:2px;}
   :global(.workspace-dialog[open]:has(.local-confirm)){width:min(560px,calc(100vw - 32px));height:fit-content;max-height:90dvh;}
   :global(.workspace-dialog[open]:has(.local-confirm) .workspace-dialog-content){flex:0 1 auto;}

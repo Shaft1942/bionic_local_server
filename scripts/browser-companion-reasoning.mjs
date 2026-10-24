@@ -62,7 +62,7 @@ function fixture() {
   return {api,posts,unknown,binary,graded,current,mode(value){mode=value;},restoreReads(){failReads=false;},modelBusy(value){modelBusy=value;},external(){provider='llamacpp';llamaUrl='http://127.0.0.1:19997';hasLlamaToken=true;localScenario=true;unloadedLocal=false;revision++;},profileFailure(value){profileFailure=value;},staleProfile(){profileRevision++;}};
 }
 const results=[];
-try { for(const width of [1280,320]) for(const language of ['fr','en']) {
+try { for(const width of [1280,390,320]) for(const language of ['fr','en']) {
   const state=fixture(),context=await browser.newContext({viewport:{width,height:1000},locale:language==='fr'?'fr-FR':'en-US',hasTouch:width===320,reducedMotion:'reduce'});
   await context.addInitScript(({instanceId,projectId,chatId,language})=>{
     localStorage.setItem('bionic:llama-preferences:'+instanceId,JSON.stringify({language,theme:'light',draftHours:24}));
@@ -82,6 +82,8 @@ try { for(const width of [1280,320]) for(const language of ['fr','en']) {
   const model=()=>page.getByLabel(tr('Modèle','Model'),{exact:true});
   const engine=()=>page.getByLabel(tr('Moteur · tous les chats','Engine · all chats'),{exact:true});
   const button=(fr,en)=>page.getByRole('button',{name:tr(fr,en),exact:true});
+  const engineOptions=()=>page.locator('.engine-options summary');
+  const openEngineOptions=async()=>{if(!await page.locator('.engine-options').evaluate(element=>element.open))await engineOptions().click();};
   const prompt=()=>page.getByRole('textbox',{name:'Message',exact:true});
   const choice=async value=>{await model().selectOption(value);await page.waitForTimeout(20);};
   const sameValue=async(locator,value)=>page.waitForFunction(({id,value})=>document.getElementById(id)?.value===value,{id:await locator.getAttribute('id'),value});
@@ -91,6 +93,10 @@ try { for(const width of [1280,320]) for(const language of ['fr','en']) {
   const apply=async provider=>{await engine().selectOption(provider);await button('Utiliser ce moteur','Use this engine').click();await page.waitForFunction(()=>!document.querySelector('#chat-engine')?.disabled);};
   try {
     await page.goto(origin+'/prototype/');await reasonValue('off');
+    const compact=await page.locator('.inference-controls').boundingBox();assert(compact.height<=(width>650?44:88),'The ordinary selector group occupies one desktop row or two mobile rows');
+    for(const control of [engine(),model(),reasoning(),engineOptions()]){const box=await control.boundingBox();assert(box.height>=44,'Compact controls retain a 44px touch target');assert(box.x>=compact.x&&box.x+box.width<=compact.x+compact.width+1,'Each selector fits within the compact group');}
+    assert.equal(await page.locator('.engine-options').evaluate(element=>element.open),false);
+    await engineOptions().focus();await page.keyboard.press('Enter');assert.equal(await page.locator('.engine-options').evaluate(element=>element.open),true);await page.keyboard.press('Escape');assert.equal(await page.locator('.engine-options').evaluate(element=>element.open),false);assert(await engineOptions().evaluate(element=>element===document.activeElement));assert.equal(state.posts.length,0,'Opening and closing engine options never mutates settings');
     assert.deepEqual(await reasoning().locator('option').evaluateAll(items=>items.map(item=>item.value)),['default','off','on']);
     assert.match(await reasoning().locator('option[value=default]').innerText(),language==='fr'?/Activée/:/On/);
     await reasoning().selectOption('on');await prompt().fill('Brouillon et permissions conservés');await shot('binary');
@@ -100,7 +106,7 @@ try { for(const width of [1280,320]) for(const language of ['fr','en']) {
     await choice('graded');await reasonValue('high');await send('high');
     await choice('binary');await reasonValue('on');await send('on');
     await choice('unknown');await reasonValue('default');assert(await reasoning().isDisabled());assert.match(await page.locator('#chat-reasoning-help').innerText(),language==='fr'?/aucun choix/:/no recognized/);await shot('unknown');await send('default');
-    state.binary.reasoning.allowedOptions=['off'];state.binary.reasoning.default='off';await page.reload();await reasoning().waitFor();await choice('binary');await reasonValue('default');await send('default');
+    state.binary.reasoning.allowedOptions=['off'];state.binary.reasoning.default='off';await page.reload();await page.waitForFunction(()=>document.querySelector('#prompt')?.value==='Intention conservée');await choice('binary');await reasonValue('default');await send('default');
     state.binary.reasoning.allowedOptions=['off','on'];state.binary.reasoning.default='on';state.graded.reasoning.allowedOptions.push('future');await page.reload();await reasonValue('on');
     await choice('graded');await reasonValue('high');assert.equal(await reasoning().locator('option[value=future]').count(),0);assert.match(await page.locator('#chat-reasoning-help').innerText(),language==='fr'?/ne sont pas reconnues/:/unrecognized/);
     const beforeEngine=state.posts.length;await engine().selectOption('llamacpp');assert.equal(state.posts.length,beforeEngine,'Choosing an engine is local until validation');
@@ -120,7 +126,8 @@ try { for(const width of [1280,320]) for(const language of ['fr','en']) {
     state.mode('bad-meta');await page.reload();const repair=button('Relire le moteur et les modèles','Reload engine and models');await repair.waitFor();assert(await button('Envoyer','Send').isDisabled());assert(await reasoning().isDisabled());const beforeRepair=state.posts.length;state.mode('ok');await repair.click();await reasonValue('off');assert.equal(state.posts.length,beforeRepair,'Explicit catalogue repair never mutates the engine');
     // Explicit external connection -> configured local profile; no implicit model/process action.
     state.external();state.profileFailure(true);await page.reload();await engine().waitFor();await page.waitForTimeout(60);assert.equal(await button('Utiliser les GGUF locaux','Use local GGUFs').count(),0,'Unknown local profile offers no action');
-    state.profileFailure(false);await page.reload();const local=button('Utiliser les GGUF locaux','Use local GGUFs');await local.waitFor();
+    state.profileFailure(false);await page.reload();await openEngineOptions();const local=button('Utiliser les GGUF locaux','Use local GGUFs');await local.waitFor();
+    const optionsBox=await page.locator('.engine-options-content').boundingBox();assert(optionsBox.x>=0&&optionsBox.x+optionsBox.width<=width,'Engine options fit within the viewport');
     const beforeLocal=state.posts.length;await local.click();const dialog=page.getByRole('dialog',{name:tr('Utiliser les GGUF locaux','Use local GGUFs'),exact:true});await dialog.waitFor();
     assert.match(await dialog.innerText(),language==='fr'?/jeton.*sera effacé/:/token.*removed/);assert.match(await dialog.innerText(),language==='fr'?/ni arrêté ni adopté/:/neither stopped nor adopted/);assert.equal(state.posts.length,beforeLocal);await shot('local-confirmation');
     await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});assert(await local.evaluate(e=>e===document.activeElement));assert.equal(state.posts.length,beforeLocal);
@@ -132,7 +139,7 @@ try { for(const width of [1280,320]) for(const language of ['fr','en']) {
     await reasoning().focus();await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowUp');
     const size=await reasoning().boundingBox();assert(size.height>=44);if(width===320)await engine().tap();await page.keyboard.press('Escape');
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);assert.deepEqual(csp,[]);assert.deepEqual(state.unknown,[]);
-    results.push({width,language,binary:true,graded:true,unknown:true,perModelDraftReload:true,chatPreference:true,staleChoiceSanitized:true,engineGlobalExplicit:true,lostPostNoReplay:true,failedReadRecovery:true,modelSelectionDisabled:true,noUnvalidatedPost:true,engineRevisionRaceRepaired:true,invalidCatalogueBlockedAndRecovered:true,localProfileExplicit:true,tokenWarningAndClear:true,staleProfileNoPost:true,unloadedLocalGgufAccessible:true,noImplicitModelPost:true,chatPosts:state.posts.filter(item=>item.name==='/api/chat').length,enginePosts:state.posts.filter(item=>item.name==='/api/inference/settings').length});
+    results.push({width,language,compactSelectorHeight:compact.height,keyboardEngineOptions:true,engineOptionsWithinViewport:true,binary:true,graded:true,unknown:true,perModelDraftReload:true,chatPreference:true,staleChoiceSanitized:true,engineGlobalExplicit:true,lostPostNoReplay:true,failedReadRecovery:true,modelSelectionDisabled:true,noUnvalidatedPost:true,engineRevisionRaceRepaired:true,invalidCatalogueBlockedAndRecovered:true,localProfileExplicit:true,tokenWarningAndClear:true,staleProfileNoPost:true,unloadedLocalGgufAccessible:true,noImplicitModelPost:true,chatPosts:state.posts.filter(item=>item.name==='/api/chat').length,enginePosts:state.posts.filter(item=>item.name==='/api/inference/settings').length});
   } catch(error) { console.error(JSON.stringify({width,language,errors,unknown:state.unknown,posts:state.posts,text:(await page.locator('body').innerText()).slice(-3500)}));await shot('failure');throw error; }
   finally { await context.close(); }
 } console.log(JSON.stringify({ok:true,syntheticOnly:true,results},null,2)); } finally { await browser.close(); }
