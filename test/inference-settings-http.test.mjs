@@ -34,6 +34,7 @@ async function fixture(t, options = {}) {
     if (['/api/v1/models/unload', '/api/v1/models/load'].includes(target.pathname)) {
       const operation = target.pathname.split('/').at(-1), journal = JSON.parse(await fs.readFile(path.join(root, 'data', 'inference-operations.json'), 'utf8'));
       assert(journal.operations.some(item => item.operation === operation && item.status === 'pending'), 'intent must be durable before model mutation HTTP'); assert(!JSON.stringify(journal).includes('BIONIC_FIXTURE'));
+      if (operation === 'load' && state.modelLoadGate) { state.modelLoadReached = true; await state.modelLoadGate; }
       state.loaded = operation === 'load'; if (state.failModelMutation === operation) throw new Error('Synthetic lost model mutation response');
       return Response.json(operation === 'load' ? { status: 'loaded', instance_id: 'bionic-loaded', load_config: { context_length: 8192 } } : { instance_id: 'bionic-loaded' });
     }
@@ -215,4 +216,42 @@ for (const operation of ['load', 'unload']) test(`ambiguous ${operation} survive
   const catalogue = await f.request('/api/models'); assert.equal(catalogue.statusCode, 200); assert.equal(catalogue.json().reconciliationRequired, false);
   assert.equal((await snapshot(f)).reconciliationRequired, false); assert.equal(mutations(), 1);
   assert.equal((await save(f, 'llamacpp')).statusCode, 200); assert.equal(mutations(), 1);
+});
+
+const manualLoad = async (f, input = {}, extra = {}) => {
+  const current = await snapshot(f);
+  return f.request('/api/models/load', {modelId:'shared-alias',expectedInferenceRevision:current.revision,consent:true,...input}, {headers:{origin:'http://127.0.0.1:8769','x-local-service-csrf':current.csrfNonce,...extra}});
+};
+const loadCalls = f => f.state.calls.filter(call=>new URL(call.url).pathname==='/api/v1/models/load');
+
+test('manual Bionic load refuses missing consent, forged session scope and stale connection before any load', async t=>{
+  const f=await fixture(t);f.state.loaded=false;
+  assert.equal((await manualLoad(f,{consent:false})).statusCode,400);
+  assert.equal((await manualLoad(f,{}, {'x-local-service-csrf':'wrong'})).statusCode,403);
+  assert.equal((await manualLoad(f,{}, {origin:'http://foreign.invalid'})).statusCode,403);
+  assert.equal((await manualLoad(f,{}, {cookie:''})).statusCode,401);
+  assert.equal((await manualLoad(f,{expectedInferenceRevision:'stale-revision'})).statusCode,409);
+  assert.equal((await manualLoad(f,{modelId:''})).statusCode,400);
+  assert.equal(loadCalls(f).length,0);
+});
+
+test('manual Bionic load confirms the stored context and duplicate explicit requests do not load twice',async t=>{
+  const f=await fixture(t);f.state.loaded=false;const response=await manualLoad(f);assert.equal(response.statusCode,200,response.text());
+  const result=response.json();assert.equal(result.loaded,true);assert.equal(result.provider,'bionic');assert.equal(result.model.id,'shared-alias');assert.equal(result.model.contextLength,8192);assert(result.models[0].loaded);assert.equal(result.inferenceRevision,(await snapshot(f)).revision);
+  assert.equal((await manualLoad(f)).statusCode,200);assert.equal(loadCalls(f).length,1);assert.deepEqual(JSON.parse(loadCalls(f)[0].request.body),{model:'shared-alias',echo_load_config:true});
+});
+
+test('manual Bionic load preserves a lost result through restart and reconciles by catalogue without replay',async t=>{
+  const f=await fixture(t);f.state.loaded=false;f.state.failModelMutation='load';assert.equal((await manualLoad(f)).statusCode,502);assert.equal(loadCalls(f).length,1);
+  assert.equal((await manualLoad(f)).statusCode,409);assert.equal(loadCalls(f).length,1);await f.restart();assert.equal((await manualLoad(f)).statusCode,409);
+  const catalogue=(await f.request('/api/models')).json();assert.equal(catalogue.models[0].loaded,true);assert.equal((await manualLoad(f)).statusCode,200);assert.equal(loadCalls(f).length,1);
+});
+
+test('manual Bionic load holds the model barrier while waiting and releases it after confirmation',async t=>{
+  const f=await fixture(t);f.state.loaded=false;let release;f.state.modelLoadGate=new Promise(resolve=>release=resolve);
+  const current=await snapshot(f),pending=f.raw('/api/models/load',{modelId:'shared-alias',expectedInferenceRevision:current.revision,consent:true},{headers:{origin:'http://127.0.0.1:8769','x-local-service-csrf':current.csrfNonce}});
+  await until(()=>f.state.modelLoadReached);
+  try{assert.equal((await save(f,'llamacpp')).statusCode,409);assert.equal((await manualLoad(f)).statusCode,409);assert.equal((await f.request('/api/chat',{projectId:'p1',model:'shared-alias',requestId:randomUUID(),text:'Must wait',fileProfile:'none'})).statusCode,409);}finally{release();}
+  await pending.work;assert.equal(pending.res.statusCode,200,pending.res.text());assert.equal((await f.request('/api/models')).json().unloading,false);assert.equal((await save(f,'llamacpp')).statusCode,200);
+  const refused=await manualLoad(f);assert.equal(refused.statusCode,409);assert.equal(loadCalls(f).length,1);
 });
