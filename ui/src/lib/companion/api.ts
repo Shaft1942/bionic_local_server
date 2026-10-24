@@ -15,7 +15,7 @@ export async function request(route: string, options: RequestInit = {}): Promise
 
 export const post = (route: string, value: unknown) => request(route, { method: 'POST', body: JSON.stringify(value) });
 export const query = (route: string, values: Record<string, string>) => route + '?' + new URLSearchParams(values);
-export const terminal = (status: string) => ['done', 'complete', 'completed', 'error', 'failed', 'stopped', 'cancelled'].includes(status);
+export const terminal = (status: string) => ['done', 'complete', 'completed', 'error', 'failed', 'stopped', 'cancelled', 'interrupted'].includes(status);
 
 export function newRequestId(): string {
   // crypto.randomUUID requires a secure context; getRandomValues also works on a LAN HTTP URL.

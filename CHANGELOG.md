@@ -1,5 +1,13 @@
 # Journal des versions
 
+## 2.6.0-beta.2 — candidate locale
+
+- Paramètres natifs dans llama-ui : moteur de conversation et connexion, modèles et plafonds, ComfyUI/LoRA/mémoire, serveurs du PC, apparence et brouillons, sécurité, mises à jour et diagnostic.
+- Un seul moteur d'inférence actif à la fois, sélectionné dans la webapp : Bionic ou llama-server. Connexions persistantes, jetons séparés, application au repos et réconciliation des opérations ambiguës après redémarrage.
+- Génération d'images commune aux connecteurs de conversation ; contrat de fournisseur indépendant préparant les futurs moteurs images, avec ComfyUI comme fournisseur distribué.
+- Actions sur les conversations et messages, approbations scripts/web, activité, livrables, versions et corbeille portés dans llama-ui ; historique paginé, file de messages, brouillons complets et français/anglais.
+- Séries de 1 à 5 images depuis le chat, suivi distinct des jobs, galerie et ZIP conservés. La récupération relit l'état serveur sans nouvelle soumission.
+
 ## 2.5.1-beta.2 — 2026-10-24 — candidate locale
 
 - Dans **Projets et conversations**, un bouton **+** à droite du compteur ouvre directement un nouveau chat web dans le projet choisi, y compris depuis un projet replié. Les brouillons sont conservés et la conversation est enregistrée au premier envoi.

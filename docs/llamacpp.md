@@ -41,7 +41,9 @@ Pour connecter un compagnon de test, utiliser une installation et ses ports dist
 }
 ```
 
-Équivalents d'environnement : `BIONIC_MOBILE_INFERENCE_PROVIDER=llamacpp`, `BIONIC_LLAMA_URL`. Si nécessaire, fournir `BIONIC_LLAMA_API_TOKEN` au processus ; le jeton Bionic n'est jamais envoyé à llama.cpp. `apiUrl` et les profils de lancement Bionic gardent leur sens Bionic. Le choix du moteur est fixe pour cette instance du compagnon et demande son redémarrage pour changer ; le mode par défaut reste `bionic`.
+Ces valeurs servent à la configuration initiale. Depuis la **2.6.0-beta.2**, **Paramètres → Conversation** permet de sélectionner et tester Bionic ou llama-server, puis d'appliquer une connexion unique au repos, sans redémarrage du compagnon. Les choix web persistent et priment sur les valeurs initiales au démarrage suivant. Les adresses et jetons de chaque moteur restent séparés ; le jeton Bionic n'est jamais envoyé à llama.cpp. `apiUrl` et les profils de lancement Bionic gardent leur sens Bionic. Voir [les paramètres de llama-ui](llama-ui-prototype.md).
+
+Les équivalents d'environnement restent `BIONIC_MOBILE_INFERENCE_PROVIDER=llamacpp`, `BIONIC_LLAMA_URL` et, si nécessaire, `BIONIC_LLAMA_API_TOKEN`. Le mode initial par défaut reste `bionic`. Un contrôle de connexion n'exécute aucune génération et ne charge aucun modèle. Tous les connecteurs d'inférence disposent du même outil images, fourni actuellement par ComfyUI.
 
 Les identifiants de modèle llama.cpp sont séparés par moteur/endpoint/alias ; l'alias natif est utilisé seulement pour la requête d'inférence. Les préférences et efforts Bionic ne sont pas réutilisés par simple égalité de nom. La provenance est enregistrée sur les réponses. Une panne ne redirige jamais la requête vers Bionic.
 

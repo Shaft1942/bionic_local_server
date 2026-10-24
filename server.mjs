@@ -5,7 +5,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { createInferenceGate } from './lib/inference-gate.mjs';
 import { createJobCoordinator } from './lib/job-coordinator.mjs';
 import { createCompanionLifecycle, withShutdownDeadline } from './lib/companion-lifecycle.mjs';
-import { createModelTransport } from './lib/model-transport.mjs';
+import { createInferenceSettings, createInferenceRuntime, checkInferenceConnection } from './lib/inference-settings.mjs';
 import { createNDJSONWriter } from './lib/ndjson-writer.mjs';
 import { promisify } from 'node:util';
 import { createGpuScheduler } from './lib/gpu-scheduler.mjs';
@@ -17,8 +17,6 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto';
 import { createBionicStore } from './lib/bionic-store.mjs';
 import { loadSettings } from './lib/config.mjs';
-import { createModelService } from './lib/model-service.mjs';
-import { createLlamaCppModelService } from './lib/llamacpp-model-service.mjs';
 import { createLocalServiceSupervisor } from './lib/local-service-supervisor.mjs';
 import { createLocalServiceSetup } from './lib/local-service-setup.mjs';
 import { createModelPreferences, validateModelId, validateOutputPreferences, outputBudget, estimateRequestTokens, CONTEXT_RESERVE_TOKENS } from './lib/model-preferences.mjs';
@@ -29,6 +27,7 @@ import { consumeModelStream } from './lib/file-agent.mjs';
 import { toolsFor, createAgentTools, normalizeFileProfile, FILE_MUTATION_TOOLS } from './lib/agent-tools.mjs';
 import { createToolApprovals } from './lib/tool-approvals.mjs';
 import { createComfyImages } from './lib/comfy-images.mjs';
+import { createImageProviderBinding } from './lib/image-provider.mjs';
 import { createImageArchive } from './lib/image-archive.mjs';
 import { forkConversation } from './lib/conversation-fork.mjs';
 import { createContextReceipt, addToolRead, addExternalContext, markContextTransmitted } from './lib/context-receipt.mjs';
@@ -77,7 +76,35 @@ const measurements = { directoryScans: 0, chatDiskReads: 0, deserializations: 0 
 let revision = 0;
 const DATA = path.join(ROOT, 'data');
 const RUNTIME = path.join(ROOT, 'runtime');
-const settings = options.settings || await loadSettings({ root: ROOT });
+const settings = { ...(options.settings || await loadSettings({ root: ROOT })) };
+const inferenceSettings = await createInferenceSettings({ filename: path.join(DATA, 'inference-settings.json'), fs,
+  initial: { provider: settings.inferenceProvider || 'bionic', apiUrl: settings.apiUrl, llamaUrl: settings.llamaUrl, bionicToken: (options.inferenceEnvironment || process.env).BIONIC_API_TOKEN || '', llamaToken: (options.inferenceEnvironment || process.env).BIONIC_LLAMA_API_TOKEN || '' },
+  reservedPorts: [settings.port, settings.certificateProofPort, Number(new URL(settings.comfyUrl || 'http://127.0.0.1:8188').port || 80)].filter(Number.isInteger) });
+const inferenceEditable = !options.gpuScheduler && (!!options.inferenceFactory || !options.modelService && !options.modelTransport);
+Object.assign(settings, { inferenceProvider: inferenceSettings.current().provider, apiUrl: inferenceSettings.current().apiUrl, llamaUrl: inferenceSettings.current().llamaUrl });
+const inferenceOperationsPath = path.join(DATA, 'inference-operations.json');
+let inferenceOperations = new Map(), inferenceOperationWrites = Promise.resolve();
+try {
+  const info = await fs.lstat(inferenceOperationsPath);
+  if (!info.isFile() || info.isSymbolicLink() || info.size > 64000) throw new Error('Invalid inference journal');
+  const journal = JSON.parse(await fs.readFile(inferenceOperationsPath, 'utf8'));
+  if (journal?.version !== 1 || !Array.isArray(journal.operations) || journal.operations.length > 128 || journal.operations.some(item => !item || !/^[\w-]{1,100}$/.test(item.id) || !['load', 'unload'].includes(item.operation) || !['pending', 'unknown'].includes(item.status))) throw new Error('Invalid inference journal');
+  inferenceOperations = new Map(journal.operations.map(item => [item.id, item]));
+} catch (error) { if (error.code !== 'ENOENT') throw Object.assign(new Error('Le journal des mutations de modèle est illisible. Ses données sont conservées.'), { status: 503 }); }
+function recordInferenceMutation(event, selected = inferenceSettings.current()) {
+  const work = inferenceOperationWrites.catch(() => {}).then(async () => {
+    const next = new Map(inferenceOperations);
+    if (event.status === 'reconciled') next.clear();
+    else if (event.status === 'confirmed') next.delete(event.id);
+    else next.set(event.id, { id: event.id, operation: event.operation, status: event.status, provider: selected.provider, endpoint: selected.provider === 'llamacpp' ? selected.llamaUrl : selected.apiUrl });
+    inferenceOperations = next;
+    const temporary = inferenceOperationsPath + '.' + randomUUID() + '.tmp';
+    try { await fs.mkdir(DATA, { recursive: true }); await fs.writeFile(temporary, JSON.stringify({ version: 1, operations: [...next.values()] }), { flag: 'wx', mode: 0o600 }); await fs.rename(temporary, inferenceOperationsPath); }
+    catch { throw Object.assign(new Error('Le suivi du changement de modèle n’a pas pu être confirmé. Actualise son catalogue avant de poursuivre.'), { status: 503, code: 'inference-operation-unconfirmed' }); }
+    finally { await fs.unlink(temporary).catch(() => {}); }
+  });
+  inferenceOperationWrites = work; return work;
+}
 const inferenceGate = createInferenceGate(settings.maxConcurrentInferences || 0);
 const lifecycle = createCompanionLifecycle();
 const coordinator = createJobCoordinator({ policy: settings.resourcePolicy || 'exclusive', maxText: settings.maxConcurrentInferences || 0 });
@@ -88,8 +115,8 @@ const localProjects = createLocalProjects({ filename: path.join(DATA, 'local-pro
 const organizer = createConversationOrganizer({ filename: path.join(DATA, 'conversation-locations.json'), store: localProjects, hasLocalUnassigned: async () => (await webChats('companion-unassigned')).length > 0 });
 const { listProjects, listSessions, getConversation } = organizer;
 const PORT = settings.port;
-const inferenceProvider = settings.inferenceProvider || 'bionic';
-const API = inferenceProvider === 'llamacpp' ? settings.llamaUrl : settings.apiUrl;
+let inferenceProvider = settings.inferenceProvider || 'bionic';
+let API = inferenceProvider === 'llamacpp' ? settings.llamaUrl : settings.apiUrl;
 const apiUrl = new URL(API);
 if (!['127.0.0.1', 'localhost', '[::1]'].includes(apiUrl.hostname)) throw new Error('L’API Bionic doit rester locale.');
 const configPath = path.join(DATA, 'config.json');
@@ -145,9 +172,15 @@ let loginVerifications = 0;
 const busy = new Set();
 const active = new Map();
 const toolApprovals = createToolApprovals();
-const modelService = options.modelService || (inferenceProvider === 'llamacpp' ? createLlamaCppModelService : createModelService)({ baseUrl: API, headers: inferenceHeaders, fetchImpl: fetch });
+const inferenceFactory = options.inferenceFactory || (config => createInferenceRuntime(config, fetch, { onMutationState: event => recordInferenceMutation(event, config) }));
+let inferenceRuntime = inferenceFactory(inferenceSettings.current(), { fetchImpl: fetch });
+function validateInferenceRuntime(runtime) { if (!runtime?.modelService || typeof runtime.modelService.list !== 'function' || typeof runtime.modelTransport?.request !== 'function') throw Object.assign(fail(500, 'Le connecteur du moteur n’est pas disponible.'), { code: 'inference-runtime-invalid' }); return runtime; }
+validateInferenceRuntime(inferenceRuntime);
+const modelService = (!options.inferenceFactory && options.modelService) || new Proxy({}, { get(_target, key) { const value = inferenceRuntime.modelService[key]; return typeof value === 'function' ? value.bind(inferenceRuntime.modelService) : value; } });
 const gpuScheduler = options.gpuScheduler || createGpuScheduler({modelService});
-const comfyImages = options.comfyService || await createComfyImages({directory:path.join(DATA,'comfy-generations'),settingsFile:path.join(DATA,'comfy-settings.json'),url:settings.comfyUrl,enabled:settings.comfyEnabled,workflowId:settings.comfyWorkflowId,gpuScheduler,coordinator,fetchImpl:options.comfyFetchImpl||globalThis.fetch});
+const imageProvider = createImageProviderBinding({ provider: options.imageProvider, legacyService: options.imageProvider ? undefined : options.comfyService || await createComfyImages({directory:path.join(DATA,'comfy-generations'),settingsFile:path.join(DATA,'comfy-settings.json'),url:settings.comfyUrl,enabled:settings.comfyEnabled,workflowId:settings.comfyWorkflowId,gpuScheduler,coordinator,fetchImpl:options.comfyFetchImpl||globalThis.fetch}) });
+// Historical HTTP/module names remain compatibility aliases to the selected image service.
+const comfyImages = imageProvider.service;
 comfyImages.setGpuScheduler?.(gpuScheduler);
 const chatRequests = new Map();
 function pruneChatRequests() {
@@ -175,6 +208,7 @@ let modelManagementBusy = false;
 let localServices, localSetup, localServiceBarrier = false;
 function assertServiceAdmission() {
   lifecycle.assertAdmission();
+  if (inferenceOperations.size) throw Object.assign(fail(409, 'Un changement de modèle attend confirmation. Actualise son catalogue avant de poursuivre.'), { code: 'inference-operation-unconfirmed' });
   if (localServiceBarrier) throw Object.assign(fail(409, 'Une opération sur les serveurs du PC est en cours. Attends sa fin.'), { code: 'service-operation-active' });
   localServices?.assertAdmission();
 }
@@ -193,6 +227,7 @@ let installation = { status: 'idle', message: '' };
 function activeWork() {
   const gpu = gpuScheduler.snapshot();
   return { security: Number(certificateWeb.busy || !!certificateTransport?.status().candidate), conversations: busy.size, generations: active.size,
+    uncertainInference: inferenceOperations.size,
     localServices: localServices?.activeCount() || 0, pendingModelLoads: modelService?.pendingCount?.() || 0,
     gpuWork: gpu.activeModels + gpu.activeImages + gpu.queuedModels + gpu.queuedImages,
     uncertainImages: comfyImages.lifecycleStatus?.().uncertain || 0,
@@ -343,10 +378,11 @@ async function readChat(projectId, id) {
   chat.messages = messageIds(chat.messages);
   return chat;
 }
-function apiHeaders() { return process.env.BIONIC_API_TOKEN ? { Authorization: `Bearer ${process.env.BIONIC_API_TOKEN}` } : {}; }
-function inferenceHeaders() { return inferenceProvider === 'llamacpp' ? (process.env.BIONIC_LLAMA_API_TOKEN ? { Authorization: `Bearer ${process.env.BIONIC_LLAMA_API_TOKEN}` } : {}) : apiHeaders(); }
-const modelTransport = options.modelTransport || createModelTransport({ baseUrl: API, headers: inferenceHeaders, fetchImpl: fetch, provider: inferenceProvider });
-const projectFileOptions = { backupDirectory: path.join(DATA, 'file-backups'), imageDirectory: path.join(DATA, 'image-attachments'), registryPath: settings.registryPath, extraRoots: settings.extraRoots, python: settings.python, protectedPaths: () => [path.join(ROOT, 'config.launchers.local.json'), path.join(RUNTIME, 'local-services'), path.join(RUNTIME, 'local-service-hosts'), path.join(ROOT, 'scripts', 'local-service-host.py'), path.join(ROOT, 'scripts', 'select-local-service-installation.ps1'), ...localServices?.protectedPaths?.() || []] };
+function apiHeaders() { const token = inferenceSettings.current().bionicToken; return token ? { Authorization: `Bearer ${token}` } : {}; }
+function inferenceHeaders() { const current = inferenceSettings.current(), token = inferenceProvider === 'llamacpp' ? current.llamaToken : current.bionicToken; return token ? { Authorization: `Bearer ${token}` } : {}; }
+let modelTransport = (!options.inferenceFactory && options.modelTransport) || inferenceRuntime.modelTransport;
+function inferenceSettingsDTO() { return { ...inferenceSettings.snapshot(), editable: inferenceEditable, reconciliationRequired: inferenceOperations.size > 0, busy: localServiceBarrier || updatePreparing || updateMaintenance || lifecycle.status().stopping || Object.values(activeWork()).some(Boolean) || inFlightMutations > 0 }; }
+const projectFileOptions = { backupDirectory: path.join(DATA, 'file-backups'), imageDirectory: path.join(DATA, 'image-attachments'), registryPath: settings.registryPath, extraRoots: settings.extraRoots, python: settings.python, protectedPaths: () => [DATA, path.join(ROOT, 'config.launchers.local.json'), path.join(RUNTIME, 'local-services'), path.join(RUNTIME, 'local-service-hosts'), path.join(ROOT, 'scripts', 'local-service-host.py'), path.join(ROOT, 'scripts', 'select-local-service-installation.ps1'), ...localServices?.protectedPaths?.() || []] };
 const nativeProjectFiles = options.projectFiles || createProjectFiles(projectFileOptions);
 const projectFiles = options.projectFiles || createProjectFiles({ ...projectFileOptions, rootsProvider: localProjects.rootsFor });
 const workspaceFeatures = createWorkspaceFeatures({ directory: path.join(DATA, 'workspace'), listProjects, listWebChats: webChats, readConversation: readChat, projectFiles, listActivity: async () => (await chatSnapshot()).chats });
@@ -875,7 +911,7 @@ async function generateChat(res, chat, item, request) {
     emit({ type: 'start', id: chat.id, requestId: data.requestId, replyId: reply.id, name: chat.name, contextOmitted: context.contextOmitted, outputBudget: reply.outputBudget, contextReceipt: context.receipt, source: 'web', reasoning: reasoning.choice, fileAccess, fileProfile, webAccess, webApproval, scriptAccess, imageAccess, imageCount, imageModelPolicy:chat.imageModelPolicy, imageWorkflowId:chat.imageWorkflowId });
     if (availableTools.length && item.toolsCapability === 'unknown') emit({ type: 'capability', tools: 'unknown', trial: true, message: 'La capacité outils de ce modèle est inconnue. Les outils activés sont essayés pour cette demande.' });
     const updateApproval=async approval=>{const index=reply.approvals.findIndex(item=>item.id===approval.id);if(index<0)reply.approvals.push(approval);else reply.approvals[index]=approval;chat.generation.awaitingApproval=approval.status==='pending';chat.updatedAt=Date.now();await persist();emit({type:'approval',approval,replyId:reply.id});};
-    const agent = createAgentTools({fileAccess,fileProfile,webAccess,webApproval,scriptAccess,imageAccess,imageCount,imageSelection:item.imageSelection,comfyService:comfyImages,imageOwner:{projectId:chat.projectId,chatId:chat.id,messageId:reply.id,requestId:data.requestId},webService:options.webService,files:projectFiles,projectId:chat.projectId,privateDirectory:path.join(DATA,'tool-runs'),python:settings.python,readLimit:3000,readBudget:Math.min(12000,Math.max(1600,Math.floor(selectedModel.contextLength*0.6))),signal:controller.signal,userPrompt:text,initialReads:attachments,requestApproval:proposal=>toolApprovals.request({projectId:chat.projectId,chatId:chat.id,proposal,signal:controller.signal,onChange:updateApproval}),onState:updateApproval});
+    const agent = createAgentTools({fileAccess,fileProfile,webAccess,webApproval,scriptAccess,imageAccess,imageCount,imageSelection:item.imageSelection,imageService:comfyImages,imageOwner:{projectId:chat.projectId,chatId:chat.id,messageId:reply.id,requestId:data.requestId},webService:options.webService,files:projectFiles,projectId:chat.projectId,privateDirectory:path.join(DATA,'tool-runs'),python:settings.python,readLimit:3000,readBudget:Math.min(12000,Math.max(1600,Math.floor(selectedModel.contextLength*0.6))),signal:controller.signal,userPrompt:text,initialReads:attachments,requestApproval:proposal=>toolApprovals.request({projectId:chat.projectId,chatId:chat.id,proposal,signal:controller.signal,onChange:updateApproval}),onState:updateApproval});
     const phases = [];
     let done = false, actionCount = 0, imageRepair = false;
     try {
@@ -1121,6 +1157,24 @@ async function handleRequest(req, res) {
         if (updateMaintenance) throw fail(503, 'Le serveur redémarre pour une mise à jour. Réessaie après reconnexion.');
         if (!url.pathname.startsWith('/api/updates/') || url.pathname === '/api/updates/preferences') { inFlightMutations++; countedMutation = true; }
       }
+      if (req.method === 'GET' && url.pathname === '/api/inference/settings') { json(res, 200, inferenceSettingsDTO()); return; }
+      if (req.method === 'GET' && url.pathname === '/api/image-provider') { json(res, 200, imageProvider.publicInfo()); return; }
+      if (req.method === 'POST' && ['/api/inference/settings', '/api/inference/check'].includes(url.pathname)) {
+        if (!inferenceEditable) throw Object.assign(fail(403, 'Les connexions de cette fixture sont fixées par son lanceur.'), { code: 'inference-settings-disabled' });
+        const input = await body(req, 20000);
+        if (url.pathname === '/api/inference/check') { const proposed = inferenceSettings.propose(input); json(res, 200, await checkInferenceConnection(proposed, { fetchImpl: options.inferenceCheckFetchImpl || fetch })); return; }
+        assertServiceAdmission();
+        const release = reserveLocalService();
+        try {
+          const proposed = inferenceSettings.propose(input), runtime = validateInferenceRuntime(inferenceFactory(proposed, { fetchImpl: fetch }));
+          await inferenceSettings.save(input);
+          // Constructors above have no effect. Once persistence succeeds, publish one runtime.
+          inferenceRuntime = runtime; modelTransport = runtime.modelTransport;
+          inferenceProvider = proposed.provider; API = inferenceProvider === 'llamacpp' ? proposed.llamaUrl : proposed.apiUrl;
+          Object.assign(settings, { inferenceProvider, apiUrl: proposed.apiUrl, llamaUrl: proposed.llamaUrl });
+          json(res, 200, { ...inferenceSettingsDTO(), busy: false, applied: true }); return;
+        } finally { release(); }
+      }
       if (req.method === 'POST' && url.pathname === '/api/security/actions') {
         assertServiceAdmission();
         if (updatePreparing || updateMaintenance) throw fail(409, 'Attends la fin de la mise à jour avant de modifier les connexions.');
@@ -1213,7 +1267,9 @@ async function handleRequest(req, res) {
         json(res, 200, await saveOutputPreference(await body(req, 4096))); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/models') {
-        json(res, 200, { models: await modelService.list(), generationActive: busy.size > 0, unloading: modelManagementBusy }); return;
+        const listed = await modelService.list();
+        if (inferenceOperations.size && !Object.entries(activeWork()).some(([key, value]) => key !== 'uncertainInference' && !!value)) await recordInferenceMutation({ status: 'reconciled' });
+        json(res, 200, { models: listed, generationActive: busy.size > 0, unloading: modelManagementBusy, reconciliationRequired: inferenceOperations.size > 0 }); return;
       }
       if (req.method === 'POST' && url.pathname === '/api/models/unload') {
         assertServiceAdmission();
@@ -1458,6 +1514,7 @@ function close() {
     // Generators may enqueue their last checkpoint only after cancellation settles.
     await Promise.all([...chatStates.values()].map(state => state.writes));
     await localProjects.flush(); await conversationRepository.flush();
+    await inferenceOperationWrites;
     await certificateTransport?.close();
     if (server.listening) { server.closeAllConnections(); await new Promise((resolve,reject) => server.close(error => error ? reject(error) : resolve())); }
     lifecycle.finish();
