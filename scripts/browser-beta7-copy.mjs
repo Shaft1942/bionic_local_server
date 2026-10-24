@@ -4,6 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
+const publicRoot = path.resolve(process.env.BIONIC_BROWSER_PUBLIC_DIR || path.join(root, 'public'));
 const { chromium } = process.env.PLAYWRIGHT_MODULE_PATH ? await import(pathToFileURL(path.join(process.env.PLAYWRIGHT_MODULE_PATH, 'index.mjs')).href) : await import('playwright');
 const browser = await chromium.launch({ headless: true, channel: process.env.BIONIC_BROWSER_CHANNEL || 'chrome' });
 const captures = process.env.BIONIC_BROWSER_CAPTURES, results = [];
@@ -27,18 +28,18 @@ try { for (const width of [1280, 390]) for (const mode of ['http-lan', 'secure-l
     if (url.pathname.startsWith('/api/')) {
       requests.push({ path: url.pathname, method: route.request().method() }); let value;
       if (url.pathname === '/api/ping') value = { instanceId, app: 'bionic-mobile-local', version: '2.6.0-beta.7' };
-      else if (url.pathname === '/api/projects') value = { projects: [{ id: 'p1', name: 'Projet synthétique' }] };
+      else if (url.pathname === '/api/projects') value = { projects: [{ id: 'p1', name: 'Projet synthétique' }, { id: 'companion-unassigned', name: 'Sans projet', isUnassigned: true }] };
       else if (url.pathname === '/api/models') value = { provider:'bionic', inferenceRevision:'synthetic', models: [{ id: 'fixture', name: 'Modèle synthétique', type: 'llm', loaded: true, contextLength: 4096 }] };
       else if (url.pathname === '/api/inference/settings') value = { provider: 'bionic', revision: 'synthetic', editable: true, apiUrl: 'http://127.0.0.1:19997' };
       else if (url.pathname === '/api/comfy/settings') value = { enabled: false, available: false, workflows: [] };
-      else if (url.pathname === '/api/sessions') value = { sessions: [{ id, projectId: 'p1', name: chat.name, source: 'web' }], total: 1 };
+      else if (url.pathname === '/api/sessions') { const sessions = url.searchParams.get('projectId') === 'companion-unassigned' ? [] : [{ id, projectId: 'p1', name: chat.name, source: 'web' }]; value = { sessions, total: sessions.length }; }
       else if (url.pathname === '/api/conversation') value = chat;
       else if (url.pathname === '/api/inference/model-selection') value = { busy: false, reconciliationRequired: false };
       else throw Error('Unexpected synthetic API ' + url.pathname);
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify(value) });
     }
-    const filename = path.resolve(root, 'public', url.pathname === '/prototype/' ? 'llama-ui/index.html' : url.pathname.slice(1));
-    assert(filename.startsWith(path.resolve(root, 'public') + path.sep));
+    const filename = path.resolve(publicRoot, url.pathname === '/prototype/' ? 'llama-ui/index.html' : url.pathname.slice(1));
+    assert(filename.startsWith(publicRoot + path.sep));
     const contentType = ({ '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' })[path.extname(filename)] || 'text/html';
     return route.fulfill({ contentType, body: await fs.readFile(filename), headers: contentType === 'text/html' ? { 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'" } : {} });
   });
