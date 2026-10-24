@@ -628,15 +628,19 @@ function silentResponse() { return { destroyed: true, writableEnded: true, on() 
 const directImageTasks = new Map();
 async function recoverDirectImage(chat, reply) {
   if (!reply?.directImage || reply.imageGenerations?.length || !comfyImages.findForOwner) return false;
-  const job = comfyImages.findForOwner({ projectId: chat.projectId, chatId: chat.id, messageId: reply.id, requestId: reply.requestId });
-  if (!job) return false;
-  reply.imageGenerations = [job];
+  const owner = { projectId: chat.projectId, chatId: chat.id, messageId: reply.id, requestId: reply.requestId };
+  const jobs = typeof comfyImages.findAllForOwner === 'function' ? comfyImages.findAllForOwner(owner) : [comfyImages.findForOwner(owner)].filter(Boolean);
+  if (!jobs.length) return false;
+  reply.imageGenerations = jobs;
   await persistChat(chat);
   return true;
 }
 async function sendDirectImage(data) {
   assertServiceAdmission();
-  if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).some(key => !['requestId','projectId','sessionId','prompt','workflowId','negativePrompt','seed','format'].includes(key))) throw fail(400, 'Demande image invalide.');
+  if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).some(key => !['requestId','projectId','sessionId','prompt','workflowId','negativePrompt','seed','format','imageCount'].includes(key))) throw fail(400, 'Demande image invalide.');
+  const imageCount = data.imageCount === undefined ? 1 : data.imageCount;
+  if (!Number.isInteger(imageCount) || imageCount < 1 || imageCount > 5) throw fail(400, 'Choisis entre 1 et 5 images.');
+  if (imageCount > 1 && typeof comfyImages.submitBatch !== 'function') throw fail(409, 'Le fournisseur d’images sélectionné ne propose pas les lots d’images.');
   const requestId = data.requestId;
   if (!validRequestId(requestId)) throw fail(400, 'Identifiant de demande invalide.');
   if (typeof data.prompt !== 'string' || !data.prompt.trim() || data.prompt.length > 6000) throw fail(400, 'Prompt image invalide (1 à 6 000 caractères).');
@@ -655,7 +659,7 @@ async function sendDirectImage(data) {
       if (!user?.directImage) throw fail(409, 'Cet identifiant appartient déjà à une autre demande.');
       const reply = chat.messages.find(message => message.role === 'assistant' && message.requestId === requestId);
       await recoverDirectImage(chat, reply);
-      return { id: chat.id, requestId, messageId: reply?.id, generation: reply?.imageGenerations?.[0], status: prior.status };
+      return { id: chat.id, requestId, messageId: reply?.id, generation: reply?.imageGenerations?.[0], generations: reply?.imageGenerations || [], status: prior.status };
     }
     if (chatRequests.has(requestId)) throw fail(409, 'Cet identifiant appartient déjà à une autre demande.');
     const controller = new AbortController();
@@ -674,9 +678,9 @@ async function sendDirectImage(data) {
         if (chat.projectId !== data.projectId) throw fail(404, 'Conversation introuvable dans ce projet.');
         if (busy.has(chat.id) || active.has(chat.id) || chat.queue?.some(item => item.status === 'queued')) throw fail(409, 'Attends la fin de la réponse avant de générer une image dans cette conversation.');
         request.id = chat.id; request.status = 'running'; busy.add(chat.id);
-        chat.messages.push({ id: randomUUID(), role: 'user', text: data.prompt.trim(), createdAt: Date.now(), requestId, requestStatus: 'running', directImage: true });
+        chat.messages.push({ id: randomUUID(), role: 'user', text: data.prompt.trim(), createdAt: Date.now(), requestId, requestStatus: 'running', directImage: true, imageCount });
         reply = { id: randomUUID(), role: 'assistant', text: '', createdAt: Date.now(), requestId, directImage: true, imageGenerations: [] };
-        chat.messages.push(reply); chat.imageAccess = true; chat.imageWorkflowId = selection?.workflowId || data.workflowId;
+        chat.messages.push(reply); chat.imageAccess = true; chat.imageWorkflowId = selection?.workflowId || data.workflowId; chat.imageCount = imageCount;
         chat.generation = { status: 'running', phase: 'waiting-image-resource', requestId, replyId: reply.id, startedAt: Date.now() };
         await persistChat(chat);
         chatStates.get(chat.id).directImage = true;
@@ -686,12 +690,14 @@ async function sendDirectImage(data) {
       try {
         if (controller.signal.aborted) throw fail(409, 'Demande image arrêtée avant sa soumission.');
         const args = Object.fromEntries(['prompt','workflowId','negativePrompt','seed','format'].filter(key => data[key] !== undefined).map(key => [key,data[key]]));
-        const generation = await comfyImages.submit(args, { projectId: data.projectId, chatId: chat.id, messageId: reply.id, requestId }, controller.signal, selection);
-        reply.imageGenerations = [generation]; reply.complete = true; reply.outcome = generation.status === 'stopped' ? 'stopped' : 'completed'; reply.finishedAt = Date.now();
+        const owner = { projectId: data.projectId, chatId: chat.id, messageId: reply.id, requestId };
+        const generations = imageCount === 1 ? [await comfyImages.submit(args, owner, controller.signal, selection)] : await comfyImages.submitBatch(args, imageCount, owner, controller.signal, selection);
+        const generation = generations[0];
+        reply.imageGenerations = generations; reply.complete = true; reply.outcome = generations.every(job => job.status === 'stopped') ? 'stopped' : 'completed'; reply.finishedAt = Date.now();
         chat.generation.status = reply.outcome; chat.generation.finishedAt = reply.finishedAt; request.status = reply.outcome;
         chat.messages.find(message => message.role === 'user' && message.requestId === requestId).requestStatus = reply.outcome;
         chat.updatedAt = Date.now(); await persistChat(chat);
-        return { id: chat.id, requestId, messageId: reply.id, generation };
+        return { id: chat.id, requestId, messageId: reply.id, generation, generations };
       } catch (error) {
         request.status = controller.signal.aborted ? 'stopped' : 'error';
         request.message = error.status ? error.message : 'La soumission image n’a pas été confirmée. Vérifie son suivi avant toute nouvelle demande.';
@@ -873,7 +879,7 @@ async function generateChat(res, chat, item, request) {
   const persist = async () => {
     dirty = false;const started=performance.now();
     try { await persistChat(chat);checkpointMetrics.writes++; }
-    catch(error){checkpointMetrics.failures++;throw error;}
+    catch(error){dirty=true;checkpointMetrics.failures++;throw error;}
     finally { const ms=Math.round(performance.now()-started);checkpointMetrics.totalMs+=ms;checkpointMetrics.maxMs=Math.max(checkpointMetrics.maxMs,ms); }
   };
   try {

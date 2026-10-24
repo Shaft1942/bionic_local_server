@@ -111,3 +111,30 @@ test('a lost ComfyUI submission response remains unknown after restart and is ne
   const duplicate = await (await f.request('/api/comfy/generate', input)).json(); assert.equal(duplicate.generation.status, 'unknown'); assert.equal(f.current.stats.promptPosts, 0);
   assert.equal((await f.request('/api/comfy/generations?' + new URLSearchParams({ projectId: PROTOTYPE_PROJECT, includeAll: 'true' }))).status, 200);
 });
+
+for (const imageCount of [2, 5]) test(`direct image batch of ${imageCount} survives replay and restart without duplicate submission`, async t => {
+  const f = await fixture(t), input = { projectId: PROTOTYPE_PROJECT, requestId: randomUUID(), prompt: 'A synthetic blue gradient', seed: 42, imageCount };
+  const response = await f.request('/api/comfy/generate', input), accepted = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(accepted));
+  assert.equal(accepted.generations.length, imageCount);
+  assert.equal(accepted.generation.id, accepted.generations[0].id);
+  assert.equal(new Set(accepted.generations.map(job => job.seed)).size, imageCount);
+  const again = await (await f.request('/api/comfy/generate', input)).json();
+  assert.deepEqual(again.generations.map(job => job.id), accepted.generations.map(job => job.id));
+  await f.restart();
+  const recovered = await (await f.request('/api/comfy/generate', input)).json();
+  assert.deepEqual(recovered.generations.map(job => job.id), accepted.generations.map(job => job.id));
+  assert.equal(f.current.stats.promptPosts, 0);
+  const chat = await (await f.request('/api/conversation?' + new URLSearchParams({projectId:input.projectId,id:accepted.id}))).json();
+  assert.equal(chat.imageCount, imageCount);
+  assert.equal(chat.messages.at(-1).imageGenerations.length, imageCount);
+});
+
+test('invalid direct image counts are refused before creating a request or submitting a prompt', async t => {
+  const f = await fixture(t);
+  for (const imageCount of [0, 6, 1.5, '2', null]) {
+    const response = await f.request('/api/comfy/generate', {projectId:PROTOTYPE_PROJECT,requestId:randomUUID(),prompt:'Synthetic refusal',imageCount});
+    assert.equal(response.status,400);
+  }
+  assert.equal(f.current.stats.promptPosts,0);
+});

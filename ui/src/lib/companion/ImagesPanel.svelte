@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import ImageCountField from './ImageCountField.svelte';
 	import { tr } from './preferences.svelte';
 	type Api = (route: string, options?: RequestInit) => Promise<any>;
 	type Job = { id: string; status: string; prompt: string; seed: number; format: string; width?: number; height?: number; workflowId: string; workflowLabel?: string; queuedLocally?: boolean; promptId?: string; error?: string; image?: any; loras?: { name?: string; strength?: number }[]; modelPolicy?: string; queuePosition?: number };
 	type Track = { requestId: string; kind: 'direct' | 'retry'; chatId?: string; messageId?: string; jobId?: string; job?: Job; issue?: string; terminal?: boolean };
 	let { projectId, chatId, request, instanceId = 'prototype', syntheticComfyUI = false }: { projectId: string; chatId?: string; instanceId?: string; syntheticComfyUI?: boolean; request: Api; onAttach?: (attachment: any) => void } = $props();
 	let settings = $state<any>(null), workflowId = $state(''), prompt = $state(''), seed = $state('42'), format = $state('square'), negativePrompt = $state('');
+	let imageCount = $state(1);
 	let tracks = $state<Track[]>([]), gallery = $state<Job[]>([]), galleryTotal = $state(0), nextCursor = $state<string | null>(null);
 	let busy = $state(false), syncing = $state(false), failure = $state(''), notice = $state(''), ready = $state(false);
 	let loadedProject = '', loadedInstance = '', epoch = 0;
@@ -30,7 +32,7 @@
 		catch { notice = tr('Suivi local indisponible. Les images restent conservées sur le serveur.','Local tracking unavailable. Images remain stored on the server.'); return false; }
 	}
 	function saveDraft() {
-		try { sessionStorage.setItem(draftKey(), JSON.stringify({ prompt, seed, format, workflowId, negativePrompt })); } catch { /* Le formulaire reste disponible en mémoire. */ }
+		try { sessionStorage.setItem(draftKey(), JSON.stringify({ prompt, seed, format, workflowId, negativePrompt, imageCount })); } catch { /* Le formulaire reste disponible en mémoire. */ }
 	}
 	function replaceTrack(target: Track | string, patch: Partial<Track>) {
 		tracks = tracks.map(track => (typeof target === 'string' ? track.requestId === target && !track.jobId : target.jobId ? track.jobId === target.jobId : track.requestId === target.requestId && !track.jobId) ? { ...track, ...patch } : track); persistTracks();
@@ -92,13 +94,14 @@
 		finally { syncing = false; }
 	}
 	async function initialize(pid: string) {
-		loadedProject = pid; loadedInstance = instanceId; const token = ++epoch; ready = false; settings = null; tracks = []; gallery = []; failure = ''; notice = ''; prompt = ''; negativePrompt = ''; seed = '42'; format = 'square'; workflowId = '';
+		loadedProject = pid; loadedInstance = instanceId; const token = ++epoch; ready = false; settings = null; tracks = []; gallery = []; failure = ''; notice = ''; prompt = ''; negativePrompt = ''; seed = '42'; format = 'square'; workflowId = ''; imageCount = 1;
 		if (!pid) return;
 		try {
 			const saved = JSON.parse(localStorage.getItem(storageKey(pid)) ?? '[]');
 			if (Array.isArray(saved)) tracks = saved.filter(track => typeof track?.requestId === 'string' && ['direct', 'retry'].includes(track.kind)).slice(-100);
 			const draft = JSON.parse(sessionStorage.getItem(draftKey(pid)) ?? 'null');
 			if (draft) { prompt = typeof draft.prompt === 'string' ? draft.prompt : ''; negativePrompt = typeof draft.negativePrompt === 'string' ? draft.negativePrompt : ''; seed = typeof draft.seed === 'string' ? draft.seed : '42'; format = ['square', 'portrait', 'landscape'].includes(draft.format) ? draft.format : 'square'; workflowId = typeof draft.workflowId === 'string' ? draft.workflowId : ''; }
+			if (Number.isInteger(draft?.imageCount) && draft.imageCount >= 1 && draft.imageCount <= 5) imageCount = draft.imageCount;
 		} catch { /* Le serveur demeure l'autorité de suivi. */ }
 		try {
 			const result = await request('/api/comfy/settings');
@@ -117,9 +120,12 @@
 		tracks = [...tracks, { requestId, kind: 'direct' }];
 		if(!persistTracks()){tracks=tracks.filter(track=>track.requestId!==requestId);failure=tr('Aucun envoi effectué. Autorise le stockage local pour conserver le suivi avant de générer.','Nothing was sent. Allow local storage to preserve tracking before generating.');busy=false;return;}
 		try {
-			const result = await request('/api/comfy/generate', { method: 'POST', body: JSON.stringify({ requestId, projectId: pid, ...(chatId?.startsWith('web-') ? { sessionId: chatId } : {}), prompt: prompt.trim(), workflowId, seed: selectedSeed, format, ...(workflow?.negativePrompt && negativePrompt ? { negativePrompt } : {}) }) });
+			const result = await request('/api/comfy/generate', { method: 'POST', body: JSON.stringify({ requestId, projectId: pid, ...(chatId?.startsWith('web-') ? { sessionId: chatId } : {}), prompt: prompt.trim(), workflowId, seed: selectedSeed, format, imageCount, ...(workflow?.negativePrompt && negativePrompt ? { negativePrompt } : {}) }) });
 			if (pid !== projectId || token !== epoch) return;
-			replaceTrack(requestId, { chatId: result.id, messageId: result.messageId, jobId: result.generation?.id, job: result.generation }); notice = tr('Demande reçue par le serveur. Tu peux quitter puis retrouver son suivi.',"Request received by the server. You can leave and return to its tracking."); await loadGallery();
+			const generations: Job[] = result.generations?.length ? result.generations : result.generation ? [result.generation] : [];
+			if (generations.length) ingestChat({ id: result.id, messages: [{ id: result.messageId, requestId, imageGenerations: generations }] }, pid, token);
+			else replaceTrack(requestId, { chatId: result.id, messageId: result.messageId });
+			notice = tr('Demande reçue par le serveur. Tu peux quitter puis retrouver son suivi.',"Request received by the server. You can leave and return to its tracking."); await loadGallery();
 		} catch (error: any) {
 			if (pid === projectId && token === epoch) { const rejected=error?.status>=400&&error.status<500&&![408,409].includes(error.status);failure = error?.message || tr('Connexion interrompue. Vérifie le suivi avant toute nouvelle demande.','Connection interrupted. Check tracking before making a new request.');replaceTrack(requestId,{terminal:rejected,issue:rejected?tr('Demande refusée. Aucun travail image reçu.','Request rejected. No image job accepted.'):tr('Envoi à vérifier par lecture du serveur. Aucun renvoi automatique.','Check submission through server reads. No automatic resubmission.')}); }
 		} finally { busy = false; }
@@ -138,7 +144,7 @@
 		} catch (error: any) { if (pid === projectId && token === epoch) { failure = error?.message || tr('Action non confirmée. Vérifie le suivi.','Action unconfirmed. Check tracking.');if(operation!=='cancel'){const rejected=error?.status>=400&&error.status<500&&![408,409].includes(error.status);replaceTrack(requestId,{terminal:rejected,issue:rejected?tr('Relance refusée. Aucun nouveau travail reçu.','Retry rejected. No new job accepted.'):tr('Relance à vérifier. Aucun nouvel envoi automatique.','Check retry tracking. No automatic resubmission.')});} } }
 		finally { busy = false; }
 	}
-	function prepare(job: Job) { prompt = job.prompt; workflowId = job.workflowId; seed = String(job.seed); format = job.format; negativePrompt = ''; saveDraft(); notice = tr('Prompt, workflow, format et seed repris. Vérifie les autres réglages puis lance explicitement la génération.',"Prompt, workflow, format and seed restored. Review other settings, then explicitly start generation."); document.getElementById('image-prompt')?.focus(); }
+	function prepare(job: Job) { prompt = job.prompt; workflowId = job.workflowId; seed = String(job.seed); format = job.format; negativePrompt = ''; imageCount = 1; saveDraft(); notice = tr('Prompt, workflow, format et seed repris pour une image. Vérifie les autres réglages puis lance explicitement la génération.',"Prompt, workflow, format and seed restored for one image. Review other settings, then explicitly start generation."); document.getElementById('image-prompt')?.focus(); }
 	$effect(() => { const pid = projectId; if (mounted && (pid !== loadedProject || instanceId !== loadedInstance)) void initialize(pid); });
 	$effect(() => { const id = chatId, pid = projectId; if (mounted && ready && id) void loadChat(id, pid, epoch).catch(() => { notice = tr('Le suivi de cette conversation sera revérifié à la prochaine connexion.',"This conversation’s tracking will be checked again when the connection resumes."); }); });
 	onMount(() => {
@@ -159,11 +165,12 @@
 		<label for="image-prompt">{tr('Description de l’image',"Image description")}</label><textarea id="image-prompt" bind:value={prompt} maxlength="6000" rows="5" placeholder={tr('Décris le sujet, la lumière et la composition…',"Describe the subject, lighting and composition…")} required disabled={busy}></textarea>
 		{#if workflow?.negativePrompt}<label for="image-negative">{tr('Éléments à éviter',"Elements to avoid")}</label><textarea id="image-negative" bind:value={negativePrompt} rows="2" disabled={busy}></textarea>{/if}
 		<div class="fields"><div><label for="image-seed">Seed</label><input id="image-seed" type="text" inputmode="numeric" pattern="[0-9]+" bind:value={seed} disabled={busy} required /></div><div><label for="image-format">Format</label><select id="image-format" bind:value={format} disabled={busy}><option value="square">{tr('Carré · 1024 × 1024',"Square · 1024 × 1024")}</option><option value="portrait">{tr('Portrait · 832 × 1216',"Portrait · 832 × 1216")}</option><option value="landscape">{tr('Paysage · 1216 × 832',"Landscape · 1216 × 832")}</option></select></div></div>
+		<ImageCountField id="atelier-image-count" bind:value={imageCount} disabled={busy || !ready || !settings?.enabled} onValueChange={()=>queueMicrotask(saveDraft)}/>
 		{#if settings}<p class="settings-meta">{settings.enabled ? tr('Connecteur activé',"Connector enabled") : tr('Connecteur désactivé',"Connector disabled")} · {tr('Modèle texte :','Text model:')} {settings.modelPolicy==='unload'?tr('décharger','unload'):settings.modelPolicy==='alternate'?tr('alterner','alternate'):tr('conserver','keep')} · {tr('Nettoyage après workflow :','Cleanup after workflow:')} {settings.memoryCleanup ? tr('oui',"yes") : tr('non',"no")}</p>{#if settings.queuePaused}<p class="feedback error">{tr('La file est suspendue après une soumission incertaine. Vérification côté serveur nécessaire.',"The queue is paused after an uncertain submission. Server verification is required.")}</p>{/if}{/if}
-		<Button type="submit" disabled={busy || !ready || !settings?.enabled || !prompt.trim() || unresolved || settings?.queuePaused}>{busy ? tr('Envoi en cours…',"Sending…") : syntheticComfyUI ? tr('Générer une image de test',"Generate a test image") : tr('Générer une image',"Generate an image")}</Button>
+		<Button type="submit" disabled={busy || !ready || !settings?.enabled || !prompt.trim() || unresolved || settings?.queuePaused}>{busy ? tr('Envoi en cours…',"Sending…") : syntheticComfyUI ? tr(imageCount===1?'Générer une image de test':`Générer ${imageCount} images de test`,imageCount===1?'Generate a test image':`Generate ${imageCount} test images`) : tr(imageCount===1?'Générer une image':`Générer ${imageCount} images`,imageCount===1?'Generate an image':`Generate ${imageCount} images`)}</Button>
 		{#if unresolved}<p class="settings-meta">{tr('Une demande attend confirmation. « Actualiser le suivi » consulte son état sans relancer la génération.',"A request awaits confirmation. Refresh tracking checks its state without generating again.")}</p>{/if}
 	</form><div class="tracking" aria-live="polite"><h3>{tr('Suivi conservé sur le serveur',"Tracking preserved on the server")}</h3>{#if !tracks.length}<p class="empty">{tr('Les travaux apparaîtront ici. Fermer l’interface n’annule pas un travail reçu.',"Jobs will appear here. Closing the interface does not cancel an accepted job.")}</p>{/if}
-		{#each [...tracks].reverse() as track (track.jobId || track.requestId)}<article class="job"><div class="job-heading"><strong>{track.job ? labels[track.job.status] ?? track.job.status : tr('Vérification de l’envoi','Checking submission')}</strong><span class="request-id" title={track.requestId}>{track.requestId.slice(0, 8)}</span></div>
+		{#each [...tracks].reverse() as track (track.jobId || track.requestId)}<article class="job"><div class="job-heading"><strong>{track.job ? labels[track.job.status] ?? track.job.status : track.terminal ? tr('Terminée sans image','Finished without an image') : tr('Vérification de l’envoi','Checking submission')}</strong><span class="request-id" title={track.requestId}>{track.requestId.slice(0, 8)}</span></div>
 			{#if track.job}<p class="job-prompt">{track.job.prompt}</p><p class="settings-meta">{track.job.workflowLabel ?? track.job.workflowId} · seed {track.job.seed} · {track.job.width} × {track.job.height}{track.job.queuePosition ? ' · position ' + track.job.queuePosition : ''}</p>
 				{#if track.job.status === 'succeeded' && track.job.image}<a href={imageUrl(track.job)} target="_blank" rel="noreferrer" aria-label={tr('Ouvrir l’image',"Open image")}><img src={imageUrl(track.job)} alt={track.job.prompt} loading="lazy" /></a>{/if}
 				{#if track.job.error}<p class="job-error">{track.job.error}</p>{/if}

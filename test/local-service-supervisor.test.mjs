@@ -181,3 +181,25 @@ test('activity changing after confirmation prevents stop and restart launch', as
   assert.equal((await done(f.supervisor, op.id)).status, 'failed');
   assert.deepEqual(f.counts(), { starts: 1, stops: 0, reserved: 0 });
 });
+
+for (const [action, correlated] of [['restart', true], ['start', false], ['restart', false]]) test(`Comfy ${action} recovery ${correlated ? 'confirms its new receipt' : 'rejects an unrelated receipt'} without replay`, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'launcher-comfy-recovery-')); t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, 'runtime/local-services'), { recursive: true });
+  const id = 'interrupted-comfy-operation';
+  await writeFile(join(root, 'runtime/local-services/operations.json'), JSON.stringify({ version: 1,
+    receipts: { comfyui: { profileFingerprint: 'comfy-profile', supervisorOperationId: correlated ? id : 'earlier-operation' } },
+    operations: [{ id, serviceId: 'comfyui', action, status: 'running' }],
+  }));
+  let effects = 0;
+  const supervisor = await createLocalServiceSupervisor({ root, profilesLoader: async () => ({ errors: {}, comfyui: { id: 'comfyui', fingerprint: 'comfy-profile' } }), adapters: {
+    observe: async () => ({ process: { state: 'running' }, api: { state: 'ready' }, activity: { state: 'idle' }, model: {} }),
+    start: async () => { effects++; }, stop: async () => { effects++; },
+  } }); t.after(() => supervisor.close());
+  assert.equal((await supervisor.operation(id)).status, 'unknown');
+  await supervisor.reload();
+  assert.equal((await supervisor.operation(id)).status, correlated ? 'succeeded' : 'unknown');
+  assert.equal(supervisor.activeCount(), correlated ? 0 : 1);
+  assert.equal(effects, 0);
+  if (correlated) assert.doesNotThrow(() => supervisor.assertAdmission());
+  else assert.throws(() => supervisor.assertAdmission(), { code: 'local_service_maintenance' });
+});

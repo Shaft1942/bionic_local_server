@@ -1,5 +1,13 @@
 # Journal des versions
 
+## 2.6.0-beta.6 — Canaé — candidate locale
+
+- Curseur **Nombre d’images** de 1 à 5, avec saisie précise, dans le chat et l’atelier Images. L’atelier conserve le choix après rechargement et soumet un lot suivi image par image, sans moteur de conversation requis.
+- Les lots réutilisent leurs travaux après reconnexion ou redémarrage, sans nouvelle soumission. Les seeds sont distinctes et les demandes invalides sont refusées avant effet.
+- Un remplacement llama-server incertain ne peut plus déclarer réussi le chargement de l’ancien modèle. Les démarrages terminés tardivement se réconcilient à la relecture et libèrent les opérations suivantes.
+- Les reprises des démarrages et redémarrages ComfyUI exigent un reçu du contrôleur corrélé à la bonne opération.
+- Une erreur ponctuelle de sauvegarde d’une réponse en cours est retentée même sans nouveau token ni client connecté.
+
 ## 2.6.0-beta.5 — Canaé — candidate locale
 
 - Le champ **Modèle** existant propose directement les GGUF : choix, confirmation et activation depuis un seul sélecteur, sans second champ ni bouton de chargement ajouté.

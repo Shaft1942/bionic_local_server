@@ -2,7 +2,9 @@
 
 # Canaé — compagnon local
 
-**Candidate locale Canaé 2.6.0-beta.5** : interface llama-ui, fenêtres centrées, paramètres natifs avec curseurs et sécurité HTTP/HTTPS/mTLS. Un seul moteur de conversation est sélectionné dans la webapp ; les GGUF sont partagés avec Bionic sans copie. Internet et images disponibles sont proposés par défaut, en conservant les désactivations explicites. Voir [la candidate et ses limites](docs/llama-ui-prototype.md). Cette mention ne constitue pas une publication.
+**Candidate locale Canaé 2.6.0-beta.6** : interface llama-ui, fenêtres centrées, paramètres natifs avec curseurs et sécurité HTTP/HTTPS/mTLS. Un seul moteur de conversation est sélectionné dans la webapp ; les GGUF sont partagés avec Bionic sans copie. Internet et images disponibles sont proposés par défaut, en conservant les désactivations explicites. Voir [la candidate et ses limites](docs/llama-ui-prototype.md). Cette mention ne constitue pas une publication.
+
+La bêta 6 ajoute le curseur de quantité d’images dans le chat et l’atelier et renforce les reprises des moteurs et des sauvegardes. Voir [l’audit, les corrections et les extensions proposées](docs/beta6-audit.md).
 
 **Référence stable 2.5.0** · Discutez avec les modèles de votre PC et retrouvez vos projets depuis le navigateur de votre téléphone, sur votre réseau local.
 

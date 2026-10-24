@@ -8,6 +8,7 @@
   import Markdown from './Markdown.svelte';
   import FilesPanel from './FilesPanel.svelte';
   import ImagesPanel from './ImagesPanel.svelte';
+  import ImageCountField from './ImageCountField.svelte';
   import SettingsPanel from './SettingsPanel.svelte';
   import WorkspaceDialog from './WorkspaceDialog.svelte';
   import ModelPicker from './ModelPicker.svelte';
@@ -69,7 +70,8 @@
     scriptAccess=!currentProject?.isUnassigned&&(value?.scriptAccess??chat?.scriptAccess??false);
     imageAccess=value?.imageAccess??chat?.imageAccess??(comfy?.enabled===true&&comfy?.available===true);
     imageWorkflowId=value?.imageWorkflowId||chat?.imageWorkflowId||comfy?.workflowId||'';
-    imageCount=value?.imageCount||chat?.imageCount||1;imageModelPolicy=value?.imageModelPolicy??chat?.imageModelPolicy??'';
+    const restoredCount=value?.imageCount??chat?.imageCount??1;
+    imageCount=Number.isInteger(restoredCount)&&restoredCount>=1&&restoredCount<=5?restoredCount:1;imageModelPolicy=value?.imageModelPolicy??chat?.imageModelPolicy??'';
   }
   function report(failure:any) {
     error=failure?.message||tr('Le compagnon est indisponible.','The companion is unavailable.');
@@ -195,6 +197,7 @@
   }
   async function send(event?:Event){
     event?.preventDefault();if(!prompt.trim()||!model||!projectId||starting||modelSelectionBusy)return;
+    if(composer?.form&&!composer.form.reportValidity())return;
     error='';notice='';followReply=true;const text=prompt.trim(),requestId=newRequestId(),pid=projectId,sequence=viewSequence;
     const snapshot:Draft={text,updatedAt:Date.now(),attachments:$state.snapshot(attachments),model,reasoning,fileProfile,webAccess,webApproval,scriptAccess,imageAccess,imageWorkflowId,imageCount,imageModelPolicy,nonce:draftNonce};
     const job:Job={requestId,projectId:pid,...(chat?.id?{id:chat.id}:{}),draftNonce,status:'starting'};
@@ -260,7 +263,7 @@
 {#if !authenticated}
   <main class="login-page"><div class="login-card"><Logo class="welcome-logo" /><h1>Canaé</h1><p>{tr('Tes projets, tes fichiers, tes conversations.','Your projects, files and conversations.')}</p>
     {#if ready}<form onsubmit={login}><label for="access-code">{tr('Code d’accès du prototype','Prototype access code')}</label><input id="access-code" type="password" bind:value={code} required autocomplete="current-password" /><Button type="submit" disabled={loginBusy}>{loginBusy?tr('Connexion…','Connecting…'):tr('Se connecter','Sign in')}</Button></form>{:else}<p role="status">{tr('Connexion au compagnon…','Connecting to the companion…')}</p>{/if}
-    {#if error}<p class="error" role="alert">{error}</p>{/if}<small>2.6.0-beta.5</small></div></main>
+    {#if error}<p class="error" role="alert">{error}</p>{/if}<small>2.6.0-beta.6</small></div></main>
 {:else}
   <div class="companion-shell" class:sidebar-hidden={!sidebarOpen}>
     {#if sidebarOpen}<aside class="navigation" aria-label="Navigation">
@@ -277,7 +280,7 @@
         {#if sessionPage?.hasMore}<Button variant="ghost" size="sm" disabled={sessionsBusy} onclick={()=>refreshSessions(true)}>{tr('Charger d’autres conversations','Load more conversations')}</Button>{/if}
         {#if sessionWarnings.length}<p class="quiet" role="status">{tr('Liste partielle : ','Partial list: ')+sessionWarnings.join(' · ')}</p>{/if}
       </nav>
-      <div class="navigation-footer"><span class="version">2.6.0-beta.5 · {inference?.provider==='llamacpp'?'llama-server':inference?.provider==='bionic'?'Bionic':tr('Moteur local','Local engine')}</span><div><a class="legacy-link" href="/legacy/">{tr('Ancienne interface','Legacy interface')}</a><div class="footer-controls"><LoadedModelsMenu {request} {models} {inference} onModelsChange={changedLoadedModels} disabled={starting||modelSelectionBusy} /><Button variant="ghost" size="icon" aria-label={tr('Se déconnecter','Sign out')} onclick={logout}><LogOut /></Button></div></div></div>
+      <div class="navigation-footer"><span class="version">2.6.0-beta.6 · {inference?.provider==='llamacpp'?'llama-server':inference?.provider==='bionic'?'Bionic':tr('Moteur local','Local engine')}</span><div><a class="legacy-link" href="/legacy/">{tr('Ancienne interface','Legacy interface')}</a><div class="footer-controls"><LoadedModelsMenu {request} {models} {inference} onModelsChange={changedLoadedModels} disabled={starting||modelSelectionBusy} /><Button variant="ghost" size="icon" aria-label={tr('Se déconnecter','Sign out')} onclick={logout}><LogOut /></Button></div></div></div>
     </aside>{/if}
     <main class="workspace">
       <header class="workspace-header"><div class="workspace-title">{#if !sidebarOpen}<Button variant="ghost" size="icon" aria-label={tr('Ouvrir la navigation','Open navigation')} onclick={()=>sidebarOpen=true}><PanelLeftOpen /></Button>{/if}<span>{chat?.name||currentProject?.name||tr('Nouveau chat','New chat')}</span></div>
@@ -322,7 +325,7 @@
               <select aria-label={tr('Droits sur les fichiers','File permissions')} bind:value={fileProfile} onchange={()=>queueMicrotask(saveDraft)} disabled={currentProject?.isUnassigned}><option value="none">{tr('Fichiers désactivés','Files disabled')}</option><option value="read">{tr('Lecture des fichiers','Read files')}</option><option value="write">{tr('Lecture et écriture','Read and write')}</option></select>
             </div><div class="send-controls">{#if currentJob}{#if streamingIds.includes(currentJob.requestId)}<Button variant="ghost" size="icon" aria-label={tr('Déconnecter le flux sans arrêter la demande','Disconnect stream without stopping request')} onclick={detach}><Unplug /></Button>{/if}<Button variant="outline" size="icon" aria-label={tr('Arrêter la demande','Stop request')} disabled={!currentJob.id} onclick={()=>stop()}><Square /></Button>{/if}<Button type="submit" size="icon" class="send-button" aria-label={tr('Envoyer','Send')} disabled={!prompt.trim()||!model||!projectId||starting||modelSelectionBusy}><ArrowUp /></Button></div></div>
             <details class="tool-options" onchange={()=>queueMicrotask(saveDraft)}><summary>{tr('Outils et images','Tools and images')}</summary><div class="tool-grid"><label><input type="checkbox" bind:checked={webAccess} />{tr('Recherche web','Web search')}</label><label><input type="checkbox" bind:checked={webApproval} disabled={!webAccess} />{tr('Accord pour chaque appel web','Approve each web call')}</label><label><input type="checkbox" bind:checked={scriptAccess} disabled={currentProject?.isUnassigned} />{tr('Scripts avec approbation','Scripts with approval')}</label><label><input type="checkbox" bind:checked={imageAccess} disabled={!comfy?.enabled||!comfy?.available} />{tr('Génération d’images','Image generation')}</label>
-              {#if imageAccess}<label>{tr('Workflow','Workflow')}<select aria-label={tr('Workflow du chat','Chat workflow')} bind:value={imageWorkflowId}>{#each comfy?.workflows||[] as workflow}<option value={workflow.id}>{workflow.name||workflow.id}</option>{/each}</select></label><label>{tr('Nombre d’images','Image count')}<select aria-label={tr('Nombre d’images','Image count')} bind:value={imageCount}>{#each [1,2,3,4,5] as amount}<option value={amount}>{amount}</option>{/each}</select></label><label>{tr('Modèle texte pendant les images','Text model during images')}<select aria-label={tr('Politique mémoire des images','Image memory policy')} bind:value={imageModelPolicy}><option value="">{tr('Réglage de l’application','Application setting')}</option><option value="keep">{tr('Garder chargé','Keep loaded')}</option><option value="unload">{tr('Décharger','Unload')}</option><option value="alternate">{tr('Alterner','Alternate')}</option></select></label>{/if}
+              {#if imageAccess}<label>{tr('Workflow','Workflow')}<select aria-label={tr('Workflow du chat','Chat workflow')} bind:value={imageWorkflowId}>{#each comfy?.workflows||[] as workflow}<option value={workflow.id}>{workflow.name||workflow.label||workflow.id}</option>{/each}</select></label>{#key projectId+':'+(chat?.id||'new')}<ImageCountField id="chat-image-count" bind:value={imageCount} disabled={!comfy?.enabled||!comfy?.available} onValueChange={()=>queueMicrotask(saveDraft)}/>{/key}<label>{tr('Modèle texte pendant les images','Text model during images')}<select aria-label={tr('Politique mémoire des images','Image memory policy')} bind:value={imageModelPolicy}><option value="">{tr('Réglage de l’application','Application setting')}</option><option value="keep">{tr('Garder chargé','Keep loaded')}</option><option value="unload">{tr('Décharger','Unload')}</option><option value="alternate">{tr('Alterner','Alternate')}</option></select></label>{/if}
             </div><p class="quiet">{tr('Les droits sont fixés à l’envoi. Les mêmes outils sont disponibles quel que soit le moteur d’inférence.','Permissions are fixed when sent. The same tools are available with every inference engine.')}</p></details>
           </form><p class="composer-hint">{currentJobs.length?tr('Les nouveaux messages rejoignent la file. Tu peux quitter la page.','New messages join the queue. You can leave this page.'):tr('Entrée pour envoyer · Maj + Entrée pour une nouvelle ligne','Enter to send · Shift + Enter for a new line')}</p></div>
         </div>

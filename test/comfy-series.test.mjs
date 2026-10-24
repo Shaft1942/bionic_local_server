@@ -109,6 +109,41 @@ for(const count of [2,4,5])test(`a ${count}-image series pins its metadata and s
   assert.deepEqual(repeated.map(job=>job.id),jobs.map(job=>job.id));assert.equal(f.posts.length,count);
 });
 
+for(const count of [1,2,5])test(`direct ${count}-image batch preserves its prompt, uses distinct bounded seeds and recovers every job`,async t=>{
+  const f=await fixture(t,{memoryCleanup:true});
+  const args={prompt:'An identical direct workshop prompt',seed:4294967295,format:'square'};
+  const jobs=await f.service.submitBatch(args,count,owner);
+  assert.equal(jobs.length,count);
+  assert.deepEqual(jobs.map(job=>job.seed),Array.from({length:count},(_,index)=>(4294967295+index)%4294967296));
+  assert(jobs.every(job=>job.prompt===args.prompt));
+  const repeat=await f.service.submitBatch({...args,prompt:'Ignored retry prompt'},count,owner);
+  assert.deepEqual(repeat.map(job=>job.id),jobs.map(job=>job.id));
+  for(const job of jobs)await f.finish(job);
+  assert.equal(f.posts.length,count);assert.equal(f.maxRunning,1);
+  assert(f.posts.every(post=>post.body.prompt['6'].inputs.text===args.prompt&&Object.hasOwn(post.body.prompt,'99')));
+  await f.restart();
+  assert.deepEqual(f.service.findAllForOwner(owner).map(job=>job.id),jobs.map(job=>job.id));
+  assert.deepEqual(f.service.findAllForOwner({...owner,requestId:'other-request'}),[]);
+  assert.deepEqual(f.service.findAllForOwner({...owner,projectId:'other-project'}),[]);
+  const recovered=await f.service.submitBatch(args,count,owner);
+  assert.deepEqual(recovered.map(job=>job.id),jobs.map(job=>job.id));assert.equal(f.posts.length,count);
+});
+
+test('direct batch rejects invalid counts and parameters before persistence and reserves capacity atomically',async t=>{
+  const f=await fixture(t);
+  for(const count of [0,6,1.5,'2',null,undefined])await assert.rejects(f.service.submitBatch({prompt:'Direct batch'},count,owner),{status:400});
+  await assert.rejects(f.service.submitBatch({prompt:'Direct batch',seed:-1},2,owner),{status:400});
+  assert.equal(f.posts.length,0);assert.equal(f.service.getSettings().activeJobs,0);
+  const first=await f.service.submitBatch({prompt:'First batch',seed:10},5,owner);
+  const second=await f.service.submitBatch({prompt:'Second batch',seed:20},5,{...owner,messageId:'second'});
+  await assert.rejects(f.service.submitBatch({prompt:'Overflow',seed:30},3,{...owner,messageId:'overflow'}),{status:409});
+  assert.equal(f.service.getSettings().activeJobs,10);
+  assert.equal((await fs.readdir(f.directory)).filter(name=>/^[a-f0-9-]{36}\.json$/i.test(name)).length,10);
+  for(const job of [...first,...second])await f.finish(job);
+  assert.deepEqual(f.posts.map(post=>post.body.prompt['6'].inputs.text),[...Array(5).fill('First batch'),...Array(5).fill('Second batch')]);
+  assert.equal(f.maxRunning,1);
+});
+
 test('mixed five-image lots keep the twelve-image capacity atomic and preserve FIFO groups',async t=>{
   const f=await fixture(t);
   const firstInput=countedImages('First',5),secondInput=countedImages('Second',5),lastInput=countedImages('Last',2);

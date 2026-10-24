@@ -47,7 +47,7 @@ try{
    await until(async()=>{const chats=await fixture.app.webChats(PROTOTYPE_PROJECT),chat=chats.find(item=>item.name.startsWith('Premier message'));return chat&&(await fixture.app.readWeb(chat.id)).messages.length===4&&!fixture.app.chatStates.get(chat.id)?.running;},'FIFO completed');
    assert.equal(posts.length,2,'navigation/reload never resubmits');assert.equal(fixture.stats.modelCalls,2);
    await openSidebar();await page.getByRole('button',{name:'Nouveau chat dans Atelier de démonstration',exact:true}).click();await closeSidebar();
-   await tools.locator('summary').click();await tools.getByLabel('Génération d’images',{exact:true}).check();await tools.getByRole('combobox',{name:'Nombre d’images',exact:true}).selectOption('5');await tools.getByRole('combobox',{name:'Politique mémoire des images',exact:true}).selectOption('keep');
+   await tools.locator('summary').click();await tools.getByLabel('Génération d’images',{exact:true}).check();await tools.getByRole('spinbutton',{name:'Nombre d’images',exact:true}).fill('5');await tools.getByRole('combobox',{name:'Politique mémoire des images',exact:true}).selectOption('keep');
    await page.getByRole('textbox',{name:'Message',exact:true}).fill('IMAGE_FIXTURE série de cinq images '+width);await page.getByRole('button',{name:'Envoyer',exact:true}).click();
    await until(()=>fixture.stats.promptPosts===5,'five image jobs');assert.equal(posts.length,3);assert.equal(posts[2].imageCount,5);assert.equal(posts[2].imageAccess,true);
    await page.reload();await navigation().waitFor();await closeSidebar();await navigation().getByRole('button',{name:'Images',exact:true}).click();

@@ -31,6 +31,10 @@ for (const name of [...packages].sort()) {
 await writeFile(path.join(ui, 'THIRD_PARTY_NOTICES.txt'), notices);
 const destination = path.join(application, 'public', 'llama-ui');
 await mkdir(destination, { recursive: true });
+// The HTML template can be checked out with CRLF on Windows. Keep the emitted
+// source artifact deterministic and avoid doubled CRs from HTML transforms.
+const index = path.join(destination, 'index.html');
+await writeFile(index, (await readFile(index, 'utf8')).replace(/\r\n?/g, '\n'));
 await writeFile(path.join(destination, 'LICENSE.llama.cpp'), await readFile(path.join(ui, 'LICENSE.llama.cpp')));
 await writeFile(path.join(destination, 'UPSTREAM.md'), await readFile(path.join(ui, 'UPSTREAM.md')));
 await writeFile(path.join(destination, 'THIRD_PARTY_NOTICES.txt'), notices);

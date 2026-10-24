@@ -144,13 +144,20 @@ try {
  for(let i=0;i<50&&!releaseAgent;i++)await sleep(10);agentRes.destroyed=true;agentRes.emit('close');releaseAgent();await agentJob;
  const detachedAgentId=agentRes.records().find(e=>e.type==='start').id;r=await request('/api/conversation?projectId=p1&id='+detachedAgentId,{headers:{cookie}});const detachedAgent=JSON.parse(r.text());
  findings.push({test:'file actions and their backup journal also continue after the phone closes',pass:detachedAgent.generation.status==='completed'&&detachedAgent.messages.at(-1).actions.some(a=>a.backupId)&&await fs.readFile(path.join(fileRoot,'agent.md'),'utf8')==='after'});
+ // Fail one periodic checkpoint atomically, as can happen when Windows briefly
+ // holds the destination open. No further token or Stop may make the retry dirty.
+ const originalCheckpointRename=fs.rename;
+ let lastCheckpoint,checkpointSaved=false,checkpointWriteAttempts=0;
+ fs.rename=async(from,to)=>{if(path.dirname(to)===path.join(root,'data/chats')){const checkpoint=JSON.parse(await fs.readFile(from,'utf8'));if(checkpoint.generation?.requestId===backgroundRequestId&&checkpoint.generation.status==='running'&&checkpoint.messages.at(-1).text==='Synthetic reply'&&++checkpointWriteAttempts===1)throw Object.assign(new Error('Synthetic transient checkpoint lock'),{code:'EBUSY'});}return originalCheckpointRename(from,to)};
  const backgroundRes=new Res();const backgroundJob=handle(req('/api/chat',{method:'POST',headers:{cookie},body:{...data('HOLD'),requestId:backgroundRequestId}}),backgroundRes);
- assert(await waitForCondition(()=>backgroundRes.records().some(e=>e.type==='delta')),'The synthetic response must start before disconnecting the browser');
- const backgroundId=backgroundRes.records().find(e=>e.type==='start').id;backgroundRes.destroyed=true;backgroundRes.emit('close');
- // The 1-second checkpoint timer and its asynchronous disk write may finish
- // later on a busy runner. Observe the saved partial reply before Stop can save it.
- const checkpointSaved=await waitForCondition(async()=>{const checkpoint=JSON.parse(await fs.readFile(path.join(root,'data/chats',backgroundId+'.json'),'utf8'));return checkpoint.messages.at(-1).text==='Synthetic reply'&&checkpoint.generation.status==='running'&&checkpoint.generation.requestId===backgroundRequestId;});
- findings.push({test:'partial reply is checkpointed while the browser is disconnected',pass:checkpointSaved});
+ let backgroundId;
+ try{
+  assert(await waitForCondition(()=>backgroundRes.records().some(e=>e.type==='delta')),'The synthetic response must start before disconnecting the browser');
+  backgroundId=backgroundRes.records().find(e=>e.type==='start').id;backgroundRes.destroyed=true;backgroundRes.emit('close');
+  checkpointSaved=await waitForCondition(async()=>{const checkpoint=lastCheckpoint=JSON.parse(await fs.readFile(path.join(root,'data/chats',backgroundId+'.json'),'utf8'));return checkpointWriteAttempts>=2&&checkpoint.messages.at(-1).text==='Synthetic reply'&&checkpoint.generation.status==='running'&&checkpoint.generation.requestId===backgroundRequestId;});
+ }
+ finally{fs.rename=originalCheckpointRename}
+ findings.push({test:'partial reply is checkpointed while the browser is disconnected',pass:checkpointSaved&&checkpointWriteAttempts>=2,...(!checkpointSaved?{diagnostic:{checkpointWriteAttempts,savedText:lastCheckpoint?.messages.at(-1).text,generation:lastCheckpoint?.generation,liveText:app.chatStates.get(backgroundId)?.chat.messages.at(-1).text,metrics:JSON.parse((await request('/api/runtime-status',{headers:{cookie}})).text()).checkpoints,upstreamControllers:upstream.length}}:{})});
  r=await request('/api/cancel',{method:'POST',headers:{cookie},body:{requestId:backgroundRequestId}});await backgroundJob;
  r=await request('/api/conversation?projectId=p1&id='+backgroundId,{headers:{cookie}});const stopped=JSON.parse(r.text());
  findings.push({test:'explicit Stop still cancels a detached job and preserves partial text',pass:stopped.generation.status==='stopped'&&stopped.messages.at(-1).interrupted&&stopped.messages.at(-1).text==='Synthetic reply'});upstream.splice(0);
