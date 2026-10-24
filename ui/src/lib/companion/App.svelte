@@ -38,7 +38,7 @@
 
   type Draft = { text:string; updatedAt:number; attachments:any[]; model:string; reasoning:string; reasoningChoices?:Record<string,ReasoningChoice>; fileProfile:string; webAccess:boolean; webApproval:boolean; scriptAccess:boolean; imageAccess:boolean; imageWorkflowId:string; imageCount:number; imageModelPolicy:string; nonce:string };
   let authenticated=$state(false), ready=$state(false), restoring=$state(false), error=$state(''), notice=$state('');
-  let code=$state(''), loginBusy=$state(false);
+  let code=$state(''), loginBusy=$state(false), engineError=$state('');
   let projects=$state<any[]>([]), models=$state<any[]>([]), sessionGroups=$state<Record<string,SessionGroup>>({});
   let projectId=$state(''), chat=$state<any>(null), model=$state(''), inference=$state<any>(null), comfy=$state<any>(null);
   let reasoningChoices=$state<Record<string,ReasoningChoice>>({});
@@ -130,6 +130,7 @@
     error=failure?.message||tr('Le compagnon est indisponible.','The companion is unavailable.');
     if(failure?.status===401){authenticated=false;chat=null;projects=[];expandedProjects=[];sessionCatalogue.reset();client.disconnect();}
   }
+  function reportEngine(failure:any){if(failure?.status===401)report(failure);else engineError=failure?.message||tr('Le catalogue des modèles est indisponible.','The model catalogue is unavailable.');}
   async function scrollReply(){await tick();if(followReply&&messageList)messageList.scrollTop=messageList.scrollHeight;}
   function rememberGeneration(value:unknown,pid:string){client.remember(value,pid);}
   async function refreshSessions(_append=false,pid=projectId){
@@ -203,9 +204,9 @@
       if(sequence!==engineReadSequence||!mounted)return;
       if(catalogue.status==='fulfilled'){
         const current=catalogue.value;inference=current.inference;engineCatalogueUnconfirmed=current.kind==='unconfirmed';
-        if(current.kind==='ready'){models=current.models.filter(item=>item.type==='llm');if(!models.some(item=>item.id===model))model=models.find(item=>item.loaded)?.id||models[0]?.id||'';}
-        else{models=[];model='';if(current.kind==='unavailable'&&reportModelFailure)report(current.failure);}
-      }else{models=[];model='';engineCatalogueUnconfirmed=true;if(reportModelFailure)report(catalogue.reason);}
+        if(current.kind==='ready'){engineError='';models=current.models.filter(item=>item.type==='llm');if(!models.some(item=>item.id===model))model=models.find(item=>item.loaded)?.id||models[0]?.id||'';}
+        else{models=[];model='';if(current.kind==='unavailable'&&reportModelFailure)reportEngine(current.failure);}
+      }else{models=[];model='';engineCatalogueUnconfirmed=true;if(reportModelFailure)reportEngine(catalogue.reason);}
       if(images.status==='fulfilled'){comfy=images.value;if(!imageWorkflowId)imageWorkflowId=comfy.workflowId||'';}
     }finally{if(sequence===engineReadSequence)engineReadPending=false;}
   }
@@ -374,7 +375,7 @@
         <nav class="workspace-tabs" hidden={tab!=='chat'||headerEditing} aria-label={tr('Espace du projet','Project workspace')}>{#each workspaceItems as item}<button aria-label={tr(item.fr,item.en)} class:active={tab===item.id} onclick={()=>changeTab(item.id as typeof tab)}><item.icon /><span>{tr(item.fr,item.en)}</span></button>{/each}</nav>
       </header>
       {#if prototypeInfo?.syntheticComfyUI||prototypeInfo?.syntheticProjects}<div class="global-notice status fixture-notice">{tr('Démonstration isolée','Isolated demonstration')} · {prototypeInfo.realInference?tr('modèle réel','real model'):tr('modèle simulé','simulated model')} · {prototypeInfo.syntheticComfyUI?tr('ComfyUI simulé','simulated ComfyUI'):'ComfyUI'} · {tr('projets de test','test projects')}</div>{/if}
-      {#if error}<div class="global-notice error" role="alert"><span>{error}</span><button aria-label={tr('Masquer l’erreur','Dismiss error')} onclick={()=>error=''}><X /></button></div>{/if}
+      {#if error||engineError}<div class="global-notice error" role="alert"><span>{error||engineError}</span><button aria-label={tr('Masquer l’erreur','Dismiss error')} onclick={()=>{if(error)error='';else engineError='';}}><X /></button></div>{/if}
       {#if jobs.length||notice}<div class="global-notice status" role="status"><span>{currentJob?.disconnected?tr('Connexion perdue · suivi sur le serveur','Connection lost · tracked on the server'):currentJob?.status==='queued'?tr('Dans la file d’attente','Queued'):jobs.length?jobs.length+' '+tr('demande(s) suivie(s)','tracked request(s)'):notice}</span><div>{#if jobs.length}<Button variant="ghost" size="sm" onclick={()=>recover(true)}><RefreshCw />{tr('Vérifier','Check')}</Button>{#if !currentJob}<Button variant="ghost" size="sm" onclick={()=>visitJob(jobs[0])}>{tr('Voir la demande','View request')}</Button>{/if}{/if}</div></div>{/if}
       <WorkspaceDialog open={tab!=='chat'} title={tr(workspaceItems.find(item=>item.id===tab)?.fr||'Espace du projet',workspaceItems.find(item=>item.id===tab)?.en||'Project workspace')} onClose={closeModelManagement}>
         {#snippet navigation()}<nav class="workspace-tabs" aria-label={tr('Espace du projet','Project workspace')}>{#each workspaceItems as item}<button aria-label={tr(item.fr,item.en)} class:active={tab===item.id} onclick={()=>changeTab(item.id as typeof tab)}><item.icon /><span>{tr(item.fr,item.en)}</span></button>{/each}</nav>{/snippet}
