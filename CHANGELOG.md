@@ -1,5 +1,14 @@
 # Journal des versions
 
+## 2.6.0-beta.11 — Canaé
+
+- Canaé devient l’unique interface à l’adresse d’accueil, y compris après une mise à jour depuis2.5.0 et avec un ancien réglage d’interface. Les anciennes adresses renvoient vers cet accueil ; l’interface legacy n’est plus servie.
+- Un nouveau chat global est sans projet. Le bouton `+` d’un projet associe explicitement le nouveau chat à ce projet. Le titre se modifie directement dans l’en-tête, avec rattachement et détachement du projet ; les historiques natifs restent intacts.
+- Le pilotage des modèles réunit les états et commandes de Bionic, llama.cpp et ComfyUI : utiliser un serveur détecté, préparer et démarrer un serveur arrêté, arrêter un processus démarré par le compagnon, charger/décharger les modèles selon les capacités du moteur. Les processus externes restent identifiés comme tels.
+- Le chargement manuel Bionic garde le contexte configuré et vérifie connexion, confirmation et droits. Une réponse perdue se récupère par lecture du catalogue sans relancer le chargement.
+- Les images utilisent une politique mémoire compatible avec le moteur : avec llama.cpp direct, un réglage global de déchargement devient une alternance explicitement affichée, en conservant le modèle chargé. Une demande explicite de déchargement non supporté est refusée avant effet.
+- La relecture après un arrêt confirmé de Bionic ou llama.cpp corrige les états incertains sans renvoyer de commande. Une génération en cours conserve son suivi lorsqu’un nouveau chat est ouvert.
+
 ## 2.6.0-beta.10 — Canaé — candidate locale
 
 - Toutes les commandes du chat tiennent sur deux lignes : moteur, modèle et réflexion, puis fichiers, outils/images, brouillon et envoi. L'arrêt et la déconnexion restent directs pendant une génération ; les menus conservent les options et la validation des champs masqués.

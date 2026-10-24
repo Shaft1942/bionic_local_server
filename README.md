@@ -2,7 +2,7 @@
 
 # Canaé — compagnon local
 
-**Candidate locale Canaé 2.6.0-beta.10** : commandes du chat sur deux lignes, conversations rangées sous leurs projets, actions intégrées aux messages et accès à la gestion des moteurs, modèles et images ; voir [les nouveautés beta.10](docs/beta10-interface.md). Les choix de réflexion du modèle, les GGUF, l’aide, les brouillons, les pièces jointes et les imports multiples restent disponibles.
+**Canaé 2.6.0-beta.11** devient l’interface unique, y compris après mise à jour depuis2.5.0. Les nouveaux chats sont sans projet, le titre se modifie dans l’en-tête et le pilotage réunit moteurs, modèles et images ; voir [le guide beta.11](docs/beta11-usage.md). Les commandes sur deux lignes, les brouillons, les choix de réflexion et les outils restent disponibles.
 
 La bêta 6 ajoute le curseur de quantité d’images dans le chat et l’atelier et renforce les reprises des moteurs et des sauvegardes. Voir [l’audit, les corrections et les extensions proposées](docs/beta6-audit.md).
 
